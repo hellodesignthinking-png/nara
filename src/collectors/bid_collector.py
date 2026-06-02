@@ -371,7 +371,7 @@ class BidCollector:
                 bids.append(bid)
 
             except Exception as e:
-                logger.debug(
+                logger.warning(
                     "공고 데이터 파싱 실패: %s (데이터: %s)",
                     e, item.get("bidNtceNo", "알 수 없음"),
                 )
