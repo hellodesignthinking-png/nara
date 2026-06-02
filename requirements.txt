@@ -1,6 +1,7 @@
 # NARA Analyzer - Render.com 배포용 의존성
 fastapi==0.136.3
 uvicorn==0.48.0
+python-multipart==0.0.20
 pydantic==2.13.4
 pydantic-settings==2.14.1
 pydantic_core==2.46.4
