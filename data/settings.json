@@ -1,0 +1,16 @@
+{
+  "keywords": [
+    "마케팅",
+    "컨설팅",
+    "디자인",
+    "행사",
+    "장터",
+    "마켓",
+    "전시",
+    "버스킹",
+    "공연"
+  ],
+  "exclude_keywords": [],
+  "min_relevance_score": 50,
+  "schedule_time": "07:30"
+}

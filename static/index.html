@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NARA Analyzer - 나라장터 용역 자동 분석</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260602v">
+</head>
+<body>
+
+    <!-- ─── 사이드바 ─── -->
+    <nav id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <span class="logo-icon">🏛️</span>
+                <div class="logo-text">
+                    <span class="logo-title">NARA</span>
+                    <span class="logo-subtitle">Analyzer</span>
+                </div>
+            </div>
+        </div>
+
+        <ul class="sidebar-menu">
+            <li class="menu-item active" data-view="dashboard" onclick="navigate('dashboard')">
+                <span class="menu-icon">📊</span>
+                <span class="menu-label">대시보드</span>
+            </li>
+            <li class="menu-item" data-view="bids" onclick="navigate('bids')">
+                <span class="menu-icon">📝</span>
+                <span class="menu-label">공고 목록</span>
+                <span class="menu-badge" id="bid-menu-badge" style="display:none"></span>
+            </li>
+            <li class="menu-item" data-view="favorites" onclick="navigate('favorites')">
+                <span class="menu-icon">⭐</span>
+                <span class="menu-label">관심공고</span>
+                <span class="menu-badge" id="fav-menu-badge" style="display:none"></span>
+            </li>
+            <li class="menu-item" data-view="businesses" onclick="navigate('businesses')">
+                <span class="menu-icon">🏢</span>
+                <span class="menu-label">사업자 관리</span>
+            </li>
+            <li class="menu-item" data-view="analysis" onclick="navigate('analysis')">
+                <span class="menu-icon">🔬</span>
+                <span class="menu-label">분석 결과</span>
+            </li>
+            <li class="menu-item" data-view="settings" onclick="navigate('settings')">
+                <span class="menu-icon">⚙️</span>
+                <span class="menu-label">설정</span>
+            </li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-footer-info">
+                <span class="footer-dot" id="footer-status-dot"></span>
+                <span class="footer-text" id="footer-status-text">연결 확인 중...</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ─── 모바일 햄버거 ─── -->
+    <button id="mobile-menu-btn" class="mobile-menu-btn" onclick="toggleSidebar()">
+        <span></span><span></span><span></span>
+    </button>
+    <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <!-- ─── 메인 콘텐츠 ─── -->
+    <main id="main-content">
+
+        <!-- ════════ 대시보드 뷰 ════════ -->
+        <section id="view-dashboard" class="view active">
+            <!-- 환영 헤더 + 빠른 액션 -->
+            <div class="dashboard-hero">
+                <div class="hero-content">
+                    <div class="hero-text">
+                        <h1 class="hero-title">안녕하세요 👋</h1>
+                        <p class="hero-subtitle" id="dashboard-date">오늘의 현황을 확인하세요</p>
+                        <p class="hero-guide" id="hero-guide">① 사업자 등록 → ② 공고 수집 → ③ AI 분석 → ④ 입찰 참여</p>
+                    </div>
+                    <div class="hero-actions">
+                        <button class="hero-btn hero-btn-primary" onclick="collectBids()">
+                            <span class="hero-btn-icon">📋</span>
+                            <div>
+                                <strong>공고 수집</strong>
+                                <small>키워드 기반 실시간 수집</small>
+                            </div>
+                        </button>
+                        <button class="hero-btn hero-btn-gradient" onclick="runAnalysis()">
+                            <span class="hero-btn-icon">🎯</span>
+                            <div>
+                                <strong>참여 가능 분석</strong>
+                                <small>사업자 매칭 + 전략 평가</small>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 📋 오늘의 브리핑 -->
+            <div class="briefing-panel" id="briefing-panel">
+                <div class="briefing-header">
+                    <h2 class="briefing-title">📋 오늘의 추천 공고 브리핑</h2>
+                    <span class="briefing-badge" id="briefing-badge">로딩 중...</span>
+                </div>
+                <div class="briefing-body" id="briefing-body">
+                    <p class="briefing-loading">⏳ 브리핑 데이터를 불러오는 중...</p>
+                </div>
+            </div>
+
+            <!-- 통계 카드 -->
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-card stat-card-link" style="--delay: 0" onclick="navigate('businesses')">
+                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #6366f1, #8b5cf6)">🏢</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="stat-businesses">0</span>
+                        <span class="stat-label">등록 사업자</span>
+                        <span class="stat-change neutral">클릭하여 관리 →</span>
+                    </div>
+                </div>
+                <div class="stat-card stat-card-link" style="--delay: 1" onclick="navigate('bids')">
+                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #06b6d4, #3b82f6)">📝</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="stat-bids">0</span>
+                        <span class="stat-label">수집 공고</span>
+                        <span class="stat-change neutral" id="stat-bids-change">클릭하여 확인 →</span>
+                    </div>
+                </div>
+                <div class="stat-card stat-card-link" style="--delay: 2" onclick="navigate('analysis')">
+                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #10b981, #34d399)">✅</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="stat-analyses">0</span>
+                        <span class="stat-label">분석 완료</span>
+                        <span class="stat-change neutral" id="stat-analyses-change">클릭하여 확인 →</span>
+                    </div>
+                </div>
+                <div class="stat-card stat-card-urgent stat-card-link" style="--delay: 3" onclick="navigate('bids'); setTimeout(()=>sortBids('bid_close_dt'), 500)">
+                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #ef4444, #f97316)">⏰</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="stat-urgent">0</span>
+                        <span class="stat-label">마감 임박 (3일)</span>
+                        <span class="stat-change neutral" id="stat-news-change">클릭하여 확인 →</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ⭐ 입찰 파이프라인 -->
+            <div class="fav-pipeline-summary" id="fav-pipeline-summary" style="display:none">
+                <div class="pipeline-summary-header">
+                    <h3>⭐ 입찰 파이프라인</h3>
+                    <button class="btn btn-ghost btn-sm" onclick="navigate('favorites')">전체 보기 →</button>
+                </div>
+                <div class="pipeline-summary-stages" id="pipeline-stages"></div>
+                <div class="pipeline-summary-urgent" id="pipeline-urgent"></div>
+            </div>
+
+
+            <!-- 🔍 관심 키워드 빠른 검색 -->
+            <div class="keyword-search-panel" id="keyword-search-panel">
+                <div class="ksp-header">
+                    <h2 class="ksp-title">🔍 관심 키워드 검색</h2>
+                    <span class="ksp-desc">키워드를 클릭하면 해당 공고를 바로 수집·검색합니다</span>
+                </div>
+                <div class="ksp-keywords" id="ksp-keywords">
+                    <!-- 동적 생성 -->
+                </div>
+                <div class="ksp-search-bar">
+                    <div class="ksp-search-wrap">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="ksp-search-input" class="search-input" placeholder="키워드를 입력하고 Enter로 검색..." />
+                        <button class="btn btn-gradient btn-sm" id="ksp-search-btn" onclick="dashboardKeywordSearch()">🌐 나라장터 검색</button>
+                    </div>
+                </div>
+                <!-- 세부 검색 필터 -->
+                <div class="ksp-sub-filter" id="ksp-sub-filter" style="display:none">
+                    <div class="ksp-sub-header">
+                        <span class="ksp-sub-label">📌 검색 결과 내 세부 필터</span>
+                        <span class="ksp-result-count" id="ksp-result-count">0건</span>
+                    </div>
+                    <div class="ksp-sub-search-wrap">
+                        <span class="search-icon">🔎</span>
+                        <input type="text" id="ksp-sub-search" class="search-input" placeholder="검색 결과에서 세부 키워드로 필터링..." oninput="filterDashboardResults()" />
+                        <button class="btn btn-ghost btn-sm" onclick="clearSubFilter()">✕ 초기화</button>
+                    </div>
+                    <!-- 세부 검색 필터 버튼 -->
+                    <div class="ksp-detail-filters" id="ksp-detail-filters">
+                        <div class="ksp-filter-row">
+                            <label class="ksp-filter-label">💰 예산</label>
+                            <select id="ksp-filter-budget" class="ksp-filter-select" onchange="filterDashboardResults()">
+                                <option value="">전체</option>
+                                <option value="5000">5천만 이하</option>
+                                <option value="10000">1억 이하</option>
+                                <option value="50000">5억 이하</option>
+                                <option value="100000">10억 이하</option>
+                                <option value="100001">10억 초과</option>
+                            </select>
+                        </div>
+                        <div class="ksp-filter-row">
+                            <label class="ksp-filter-label">📅 마감</label>
+                            <select id="ksp-filter-deadline" class="ksp-filter-select" onchange="filterDashboardResults()">
+                                <option value="">전체</option>
+                                <option value="3">3일 이내</option>
+                                <option value="7">7일 이내</option>
+                                <option value="14">14일 이내</option>
+                                <option value="30">30일 이내</option>
+                            </select>
+                        </div>
+                        <div class="ksp-filter-row">
+                            <label class="ksp-filter-label">🏢 기관</label>
+                            <input type="text" id="ksp-filter-org" class="ksp-filter-input" placeholder="기관명..." oninput="filterDashboardResults()" />
+                        </div>
+                    </div>
+                </div>
+                <!-- 검색 결과 영역 -->
+                <div class="ksp-results" id="ksp-results" style="display:none"></div>
+            </div>
+
+            <!-- 📋 오늘의 추천 공고 브리핑 (TOP 10 통합) -->
+            <!-- top10-list는 숨김 처리되어 데이터 로드용으로만 사용 -->
+            <div id="top10-list" style="display:none"></div>
+
+            <!-- 차트 + 분석 2컬럼 -->
+            <div class="dashboard-main-grid">
+                <div class="dashboard-charts-col">
+                    <div class="chart-card">
+                        <h3>📈 최근 30일 공고 추이</h3>
+                        <div class="bar-chart" id="daily-trend-chart">
+                            <p style="color:#64748b;text-align:center;padding:60px 0">공고를 수집하면 차트가 표시됩니다</p>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>🏢 발주처별 예산 Top 10</h3>
+                        <div class="horizontal-bar-chart" id="org-budget-chart">
+                            <p style="color:#64748b;text-align:center;padding:60px 0">공고를 수집하면 차트가 표시됩니다</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="dashboard-charts-col">
+                    <div class="chart-card">
+                        <h3>🏷️ 키워드별 공고 분포</h3>
+                        <div id="keyword-dist-chart">
+                            <p style="color:var(--text-muted);text-align:center;padding:40px 0">데이터 로딩 중...</p>
+                        </div>
+                    </div>
+                    <div class="chart-card quick-links-card">
+                        <h3>⚡ 빠른 바로가기</h3>
+                        <div class="quick-links-grid">
+                            <a class="quick-link" onclick="navigate('bids')">
+                                <span class="ql-icon">📋</span><span>공고 목록</span>
+                            </a>
+                            <a class="quick-link" onclick="navigate('businesses')">
+                                <span class="ql-icon">🏢</span><span>사업자 관리</span>
+                            </a>
+                            <a class="quick-link" onclick="navigate('analysis')">
+                                <span class="ql-icon">📊</span><span>분석 결과</span>
+                            </a>
+                            <a class="quick-link" onclick="navigate('settings')">
+                                <span class="ql-icon">⚙️</span><span>설정</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 최근 분석 결과 -->
+            <div class="section-block">
+                <div class="section-header">
+                    <h2 class="section-title">📊 최근 분석 결과</h2>
+                    <button class="btn btn-ghost btn-sm" onclick="navigate('analysis')">전체 보기 →</button>
+                </div>
+                <div class="table-container">
+                    <table class="data-table" id="recent-analyses-table">
+                        <thead>
+                            <tr>
+                                <th>공고명</th>
+                                <th>발주기관</th>
+                                <th>추정가격</th>
+                                <th>매칭 사업자</th>
+                                <th>매칭 점수</th>
+                                <th>분석일</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent-analyses-body">
+                            <tr class="empty-row">
+                                <td colspan="6">
+                                    <div class="empty-state-inline">
+                                        <span>📊</span>
+                                        <p>분석 결과가 없습니다. 분석을 실행해보세요.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════ 공고 목록 뷰 ════════ -->
+        <section id="view-bids" class="view">
+            <div class="view-header">
+                <div>
+                    <h1 class="view-title">공고 목록</h1>
+                    <p class="view-subtitle">수집된 나라장터 용역 공고</p>
+                </div>
+                <div class="view-header-actions">
+                    <button class="btn btn-primary" onclick="collectBids()">
+                        <span class="btn-icon">🔄</span> 공고 수집
+                    </button>
+                </div>
+            </div>
+
+            <!-- 검색 바 -->
+            <div class="search-bar">
+                <div class="search-input-wrap">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="bid-search" class="search-input" placeholder="용역명, 발주기관으로 검색..." oninput="filterBids()" onkeydown="if(event.key==='Enter'){event.preventDefault();collectByKeyword()}">
+                    <button class="btn btn-gradient btn-sm search-collect-btn" id="btn-keyword-collect" onclick="collectByKeyword()" title="이 키워드로 나라장터에서 직접 수집">
+                        🌐 나라장터 검색
+                    </button>
+                </div>
+                <div class="search-chips" id="search-chips">
+                    <!-- 저장된 관심 키워드에서 동적 생성 -->
+                </div>
+                <div class="search-filters" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+                    <label class="filter-toggle" style="display:flex;align-items:center;gap:4px;font-size:0.82rem;cursor:pointer;color:var(--text-muted)">
+                        <input type="checkbox" id="bid-hide-expired" onchange="filterBids()" checked>
+                        <span>마감 건 숨기기</span>
+                    </label>
+                    <select id="bid-filter-budget" class="fav-detail-input" style="width:auto;padding:4px 8px;font-size:0.78rem" onchange="filterBids()">
+                        <option value="">💰 예산 전체</option>
+                        <option value="under1">1억 미만</option>
+                        <option value="1to5">1억~5억</option>
+                        <option value="5to10">5억~10억</option>
+                        <option value="over10">10억 이상</option>
+                    </select>
+                    <span id="bid-count-info" style="margin-left:auto;font-size:0.78rem;color:var(--text-muted)"></span>
+                </div>
+            </div>
+
+            <!-- 테이블 -->
+            <div class="table-container">
+                <table class="data-table" id="bids-table">
+                    <thead>
+                        <tr>
+                            <th>공고명</th>
+                            <th>발주기관</th>
+                            <th class="sortable" onclick="sortBids('budget')" id="th-budget">추정가격 <span class="sort-arrow">↕</span></th>
+                            <th class="sortable" onclick="sortBids('bid_close_dt')" id="th-bid_close_dt">마감상태 <span class="sort-arrow">↕</span></th>
+                            <th class="sortable" onclick="sortBids('relevance_score')" id="th-relevance_score" title="사업자 프로필과의 적합도">적합도 <span class="sort-arrow">↕</span></th>
+                            <th>관심</th>
+                            <th>나라장터</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bids-body">
+                        <tr class="empty-row">
+                            <td colspan="7">
+                                <div class="empty-state-inline">
+                                    <span style="font-size:2.5rem">📝</span>
+                                    <p style="margin:8px 0 4px;font-weight:600">수집된 공고가 없습니다</p>
+                                    <p style="font-size:0.82rem;color:var(--text-muted)">위의 <strong>🔄 공고 수집</strong> 버튼을 클릭하거나,<br>검색창에 키워드를 입력하고 <strong>Enter</strong>를 눌러 나라장터에서 직접 검색해보세요.</p>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ════════ 관심공고 뷰 ════════ -->
+        <section id="view-favorites" class="view">
+            <div class="view-header">
+                <div>
+                    <h1 class="view-title">⭐ 관심공고 관리</h1>
+                    <p class="view-subtitle">입찰 파이프라인을 관리하고 협업사와 함께 낙찰을 준비하세요</p>
+                </div>
+            </div>
+            <!-- 파이프라인 통계 -->
+            <div class="fav-stats" id="fav-stats-row">
+                <div class="fav-stat-card" onclick="filterFavByStatus('all')">
+                    <span class="fav-stat-num" id="fav-stat-all">0</span>
+                    <span class="fav-stat-label">전체</span>
+                </div>
+                <div class="fav-stat-card" onclick="filterFavByStatus('reviewing')">
+                    <span class="fav-stat-num" id="fav-stat-reviewing">0</span>
+                    <span class="fav-stat-label">⭐ 검토중</span>
+                </div>
+                <div class="fav-stat-card" onclick="filterFavByStatus('proceeding')">
+                    <span class="fav-stat-num" id="fav-stat-proceeding">0</span>
+                    <span class="fav-stat-label">🚀 사업진행</span>
+                </div>
+                <div class="fav-stat-card" onclick="filterFavByStatus('partnered')">
+                    <span class="fav-stat-num" id="fav-stat-partnered">0</span>
+                    <span class="fav-stat-label">🤝 협업진행</span>
+                </div>
+                <div class="fav-stat-card" onclick="filterFavByStatus('completed')">
+                    <span class="fav-stat-num" id="fav-stat-completed">0</span>
+                    <span class="fav-stat-label">✅ 완료</span>
+                </div>
+                <div class="fav-stat-card" onclick="filterFavByStatus('abandoned')">
+                    <span class="fav-stat-num" id="fav-stat-abandoned">0</span>
+                    <span class="fav-stat-label">❌ 포기</span>
+                </div>
+            </div>
+            <!-- 도구 모음 -->
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+                <button class="btn btn-outline btn-sm" onclick="exportFavorites()">📥 CSV</button>
+                <button class="btn btn-outline btn-sm" onclick="exportFavoritesJSON()">📦 JSON</button>
+                <button class="btn btn-outline btn-sm" onclick="shareFavSummary()">📤 공유</button>
+                <span style="flex:1"></span>
+                <button class="btn btn-ghost btn-sm" onclick="deleteFavsByStatus('completed')" title="완료된 공고 정리">🗂️ 완료건 정리</button>
+            </div>
+            <!-- 공고 리스트 -->
+            <div class="card" id="favorites-body">
+                <!-- JS에서 렌더링 -->
+            </div>
+        </section>
+
+        <!-- ════════ 사업자 관리 뷰 ════════ -->
+        <section id="view-businesses" class="view">
+            <div class="view-header">
+                <div>
+                    <h1 class="view-title">사업자 관리</h1>
+                    <p class="view-subtitle">등록된 사업자 프로필 관리</p>
+                </div>
+                <div class="view-header-actions">
+                    <button class="btn btn-primary" onclick="showBusinessModal()">
+                        <span class="btn-icon">➕</span> 사업자 등록
+                    </button>
+                </div>
+            </div>
+
+            <div class="business-grid" id="business-grid">
+                <div class="empty-state" id="business-empty">
+                    <div class="empty-icon">🏢</div>
+                    <h3>등록된 사업자가 없습니다</h3>
+                    <p>사업자를 등록하면 공고와 자동 매칭 분석이 가능합니다.</p>
+                    <button class="btn btn-primary" onclick="showBusinessModal()">
+                        <span class="btn-icon">➕</span> 첫 사업자 등록하기
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════ 분석 결과 뷰 ════════ -->
+        <section id="view-analysis" class="view">
+            <div class="view-header">
+                <div>
+                    <h1 class="view-title">분석 결과</h1>
+                    <p class="view-subtitle">AI 전략 보고서 및 매칭 분석</p>
+                </div>
+                <div class="view-header-actions">
+                    <button class="btn btn-outline btn-danger" onclick="clearAllAnalyses()" title="모든 분석 결과 삭제">
+                        <span class="btn-icon">🗑️</span> 전체 삭제
+                    </button>
+                    <button class="btn btn-gradient" onclick="runAnalysis()">
+                        <span class="btn-icon">🤖</span> 새 분석 실행
+                    </button>
+                </div>
+            </div>
+
+            <div class="analysis-list" id="analysis-list">
+                <div class="empty-state" id="analysis-empty">
+                    <div class="empty-icon">🔬</div>
+                    <h3>분석 결과가 없습니다</h3>
+                    <p>대시보드에서 분석을 실행하면 AI가 자동으로 매칭 분석을 수행합니다.</p>
+                    <button class="btn btn-gradient" onclick="runAnalysis()">
+                        <span class="btn-icon">🚀</span> 분석 시작하기
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════ 설정 뷰 ════════ -->
+        <section id="view-settings" class="view">
+            <div class="view-header">
+                <div>
+                    <h1 class="view-title">설정</h1>
+                    <p class="view-subtitle">시스템 설정 및 키워드 관리</p>
+                </div>
+            </div>
+
+            <!-- API 연결 설정 -->
+            <div class="settings-section">
+                <h2>🔗 API 연결 설정</h2>
+                <p class="section-desc">각 API 키를 입력하고 저장하면 즉시 반영됩니다. 키는 서버의 .env 파일에 안전하게 저장됩니다.</p>
+
+                <div class="api-keys-grid">
+                    <!-- 공공데이터포털 -->
+                    <div class="api-key-card">
+                        <div class="api-key-header">
+                            <span class="status-dot" id="status-dot-data"></span>
+                            <div>
+                                <h4>📊 공공데이터포털</h4>
+                                <span class="api-key-desc">나라장터 입찰공고 수집</span>
+                            </div>
+                        </div>
+                        <div class="api-key-input-group">
+                            <input type="password" id="api-key-data-go-kr" class="api-key-input" placeholder="API 키 입력">
+                            <button class="btn-toggle-eye" onclick="toggleApiKeyVisibility('api-key-data-go-kr')" title="보기/숨기기">👁️</button>
+                        </div>
+                        <span class="api-key-masked" id="masked-data-go-kr"></span>
+                    </div>
+
+                    <!-- 네이버 검색 -->
+                    <div class="api-key-card">
+                        <div class="api-key-header">
+                            <span class="status-dot" id="status-dot-naver"></span>
+                            <div>
+                                <h4>🔍 네이버 검색</h4>
+                                <span class="api-key-desc">뉴스 기사 수집</span>
+                            </div>
+                        </div>
+                        <div class="api-key-input-group">
+                            <input type="password" id="api-key-naver-id" class="api-key-input" placeholder="Client ID">
+                        </div>
+                        <div class="api-key-input-group" style="margin-top:6px">
+                            <input type="password" id="api-key-naver-secret" class="api-key-input" placeholder="Client Secret">
+                            <button class="btn-toggle-eye" onclick="toggleApiKeyVisibility('api-key-naver-secret')" title="보기/숨기기">👁️</button>
+                        </div>
+                        <span class="api-key-masked" id="masked-naver"></span>
+                    </div>
+
+                    <!-- OpenAI -->
+                    <div class="api-key-card">
+                        <div class="api-key-header">
+                            <span class="status-dot" id="status-dot-openai"></span>
+                            <div>
+                                <h4>🤖 OpenAI</h4>
+                                <span class="api-key-desc">AI 전략 분석 · 문서 OCR</span>
+                            </div>
+                        </div>
+                        <div class="api-key-input-group">
+                            <input type="password" id="api-key-openai" class="api-key-input" placeholder="sk-... API 키 입력">
+                            <button class="btn-toggle-eye" onclick="toggleApiKeyVisibility('api-key-openai')" title="보기/숨기기">👁️</button>
+                        </div>
+                        <span class="api-key-masked" id="masked-openai"></span>
+                    </div>
+
+                    <!-- Google Gemini -->
+                    <div class="api-key-card">
+                        <div class="api-key-header">
+                            <span class="status-dot" id="status-dot-gemini"></span>
+                            <div>
+                                <h4>💎 Google Gemini</h4>
+                                <span class="api-key-desc">AI 전략 분석 (대체 LLM)</span>
+                            </div>
+                        </div>
+                        <div class="api-key-input-group">
+                            <input type="password" id="api-key-gemini" class="api-key-input" placeholder="AIza... API 키 입력">
+                            <button class="btn-toggle-eye" onclick="toggleApiKeyVisibility('api-key-gemini')" title="보기/숨기기">👁️</button>
+                        </div>
+                        <span class="api-key-masked" id="masked-gemini"></span>
+                    </div>
+
+                    <!-- LLM 선택 -->
+                    <div class="api-key-card" style="border-color:rgba(99,102,241,0.15)">
+                        <div class="api-key-header">
+                            <span>⚙️</span>
+                            <div>
+                                <h4>LLM 엔진 선택</h4>
+                                <span class="api-key-desc">전략 분석에 사용할 AI 모델</span>
+                            </div>
+                        </div>
+                        <select id="llm-engine-select" class="api-key-input" style="padding:8px 12px">
+                            <option value="gemini" selected>Google Gemini</option>
+                            <option value="openai">OpenAI GPT-4o</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="saveApiKeys()" style="margin-top:16px">
+                    💾 API 키 저장
+                </button>
+            </div>
+
+            <!-- 키워드 관리 -->
+            <div class="settings-section">
+                <h2>🏷️ 관심 키워드</h2>
+                <p class="section-desc">입찰 공고 필터링에 사용되는 키워드를 관리합니다. Enter로 추가.</p>
+                <div class="tag-input-area">
+                    <div class="tags-container" id="settings-keywords-tags"></div>
+                    <input type="text" id="settings-keyword-input" class="tag-input" placeholder="키워드 입력 후 Enter">
+                </div>
+
+                <h3 style="margin-top:24px">🚫 제외 키워드</h3>
+                <p class="section-desc">이 키워드가 포함된 공고는 필터링에서 제외됩니다.</p>
+                <div class="tag-input-area">
+                    <div class="tags-container" id="settings-exclude-tags"></div>
+                    <input type="text" id="settings-exclude-input" class="tag-input" placeholder="제외 키워드 입력 후 Enter">
+                </div>
+
+                <button class="btn btn-primary" onclick="saveKeywords()" style="margin-top:16px">
+                    💾 키워드 저장
+                </button>
+            </div>
+
+            <!-- 관련도 설정 -->
+            <div class="settings-section">
+                <h2>📊 분석 설정</h2>
+                <div class="slider-group">
+                    <label>최소 관련도 점수: <span id="relevance-value">40</span>점</label>
+                    <input type="range" id="relevance-slider" min="0" max="100" value="40"
+                           oninput="document.getElementById('relevance-value').textContent=this.value">
+                    <div class="slider-labels">
+                        <span>0 (모든 공고)</span>
+                        <span>100 (정확 매칭만)</span>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" onclick="saveRelevance()" style="margin-top:12px">
+                    💾 저장
+                </button>
+            </div>
+
+            <!-- 자동 스케줄러 -->
+            <div class="settings-section">
+                <h2>⏰ 자동 스케줄러</h2>
+                <p class="section-desc">매일 지정된 시각에 자동으로 공고 수집 → 분석 → 알림을 실행합니다.</p>
+                <div class="scheduler-status" id="scheduler-status">
+                    <div class="api-status-grid">
+                        <div class="api-status-card">
+                            <div class="status-dot" id="scheduler-dot"></div>
+                            <div class="status-info">
+                                <h4 id="scheduler-status-text">확인 중...</h4>
+                                <span id="scheduler-next-run">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:12px;align-items:flex-end;margin-top:16px;flex-wrap:wrap">
+                    <div>
+                        <label style="color:#f1f5f9;font-size:0.85rem;display:block;margin-bottom:4px">실행 시각</label>
+                        <input type="time" id="scheduler-time-input" value="08:00"
+                               style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:8px 12px;font-family:inherit;font-size:0.9rem">
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="updateScheduleTime()">⏰ 시각 변경</button>
+                    <button class="btn btn-secondary btn-sm" id="scheduler-toggle-btn">⏹️ 중지</button>
+                    <button class="btn btn-gradient btn-sm" onclick="runScheduleNow()">🚀 즉시 실행</button>
+                </div>
+                <div style="margin-top:12px">
+                    <span style="color:#64748b;font-size:0.8rem" id="scheduler-last-run">최근 실행: -</span>
+                </div>
+            </div>
+
+            <!-- Slack 연동 -->
+            <div class="settings-section">
+                <h2>💬 Slack 알림</h2>
+                <p class="section-desc">Slack Incoming Webhook URL을 등록하면 매일 분석 결과가 채널로 전송됩니다.</p>
+                <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+                    <div style="flex:1;min-width:300px">
+                        <label style="color:#f1f5f9;font-size:0.85rem;display:block;margin-bottom:4px">Webhook URL</label>
+                        <input type="url" id="slack-webhook-input" placeholder="https://hooks.slack.com/services/..."
+                               style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:10px 14px;font-family:inherit;font-size:0.88rem">
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="saveSlackWebhook()">💾 저장</button>
+                    <button class="btn btn-secondary btn-sm" onclick="testSlack()">📨 테스트</button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ─── 사업자 등록/수정 모달 ─── -->
+    <div id="modal-overlay" class="modal-overlay" onclick="closeModal(event)">
+        <div class="modal-card" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2 id="modal-title">사업자 등록</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- 📄 파일 업로드 영역 -->
+                <div class="doc-upload-section" id="doc-upload-section">
+                    <div class="doc-upload-area" id="doc-upload-area"
+                         onclick="document.getElementById('doc-file-input').click()"
+                         ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleFileDrop(event)">
+                        <div class="doc-upload-icon">📄</div>
+                        <p class="doc-upload-title">사업자등록증 · 재무제표 업로드</p>
+                        <p class="doc-upload-desc">파일을 드래그하거나 클릭하여 선택 — AI가 자동으로 정보를 추출합니다</p>
+                        <p class="doc-upload-formats">PDF, 이미지(JPG/PNG), HWP 지원</p>
+                        <input type="file" id="doc-file-input" multiple accept=".pdf,.jpg,.jpeg,.png,.hwp,.hwpx,.txt"
+                               onchange="handleFileSelect(event)" style="display:none">
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('doc-file-input').click()">
+                            📎 파일 선택
+                        </button>
+                    </div>
+                    <div class="doc-upload-status" id="doc-upload-status" style="display:none">
+                        <div class="doc-upload-spinner"></div>
+                        <span id="doc-upload-text">파일 분석 중...</span>
+                    </div>
+                    <div class="doc-upload-result" id="doc-upload-result" style="display:none"></div>
+                </div>
+
+                <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+
+                <form id="business-form" onsubmit="saveBusiness(event)">
+                    <input type="hidden" id="form-mode" value="create">
+                    <input type="hidden" id="form-original-biz-id" value="">
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="form-biz-id">사업자등록번호 <span class="required">*</span></label>
+                            <input type="text" id="form-biz-id" placeholder="000-00-00000" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-company-name">회사명 <span class="required">*</span></label>
+                            <input type="text" id="form-company-name" placeholder="회사명을 입력하세요" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="form-ceo-name">대표자명</label>
+                            <input type="text" id="form-ceo-name" placeholder="대표자명">
+                        </div>
+                        <div class="form-group">
+                            <label for="form-employee-count">직원 수</label>
+                            <input type="number" id="form-employee-count" placeholder="0" min="0">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="form-annual-revenue">연매출 (원)</label>
+                        <input type="number" id="form-annual-revenue" placeholder="0" min="0">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="form-min-budget">최소 예산 (원)</label>
+                            <input type="number" id="form-min-budget" placeholder="0" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="form-max-budget">최대 예산 (원)</label>
+                            <input type="number" id="form-max-budget" placeholder="0" min="0">
+                        </div>
+                    </div>
+
+                    <!-- 태그 인풋들 -->
+                    <div class="form-group">
+                        <label>업종</label>
+                        <div class="tag-input-wrap" id="tag-wrap-biz-types">
+                            <div class="tags-container" id="tags-biz-types"></div>
+                            <input type="text" class="tag-input" id="input-biz-types" placeholder="업종 입력 후 Enter">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>보유 면허</label>
+                        <div class="tag-input-wrap" id="tag-wrap-licenses">
+                            <div class="tags-container" id="tags-licenses"></div>
+                            <input type="text" class="tag-input" id="input-licenses" placeholder="면허 입력 후 Enter">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>활동 지역</label>
+                        <div class="tag-input-wrap" id="tag-wrap-regions">
+                            <div class="tags-container" id="tags-regions"></div>
+                            <input type="text" class="tag-input" id="input-regions" placeholder="지역 입력 후 Enter">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>관심 키워드</label>
+                        <div class="tag-input-wrap" id="tag-wrap-keywords">
+                            <div class="tags-container" id="tags-keywords"></div>
+                            <input type="text" class="tag-input" id="input-keywords" placeholder="키워드 입력 후 Enter">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="form-past-projects">과거 수행실적</label>
+                        <textarea id="form-past-projects" class="form-textarea" rows="3" placeholder="과거 수행 프로젝트를 한 줄에 하나씩 입력하세요"></textarea>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal()">취소</button>
+                        <button type="submit" class="btn btn-primary" id="modal-submit-btn">등록</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── 확인 모달 ─── -->
+    <div id="confirm-overlay" class="modal-overlay" onclick="closeConfirm()">
+        <div class="modal-card modal-sm" onclick="event.stopPropagation()">
+            <div class="modal-header modal-header-danger">
+                <h2 id="confirm-title">삭제 확인</h2>
+                <button class="modal-close" onclick="closeConfirm()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-message" class="confirm-message">정말 삭제하시겠습니까?</p>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeConfirm()">취소</button>
+                    <button class="btn btn-danger" id="confirm-action-btn" onclick="confirmAction()">삭제</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── 로딩 오버레이 ─── -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-card">
+            <div class="loading-spinner"></div>
+            <p class="loading-text" id="loading-text">처리 중...</p>
+            <p class="loading-sub" id="loading-sub">잠시만 기다려주세요</p>
+        </div>
+    </div>
+
+    <!-- ─── 토스트 컨테이너 ─── -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- ─── AI 전략 분석 모달 ─── -->
+    <div id="strategy-modal-overlay" class="strategy-modal-overlay" onclick="closeStrategyModal(event)">
+        <div class="strategy-modal" onclick="event.stopPropagation()">
+            <div class="strategy-modal-header">
+                <div>
+                    <h2 id="strategy-modal-title">AI 전략 분석</h2>
+                    <p style="color:var(--text-muted);font-size:0.85rem;margin-top:4px" id="strategy-modal-subtitle"></p>
+                </div>
+                <button class="close-btn" onclick="closeStrategyModal()">&times;</button>
+            </div>
+            <div class="strategy-modal-body">
+                <!-- 5개 탭 -->
+                <div class="strategy-modal-tabs">
+                    <button class="strategy-modal-tab active" onclick="switchStrategyTab(this, 'stab-summary')">📋 사업요약</button>
+                    <button class="strategy-modal-tab" onclick="switchStrategyTab(this, 'stab-past')">📊 수행사·KPI</button>
+                    <button class="strategy-modal-tab" onclick="switchStrategyTab(this, 'stab-competitor')">🏢 경쟁사</button>
+                    <button class="strategy-modal-tab" onclick="switchStrategyTab(this, 'stab-strategy')">🎯 전략</button>
+                    <button class="strategy-modal-tab" onclick="switchStrategyTab(this, 'stab-proposal')">📝 제안서 기획</button>
+                    <button class="strategy-modal-tab" onclick="switchStrategyTab(this, 'stab-diff')">📊 변경점</button>
+                </div>
+                <!-- 탭 패널 -->
+                <div class="strategy-panel active" id="stab-summary">
+                    <div class="strategy-text" id="stab-summary-content">분석 중...</div>
+                </div>
+                <div class="strategy-panel" id="stab-past">
+                    <div class="strategy-text" id="stab-past-content">분석 중...</div>
+                </div>
+                <div class="strategy-panel" id="stab-competitor">
+                    <div class="strategy-text" id="stab-competitor-content">분석 중...</div>
+                </div>
+                <div class="strategy-panel" id="stab-strategy">
+                    <div class="strategy-text" id="stab-strategy-content">분석 중...</div>
+                </div>
+                <div class="strategy-panel" id="stab-proposal">
+                    <div class="strategy-text" id="stab-proposal-content">분석 중...</div>
+                </div>
+                <div class="strategy-panel" id="stab-diff">
+                    <div id="stab-diff-content">
+                        <p style="color:var(--text-muted)">RFP 변경점 로딩 중...</p>
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:center;padding:16px 0;border-top:1px solid var(--border);margin-top:16px;flex-wrap:wrap">
+                <button class="btn btn-sm btn-prepare" onclick="prepareBidFromStrategy()" style="flex:1;min-width:120px">📋 입찰 준비하기</button>
+                <button class="btn btn-sm btn-accent" onclick="shareStrategyResult()" style="flex:1;min-width:120px">📋 분석결과 복사</button>
+                <a id="strategy-nara-link" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline" style="flex:1;min-width:120px" onclick="event.stopPropagation()">🔗 나라장터 확인</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 공고 간단 정보 팝업 -->
+    <div id="bid-quick-view" class="bid-quick-overlay" onclick="closeBidQuickView(event)">
+        <div class="bid-quick-card">
+            <div class="bid-quick-header">
+                <h3 id="bqv-title"></h3>
+                <button class="bid-quick-close" onclick="document.getElementById('bid-quick-view').classList.remove('active')">&times;</button>
+            </div>
+            <div class="bid-quick-body">
+                <div class="bid-quick-info" id="bqv-info"></div>
+            </div>
+            <div class="bid-quick-actions" id="bqv-actions"></div>
+        </div>
+    </div>
+
+    <!-- 관심공고 상세 모달 -->
+    <div id="fav-detail-overlay" class="bid-quick-overlay" onclick="closeFavDetail(event)">
+        <div class="fav-detail-card">
+            <div class="bid-quick-header">
+                <h3 id="fav-detail-title"></h3>
+                <button class="bid-quick-close" onclick="document.getElementById('fav-detail-overlay').classList.remove('active')">&times;</button>
+            </div>
+            <div class="fav-detail-body">
+                <!-- 공고 기본 정보 -->
+                <div class="fav-detail-section">
+                    <h4>📋 공고 정보</h4>
+                    <div id="fav-detail-info"></div>
+                </div>
+                <!-- 상태 선택 -->
+                <div class="fav-detail-section">
+                    <h4>📌 상태 관리</h4>
+                    <div class="fav-status-selector" id="fav-detail-status"></div>
+                </div>
+                <!-- 메모 -->
+                <div class="fav-detail-section">
+                    <h4>📝 메모</h4>
+                    <textarea id="fav-detail-memo" class="fav-detail-textarea" placeholder="메모를 입력하세요 (예: RFP 확인필요, 전략회의 예정)"></textarea>
+                </div>
+                <!-- 협업사 -->
+                <div class="fav-detail-section">
+                    <h4>🤝 협업사</h4>
+                    <div id="fav-detail-partners"></div>
+                    <div class="fav-partner-add" style="flex-wrap:wrap">
+                        <input type="text" id="fav-partner-input" class="fav-detail-input" placeholder="협업사명" style="flex:2;min-width:100px">
+                        <input type="text" id="fav-partner-role" class="fav-detail-input" placeholder="역할" style="flex:1;min-width:70px">
+                        <input type="text" id="fav-partner-contact" class="fav-detail-input" placeholder="담당자/연락처" style="flex:1.5;min-width:90px">
+                        <input type="number" id="fav-partner-share" class="fav-detail-input" placeholder="배분%" style="flex:0.6;min-width:60px" min="0" max="100">
+                        <button class="btn btn-sm btn-accent" onclick="addFavPartner()">+ 추가</button>
+                    </div>
+                    <div id="fav-partner-suggest"></div>
+                </div>
+                <!-- 체크리스트 -->
+                <div class="fav-detail-section">
+                    <h4>✅ 입찰 체크리스트 <small style="color:var(--text-muted);font-weight:400;font-size:0.72rem">— 순서대로 진행하세요</small></h4>
+                    <div id="fav-detail-checklist"></div>
+                </div>
+                <!-- 분석 결과 -->
+                <div class="fav-detail-section">
+                    <h4>📊 분석 결과</h4>
+                    <div id="fav-detail-analysis"></div>
+                </div>
+                <!-- 입찰 결과 (완료/포기 시) -->
+                <div class="fav-detail-section" id="fav-detail-result-section" style="display:none">
+                    <h4>📊 입찰 결과</h4>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <select id="fav-result-type" class="fav-detail-input" style="flex:1;min-width:100px">
+                            <option value="">결과 선택</option>
+                            <option value="won">🏆 낙찰</option>
+                            <option value="lost">❌ 유찰</option>
+                            <option value="cancelled">🚫 취소</option>
+                        </select>
+                        <input type="number" id="fav-result-amount" class="fav-detail-input" placeholder="낙찰금액" style="flex:1.5;min-width:100px">
+                        <input type="number" id="fav-result-competitors" class="fav-detail-input" placeholder="참여업체 수" style="flex:0.8;min-width:70px">
+                    </div>
+                    <textarea id="fav-result-note" class="fav-detail-textarea" placeholder="결과 메모 (유찰 사유, 경쟁사 정보 등)" style="min-height:60px;margin-top:8px"></textarea>
+                </div>
+            </div>
+            <div class="fav-detail-footer">
+                <button class="btn btn-prepare" onclick="saveFavDetail()" style="flex:1">💾 저장하기</button>
+                <button class="btn btn-outline" id="fav-detail-nara-btn">🔗 나라장터</button>
+                <button class="btn btn-outline" id="fav-detail-analyze-btn">🔍 AI 분석</button>
+                <button class="btn btn-ghost" onclick="removeFavFromDetail()">🗑️</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js?v=20260602v"></script>
+</body>
+</html>

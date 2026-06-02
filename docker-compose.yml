@@ -1,0 +1,53 @@
+# ═══════════════════════════════════════════════
+# NARA Analyzer — Docker Compose
+# ═══════════════════════════════════════════════
+# 사용법:
+#   docker compose up -d        # 시작
+#   docker compose logs -f      # 로그 확인
+#   docker compose down         # 중지
+# ═══════════════════════════════════════════════
+
+services:
+  nara:
+    build: .
+    container_name: nara-analyzer
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
+    # 로깅 설정 (무한 로그 증가 방지)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # 환경변수 (.env 파일에서 로드)
+    env_file:
+      - .env
+
+    environment:
+      - SCHEDULER_ENABLED=true
+      - SCHEDULE_HOUR=8
+      - SCHEDULE_MINUTE=0
+
+    # 데이터 영속화 (DB + 설정 파일)
+    volumes:
+      - ./data:/app/data
+
+    # 헬스체크
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/dashboard/stats')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    # 리소스 제한
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 256M

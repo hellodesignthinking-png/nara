@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual env
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+
+# Database
+data/*.db
+data/*.db-journal
+data/*.db-wal
+
+# Backup
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Byte-compiled
+*.pyc
+
+# Cloudflare
+cloudflared
+
+# Gemini
+.gemini/
