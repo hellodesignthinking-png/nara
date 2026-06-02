@@ -22,7 +22,7 @@ WORKDIR /app
 
 # 의존성 설치 (캐시 레이어 활용)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && pip install python-multipart
 
 # 소스 코드 복사
 COPY src/ src/
@@ -32,7 +32,7 @@ COPY static/ static/
 RUN mkdir -p data
 
 # 포트 노출
-EXPOSE 8000
+EXPOSE ${PORT:-8000}
 
 # 환경변수 기본값 (런타임에 오버라이드)
 ENV SCHEDULER_ENABLED=true \
@@ -41,7 +41,7 @@ ENV SCHEDULER_ENABLED=true \
 
 # 헬스체크
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/dashboard/stats')" || exit 1
+    CMD python -c "import urllib.request,os; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\",8000)}/api/dashboard/stats')" || exit 1
 
 # 실행 (Gunicorn + Uvicorn 워커)
-CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD uvicorn src.api.app:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1
