@@ -28,8 +28,9 @@ RUN pip install --no-cache-dir -r requirements.txt && pip install python-multipa
 COPY src/ src/
 COPY static/ static/
 
-# 데이터 디렉터리 생성
+# 데이터 디렉터리 생성 + settings 복사
 RUN mkdir -p data
+COPY data/settings.json data/settings.json
 
 # 포트 노출
 EXPOSE ${PORT:-8000}
