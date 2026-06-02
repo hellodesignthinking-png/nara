@@ -115,6 +115,7 @@ async def collect_bids(request: Optional[BidCollectRequest] = Body(None), db=Dep
                 # 각 키워드로 나라장터 검색 → 결과 병합
                 all_bids = []
                 seen_nos = set()
+                kw_errors = []
                 for kw in saved_keywords:
                     try:
                         kw_bids = await asyncio.to_thread(
@@ -127,6 +128,7 @@ async def collect_bids(request: Optional[BidCollectRequest] = Body(None), db=Dep
                         logger.info("키워드 '%s' → %d건 수집", kw, len(kw_bids))
                     except Exception as kw_err:
                         logger.warning("키워드 '%s' 수집 실패: %s", kw, kw_err)
+                        kw_errors.append({"keyword": kw, "error": str(kw_err)})
                         continue
 
                 # 제외 키워드 필터링
@@ -156,6 +158,10 @@ async def collect_bids(request: Optional[BidCollectRequest] = Body(None), db=Dep
             "saved": saved_count,
             "keywords_used": used_keywords,
         }
+
+        # 키워드별 에러 정보 추가
+        if 'kw_errors' in dir() and kw_errors:
+            response["keyword_errors"] = kw_errors
 
         # 디버그: 수집 실패 시 에러 힌트 제공
         if len(bids) == 0 and used_keywords:
