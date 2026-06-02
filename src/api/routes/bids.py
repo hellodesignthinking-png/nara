@@ -53,7 +53,7 @@ async def debug_collect():
     end_dt = datetime.now()
     start_dt = end_dt - timedelta(days=7)
     start_date = start_dt.strftime("%Y%m%d") + "0000"
-    end_date = end_dt.strftime("%Y%m%d") + "235959"
+    end_date = end_dt.strftime("%Y%m%d") + "2359"
     result["steps"].append({
         "step": "2_dates",
         "now": str(end_dt),

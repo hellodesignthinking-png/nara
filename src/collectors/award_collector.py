@@ -103,7 +103,7 @@ class AwardCollector:
             "pageNo": "1",
             "inqryDiv": "1",
             "inqryBgnDt": start_date.strftime("%Y%m%d") + "0000",
-            "inqryEndDt": end_date.strftime("%Y%m%d") + "235959",
+            "inqryEndDt": end_date.strftime("%Y%m%d") + "2359",
             "bidNtceNm": keyword,
             "type": "json",
         }

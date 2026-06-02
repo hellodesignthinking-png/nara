@@ -84,7 +84,7 @@ class BidCollector:
         """
         today = datetime.now()
         start_date = today.strftime("%Y%m%d") + "0000"
-        end_date = today.strftime("%Y%m%d") + "235959"
+        end_date = today.strftime("%Y%m%d") + "2359"
 
         logger.info("오늘자 입찰공고 수집 시작: %s", today.strftime("%Y-%m-%d"))
 
@@ -124,7 +124,7 @@ class BidCollector:
             "pageNo": "1",
             "inqryDiv": "1",
             "inqryBgnDt": start_date + "0000",
-            "inqryEndDt": end_date + "235959",
+            "inqryEndDt": end_date + "2359",
             "type": "json",
         }
 
@@ -155,7 +155,7 @@ class BidCollector:
         start_dt = end_dt - timedelta(days=days)
 
         start_date = start_dt.strftime("%Y%m%d") + "0000"
-        end_date = end_dt.strftime("%Y%m%d") + "235959"
+        end_date = end_dt.strftime("%Y%m%d") + "2359"
 
         logger.info("키워드 공고 검색 시작: '%s' (최근 %d일, 최대 %d건)", keyword, days, max_results)
 
