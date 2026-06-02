@@ -150,11 +150,41 @@ async def collect_bids(request: Optional[BidCollectRequest] = Body(None), db=Dep
 
         keyword_info = f" (키워드: {used_keywords})" if used_keywords else ""
         logger.info("공고 수집 완료: %d건 수집, %d건 저장%s", len(bids), saved_count, keyword_info)
-        return {
+
+        response = {
             "collected": len(bids),
             "saved": saved_count,
             "keywords_used": used_keywords,
         }
+
+        # 디버그: 수집 실패 시 에러 힌트 제공
+        if len(bids) == 0 and used_keywords:
+            config = load_config()
+            has_key = bool(config.data_go_kr_api_key)
+            key_preview = config.data_go_kr_api_key[:8] + "..." if has_key else "MISSING"
+            response["debug"] = {
+                "api_key_set": has_key,
+                "api_key_preview": key_preview,
+                "hint": "API 키가 올바른지, 나라장터 API 서버 접근이 가능한지 확인하세요.",
+            }
+            # 단일 키워드 직접 테스트
+            try:
+                import requests as _req
+                test_url = "https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServc"
+                test_resp = _req.get(test_url, params={
+                    "ServiceKey": config.data_go_kr_api_key,
+                    "numOfRows": "1", "pageNo": "1",
+                    "inqryDiv": "1", "type": "json",
+                    "bidNtceNm": used_keywords[0],
+                    "inqryBgnDt": "202406010000",
+                    "inqryEndDt": "202406302359",
+                }, timeout=15)
+                response["debug"]["test_status"] = test_resp.status_code
+                response["debug"]["test_body_preview"] = test_resp.text[:300]
+            except Exception as test_err:
+                response["debug"]["test_error"] = str(test_err)
+
+        return response
     except HTTPException:
         raise
     except Exception as e:
