@@ -32,6 +32,102 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["bids"])
 
 
+@router.get("/bids/debug-collect", summary="수집 파이프라인 진단")
+async def debug_collect():
+    """수집 과정을 단계별로 실행하고 각 단계의 결과를 반환합니다."""
+    import requests as _req
+    from datetime import datetime, timedelta
+    from src.config import load_config
+
+    config = load_config()
+    result = {"steps": []}
+
+    # Step 1: API 키
+    result["steps"].append({
+        "step": "1_api_key",
+        "has_key": bool(config.data_go_kr_api_key),
+        "key_len": len(config.data_go_kr_api_key) if config.data_go_kr_api_key else 0,
+    })
+
+    # Step 2: 날짜 범위
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=7)
+    start_date = start_dt.strftime("%Y%m%d") + "0000"
+    end_date = end_dt.strftime("%Y%m%d") + "235959"
+    result["steps"].append({
+        "step": "2_dates",
+        "now": str(end_dt),
+        "start": start_date,
+        "end": end_date,
+    })
+
+    # Step 3: 직접 API 호출
+    api_url = "https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServc"
+    params = {
+        "ServiceKey": config.data_go_kr_api_key,
+        "numOfRows": "2", "pageNo": "1",
+        "inqryDiv": "1", "type": "json",
+        "bidNtceNm": "마케팅",
+        "inqryBgnDt": start_date,
+        "inqryEndDt": end_date,
+    }
+    try:
+        resp = _req.get(api_url, params=params, timeout=15)
+        body_text = resp.text[:500]
+        result["steps"].append({
+            "step": "3_raw_api",
+            "http_status": resp.status_code,
+            "body_preview": body_text,
+        })
+
+        data = resp.json()
+        hdr = data.get("response", {}).get("header", {})
+        bdy = data.get("response", {}).get("body", {})
+        items = bdy.get("items", [])
+        result["steps"].append({
+            "step": "4_parsed",
+            "resultCode": hdr.get("resultCode"),
+            "totalCount": bdy.get("totalCount"),
+            "items_type": type(items).__name__,
+            "items_len": len(items) if isinstance(items, list) else "dict",
+        })
+
+        # Step 5: BidAnnouncement 파싱
+        from src.models.schemas import BidAnnouncement
+        test_list = items if isinstance(items, list) else items.get("item", [])
+        if isinstance(test_list, dict):
+            test_list = [test_list]
+        parse_ok = []
+        parse_fail = []
+        for item in test_list[:2]:
+            try:
+                bid = BidAnnouncement.from_dict(item)
+                parse_ok.append(bid.bid_ntce_no)
+            except Exception as e:
+                parse_fail.append(str(e))
+        result["steps"].append({
+            "step": "5_parse",
+            "ok": parse_ok,
+            "fail": parse_fail,
+        })
+    except Exception as e:
+        result["steps"].append({"step": "3_error", "error": str(e)})
+
+    # Step 6: Collector 실행
+    try:
+        collector = BidCollector(config)
+        bids = collector.collect_bids_by_keyword("마케팅", 7)
+        result["steps"].append({
+            "step": "6_collector",
+            "count": len(bids),
+            "first": bids[0].bid_ntce_no if bids else None,
+        })
+    except Exception as e:
+        result["steps"].append({"step": "6_error", "error": str(e), "type": type(e).__name__})
+
+    return result
+
+
 # ──────────────────────────────────────────────
 # 공고 API
 # ──────────────────────────────────────────────
