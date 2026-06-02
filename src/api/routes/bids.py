@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["bids"])
 
 
-@router.get("/bids/debug-collect", summary="수집 파이프라인 진단")
+@router.get("/debug/collect-test", summary="수집 파이프라인 진단")
 async def debug_collect():
     """수집 과정을 단계별로 실행하고 각 단계의 결과를 반환합니다."""
     import requests as _req
