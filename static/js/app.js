@@ -1334,9 +1334,10 @@ async function loadBids() {
     }
 }
 
-function getNaraDetailUrl(bidNtceNo) {
-    // 나라장터 입찰공고 상세페이지 URL
-    return `https://www.g2b.go.kr:8081/ep/invitation/publish/bidInfoDtl.do?bidno=${encodeURIComponent(bidNtceNo)}&bidseq=00`;
+function getNaraDetailUrl(bidNtceNo, bidNtceOrd) {
+    // 나라장터 입찰공고 상세페이지 URL (2024~ 신규 형식)
+    const ord = bidNtceOrd || '000';
+    return `https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=${encodeURIComponent(bidNtceNo)}&bidPbancOrd=${encodeURIComponent(ord)}`;
 }
 
 function renderBids(bids) {
@@ -1365,7 +1366,7 @@ function renderBids(bids) {
         const kwChips = (bid.matched_keywords || []).map(k =>
             `<span class="kw-chip">${escapeHTML(k)}</span>`
         ).join('');
-        const naraUrl = getNaraDetailUrl(bid.bid_ntce_no);
+        const naraUrl = getNaraDetailUrl(bid.bid_ntce_no, bid.bid_ntce_ord);
         const daysLeftText = formatDaysLeft(bid.bid_close_dt);
         const daysLeft = getDaysLeft(bid.bid_close_dt);
         let badgeClass = 'unknown';
@@ -1401,42 +1402,66 @@ function renderBids(bids) {
         <tr class="bid-detail-row" id="detail-${escapeHTML(bid.bid_ntce_no)}">
             <td colspan="7">
                 <div class="bid-detail-content">
+                    ${(bid.license_limit || bid.region || bid.contract_method) ? `
+                    <div class="bid-qual-banner">
+                        <div class="bid-qual-title">📋 자격요건 및 입찰조건</div>
+                        <div class="bid-qual-grid">
+                            ${bid.license_limit ? `<div class="bid-qual-item bid-qual-critical">
+                                <span class="bid-qual-icon">⚠️</span>
+                                <div><div class="bid-qual-label">면허/자격 제한</div>
+                                <div class="bid-qual-value">${escapeHTML(bid.license_limit)}</div></div>
+                            </div>` : ''}
+                            ${bid.region ? `<div class="bid-qual-item">
+                                <span class="bid-qual-icon">📍</span>
+                                <div><div class="bid-qual-label">지역 제한</div>
+                                <div class="bid-qual-value">${escapeHTML(bid.region)}</div></div>
+                            </div>` : ''}
+                            ${bid.contract_method ? `<div class="bid-qual-item">
+                                <span class="bid-qual-icon">📝</span>
+                                <div><div class="bid-qual-label">계약 방법</div>
+                                <div class="bid-qual-value">${escapeHTML(bid.contract_method)}</div></div>
+                            </div>` : ''}
+                            ${bid.bid_method ? `<div class="bid-qual-item">
+                                <span class="bid-qual-icon">🏷️</span>
+                                <div><div class="bid-qual-label">입찰 방식</div>
+                                <div class="bid-qual-value">${escapeHTML(bid.bid_method)}</div></div>
+                            </div>` : ''}
+                            ${bid.budget ? `<div class="bid-qual-item">
+                                <span class="bid-qual-icon">💰</span>
+                                <div><div class="bid-qual-label">추정가격</div>
+                                <div class="bid-qual-value">${displayBudget(bid.budget)}</div></div>
+                            </div>` : ''}
+                            ${bid.category ? `<div class="bid-qual-item">
+                                <span class="bid-qual-icon">🏢</span>
+                                <div><div class="bid-qual-label">업종 분류</div>
+                                <div class="bid-qual-value">${escapeHTML(bid.category)}</div></div>
+                            </div>` : ''}
+                        </div>
+                    </div>` : ''}
                     <div class="bid-detail-grid">
                         <div class="bid-detail-item">
                             <span class="bid-detail-label">공고번호</span>
-                            <span class="bid-detail-value">${escapeHTML(bid.bid_ntce_no || '-')}</span>
+                            <span class="bid-detail-value">${escapeHTML(bid.bid_ntce_no || '-')}${bid.bid_ntce_ord ? ` (${bid.bid_ntce_ord}차)` : ''}</span>
                         </div>
                         <div class="bid-detail-item">
                             <span class="bid-detail-label">발주기관</span>
                             <span class="bid-detail-value">${escapeHTML(bid.org_name || '-')}</span>
                         </div>
-                        ${bid.dminstt_nm && bid.dminstt_nm !== bid.org_name ? `<div class="bid-detail-item">
+                        ${(bid.demand_org_name || bid.dminstt_nm) && (bid.demand_org_name || bid.dminstt_nm) !== bid.org_name ? `<div class="bid-detail-item">
                             <span class="bid-detail-label">수요기관</span>
-                            <span class="bid-detail-value">${escapeHTML(bid.dminstt_nm)}</span>
+                            <span class="bid-detail-value">${escapeHTML(bid.demand_org_name || bid.dminstt_nm)}</span>
                         </div>` : ''}
-                        <div class="bid-detail-item">
-                            <span class="bid-detail-label">추정가격</span>
-                            <span class="bid-detail-value">${displayBudget(bid.budget)}</span>
-                        </div>
                         <div class="bid-detail-item">
                             <span class="bid-detail-label">마감일</span>
                             <span class="bid-detail-value"><span class="bid-status-badge ${badgeClass}">${daysLeftText}</span> ${bid.bid_close_dt ? formatDate(bid.bid_close_dt) : ''}</span>
                         </div>
                         <div class="bid-detail-item">
-                            <span class="bid-detail-label">관련도</span>
-                            <span class="bid-detail-value">${score}점</span>
+                            <span class="bid-detail-label">적합도</span>
+                            <span class="bid-detail-value"><span class="relevance-badge ${parseInt(score) >= 70 ? 'score-high' : parseInt(score) >= 40 ? 'score-mid' : 'score-low'}">${score}점 ${getScoreGrade(parseInt(score))}</span></span>
                         </div>
-                        ${bid.region ? `<div class="bid-detail-item">
-                            <span class="bid-detail-label">지역</span>
-                            <span class="bid-detail-value">${escapeHTML(bid.region)}</span>
-                        </div>` : ''}
-                        ${bid.category ? `<div class="bid-detail-item">
-                            <span class="bid-detail-label">분류</span>
-                            <span class="bid-detail-value">${escapeHTML(bid.category)}</span>
-                        </div>` : ''}
-                        ${bid.license_limit ? `<div class="bid-detail-item" style="grid-column:1/-1">
-                            <span class="bid-detail-label">⚠️ 참가자격</span>
-                            <span class="bid-detail-value" style="color:var(--danger);font-weight:500">${escapeHTML(bid.license_limit)}</span>
+                        ${bid.bid_begin_dt ? `<div class="bid-detail-item">
+                            <span class="bid-detail-label">입찰개시</span>
+                            <span class="bid-detail-value">${formatDate(bid.bid_begin_dt)}</span>
                         </div>` : ''}
                         ${kwChips ? `<div class="bid-detail-item" style="grid-column:1/-1"><span class="bid-detail-label">매칭 키워드</span><div class="bid-detail-value">${kwChips}</div></div>` : ''}
                     </div>

@@ -5393,6 +5393,79 @@ textarea:focus-visible {
 .stagger-child:nth-child(5) { animation-delay: 0.24s; }
 .stagger-child:nth-child(6) { animation-delay: 0.30s; }
 
+/* ─── 자격요건 배너 ─── */
+.bid-qual-banner {
+    background: linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(168,85,247,0.04) 100%);
+    border: 1px solid rgba(99,102,241,0.15);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+.bid-qual-title {
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.bid-qual-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+}
+.bid-qual-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(99,102,241,0.08);
+    transition: all 0.2s;
+}
+.bid-qual-item:hover {
+    background: rgba(99,102,241,0.06);
+    border-color: rgba(99,102,241,0.2);
+}
+.bid-qual-critical {
+    background: rgba(239,68,68,0.06) !important;
+    border-color: rgba(239,68,68,0.2) !important;
+}
+.bid-qual-critical:hover {
+    background: rgba(239,68,68,0.1) !important;
+}
+.bid-qual-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.bid-qual-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 2px;
+}
+.bid-qual-value {
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    line-height: 1.4;
+    word-break: keep-all;
+}
+.bid-qual-critical .bid-qual-value {
+    color: var(--danger);
+    font-weight: 600;
+}
+@media (max-width: 768px) {
+    .bid-qual-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* ─── 7. 브리핑 패널 프리미엄 ─── */
 .briefing-panel {
     position: relative;
@@ -5700,4 +5773,17 @@ textarea:focus-visible {
     .pipeline-arrow {
         display: none !important;
     }
+}
+
+/* 라이트 테마 자격요건 배너 */
+[data-theme="light"] .bid-qual-banner {
+    background: linear-gradient(135deg, rgba(99,102,241,0.04) 0%, rgba(168,85,247,0.03) 100%);
+    border-color: rgba(99,102,241,0.12);
+}
+[data-theme="light"] .bid-qual-item {
+    background: rgba(255,255,255,0.8);
+    border-color: rgba(99,102,241,0.1);
+}
+[data-theme="light"] .bid-qual-critical {
+    background: rgba(239,68,68,0.04) !important;
 }
