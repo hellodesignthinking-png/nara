@@ -40,9 +40,11 @@ WORKDIR /app
 COPY src/ src/
 COPY static/ static/
 
-# 데이터 디렉터리 생성 + settings 복사
+# 데이터 디렉터리 생성 + 기본 settings 생성
 RUN mkdir -p data && chown -R nara:nara /app
-COPY --chown=nara:nara data/settings.json data/settings.json
+# settings.json 복사 (없으면 빈 JSON 생성)
+COPY --chown=nara:nara data/settings.json* data/
+RUN [ -f data/settings.json ] || echo '{}' > data/settings.json
 
 # 비루트 사용자로 전환
 USER nara

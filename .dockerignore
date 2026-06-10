@@ -28,7 +28,10 @@ env/
 
 # Data (볼륨으로 마운트)
 data/*.db
-data/*.json
+data/*.db-journal
+data/*.db-wal
+data/attachments/
+data/vectordb/
 
 # OS
 .DS_Store
