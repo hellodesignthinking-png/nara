@@ -22,6 +22,7 @@ from ._helpers import (
     _load_settings,
     _extract_requirements,
     _calc_days_left,
+    _generate_strategy_tip,
 )
 
 logger = logging.getLogger(__name__)
@@ -303,10 +304,13 @@ async def get_daily_top10(db=Depends(get_db)):
             desc = scored_bid.get("description", "")
             requirements = _extract_requirements(title, desc, scored_bid)
 
-            # 사업자 매칭 점수
+            # 사업자 매칭 점수 + 상세
             match_score = 0
             match_biz = ""
             match_reason = ""
+            match_detail = {}
+            strategy_tip = ""
+            collaboration_tip = ""
             if biz_matcher and biz_dicts:
                 try:
                     matches = biz_matcher.find_best_match(biz_dicts, scored_bid)
@@ -317,6 +321,27 @@ async def get_daily_top10(db=Depends(get_db)):
                             "company_name", best.get("business", {}).get("name", "")
                         )
                         match_reason = best.get("recommendation", "")
+
+                        # 매칭 상세 정보 추출
+                        breakdown = best.get("breakdown", {})
+                        if breakdown:
+                            match_detail = {
+                                k: {"score": v.get("score", 0), "detail": v.get("detail", "")}
+                                for k, v in breakdown.items()
+                            }
+
+                        # 전략 팁 생성
+                        strategy_tip = _generate_strategy_tip(match_score, breakdown, match_biz)
+
+                        # 협업 제안 (2번째 사업자가 있고 보완적이면)
+                        if len(matches) >= 2 and len(biz_dicts) >= 2:
+                            second = matches[1]
+                            second_name = second.get("business", {}).get(
+                                "company_name", second.get("business", {}).get("name", "")
+                            )
+                            second_score = second.get("score", 0)
+                            if second_score >= 30 and second_name != match_biz:
+                                collaboration_tip = f"{match_biz}(주관) + {second_name}(참여) 공동입찰 시 경쟁력 강화 가능"
                 except Exception:
                     pass
 
@@ -351,6 +376,9 @@ async def get_daily_top10(db=Depends(get_db)):
                 "matched_keywords": matched_kw,
                 "matched_business": match_biz,
                 "match_reason": match_reason,
+                "match_detail": match_detail,
+                "strategy_tip": strategy_tip,
+                "collaboration_tip": collaboration_tip,
                 "requirements": requirements,
                 "strategy_summary": existing_analysis or "",
                 # 자격요건 상세 정보

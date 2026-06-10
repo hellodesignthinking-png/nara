@@ -1163,13 +1163,13 @@ function _showCollectingBanner(isLoading, result, errorMsg) {
 
     if (isLoading) {
         // 수집 중 표시
-        if (briefingBadge) briefingBadge.textContent = '수집중...';
+        if (briefingBadge) briefingBadge.textContent = '검색중...';
         const loadingHTML = `
             <div class="auto-collect-banner collecting">
                 <div class="auto-collect-spinner"></div>
                 <div class="auto-collect-text">
-                    <strong>🔄 공고 수집 중입니다</strong>
-                    <span>관심 키워드 기반으로 나라장터에서 공고를 가져오고 있습니다...</span>
+                    <strong>📋 오늘의 공고 브리핑 검색을 시작합니다</strong>
+                    <span>등록된 관심 키워드 기반으로 나라장터에서 공고를 가져오고 있습니다...</span>
                 </div>
             </div>`;
         if (briefingBody) briefingBody.innerHTML = loadingHTML;
@@ -3501,6 +3501,7 @@ function renderBriefing(data) {
     if (!body) return;
 
     const items = data?.top10 || [];
+    const kwUsed = data?.keywords_used || [];
 
     // 마감되지 않은 공고만 (D-day 1일 이상)
     const viable = items.filter(item => item.days_left > 0 || item.days_left === 999);
@@ -3518,7 +3519,20 @@ function renderBriefing(data) {
     const top = viable.slice(0, 10);
     if (badge) badge.textContent = `${top.length}건 추천`;
 
-    body.innerHTML = top.map((item, i) => {
+    // 브리핑 요약 헤더
+    const gradeA = top.filter(x => x.grade === 'A').length;
+    const gradeB = top.filter(x => x.grade === 'B').length;
+    const summaryHTML = `<div class="briefing-summary">
+        <div class="briefing-summary-stats">
+            <span class="bs-stat grade-a">🏆 적극추천 ${gradeA}건</span>
+            <span class="bs-stat grade-b">📋 검토추천 ${gradeB}건</span>
+            <span class="bs-stat">${kwUsed.length ? `🏷️ ${kwUsed.join(' · ')}` : ''}</span>
+        </div>
+        ${top[0]?.strategy_tip ? `<div class="briefing-summary-tip">💡 ${escapeHTML(top[0].strategy_tip)}</div>` : ''}
+    </div>`;
+
+    // 개별 공고 카드
+    const cardsHTML = top.map((item, i) => {
         const grade = item.grade || 'C';
         const gradeLabel = grade === 'A' ? '적극추천' : grade === 'B' ? '검토추천' : '참고';
         const daysText = item.days_left === 999 ? '마감미정' : `D-${item.days_left}`;
@@ -3528,9 +3542,25 @@ function renderBriefing(data) {
 
         // 자격요건 칩
         const qualChips = [];
-        if (item.license_limit) qualChips.push(`<span class="briefing-qual critical">⚠️ ${escapeHTML(item.license_limit.substring(0, 20))}</span>`);
+        if (item.license_limit) qualChips.push(`<span class="briefing-qual critical">⚠️ ${escapeHTML(item.license_limit.substring(0, 25))}</span>`);
         if (item.region) qualChips.push(`<span class="briefing-qual region">📍 ${escapeHTML(item.region)}</span>`);
         if (item.contract_method) qualChips.push(`<span class="briefing-qual method">📝 ${escapeHTML(item.contract_method)}</span>`);
+
+        // 매칭 상세 점수 바
+        let matchBarsHTML = '';
+        if (item.match_detail && Object.keys(item.match_detail).length) {
+            const labels = {business_type: '업종', license: '면허', budget: '예산', region: '지역', experience: '실적'};
+            const bars = Object.entries(item.match_detail).map(([k, v]) => {
+                const pct = Math.min(v.score, 100);
+                const color = pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)';
+                return `<div class="match-bar-row">
+                    <span class="match-bar-label">${labels[k] || k}</span>
+                    <div class="match-bar-track"><div class="match-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+                    <span class="match-bar-score">${pct}</span>
+                </div>`;
+            }).join('');
+            matchBarsHTML = `<div class="match-bars-container">${bars}</div>`;
+        }
 
         return `<div class="briefing-item" data-bid-no="${escapeHTML(item.bid_ntce_no || '')}" data-title="${escapeHTML(item.title || '')}" data-org-name="${escapeHTML(item.org_name || '')}" data-budget="${item.budget || ''}" data-close-dt="${escapeHTML(item.bid_close_dt || '')}">
             <div class="briefing-rank grade-${grade.toLowerCase()}">${i + 1}</div>
@@ -3543,18 +3573,24 @@ function renderBriefing(data) {
                         <button class="btn-mini-fav ${isFavorite(item.bid_ntce_no) ? 'active' : ''}"
                             onclick="event.stopPropagation(); toggleFavFromBid('${escapeHTML(item.bid_ntce_no)}', '${escapeHTML((item.title||'').replace(/'/g,''))}', '${escapeHTML((item.org_name||'').replace(/'/g,''))}', '${item.budget||''}', '${escapeHTML(item.bid_close_dt||'')}', this); this.textContent=this.classList.contains('active')?'⭐':'☆'"
                             title="관심공고">${isFavorite(item.bid_ntce_no) ? '⭐' : '☆'}</button>
+                        <a href="${naraUrl}" target="_blank" class="btn-mini-link" onclick="event.stopPropagation()" title="나라장터">🔗</a>
                         <button class="btn-mini-analyze btn-strategy-analyze" data-bid-no="${escapeHTML(item.bid_ntce_no)}" onclick="event.stopPropagation()" title="AI 전략 분석">🎯</button>
                     </div>
                 </div>
                 <div class="briefing-item-meta">
                     🏢 ${escapeHTML(item.org_name || '기관 미상')} · 💰 ${budgetText}
                 </div>
-                ${item.matched_business ? `<div class="briefing-match-reason">✅ ${escapeHTML(item.matched_business)}와 매칭 (${item.total_score}점)</div>` : ''}
+                ${item.matched_business ? `<div class="briefing-match-reason">✅ <strong>${escapeHTML(item.matched_business)}</strong>와 매칭 (${item.total_score}점) — ${escapeHTML(item.match_reason || '')}</div>` : ''}
+                ${item.strategy_tip ? `<div class="briefing-strategy-tip">💡 ${escapeHTML(item.strategy_tip)}</div>` : ''}
+                ${item.collaboration_tip ? `<div class="briefing-collab-tip">🤝 ${escapeHTML(item.collaboration_tip)}</div>` : ''}
+                ${matchBarsHTML}
                 ${qualChips.length ? `<div class="briefing-qual-row">${qualChips.join('')}</div>` : ''}
                 ${(item.matched_keywords||[]).length ? `<div class="briefing-item-kw">🏷️ ${(item.matched_keywords||[]).join(', ')}</div>` : ''}
             </div>
         </div>`;
     }).join('');
+
+    body.innerHTML = summaryHTML + cardsHTML;
 }
 
 

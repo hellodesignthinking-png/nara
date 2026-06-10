@@ -211,3 +211,41 @@ def _calc_days_left(close_dt: str) -> int:
         return max(0, (close_date - today).days)
     except Exception:
         return 999
+
+
+def _generate_strategy_tip(match_score: float, breakdown: dict, biz_name: str) -> str:
+    """매칭 분석에서 전략 팁을 자동 생성합니다."""
+    if not breakdown:
+        return ""
+
+    tips = []
+
+    # 강점 분석
+    strengths = []
+    weaknesses = []
+    for key, val in breakdown.items():
+        score = val.get("score", 0)
+        label = {
+            "business_type": "업종",
+            "license": "면허",
+            "budget": "예산",
+            "region": "지역",
+            "experience": "실적",
+        }.get(key, key)
+        if score >= 80:
+            strengths.append(label)
+        elif score < 40:
+            weaknesses.append(label)
+
+    if match_score >= 70:
+        tips.append(f"{biz_name}의 {'·'.join(strengths[:3])} 강점으로 단독 참여 유력")
+    elif match_score >= 45:
+        if weaknesses:
+            tips.append(f"{'·'.join(weaknesses[:2])} 보완 필요, {'·'.join(strengths[:2])} 활용 가능")
+        else:
+            tips.append(f"{biz_name} 검토 후 참여 가능")
+    else:
+        if weaknesses:
+            tips.append(f"{'·'.join(weaknesses[:2])} 부족으로 공동입찰 또는 하도급 검토 권장")
+
+    return " / ".join(tips) if tips else ""
