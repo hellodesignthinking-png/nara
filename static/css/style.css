@@ -5787,3 +5787,131 @@ textarea:focus-visible {
 [data-theme="light"] .bid-qual-critical {
     background: rgba(239,68,68,0.04) !important;
 }
+
+/* ─── 키워드 검색 카드 마감 처리 ─── */
+.ksp-expired {
+    opacity: 0.55;
+    border-left: 3px solid var(--danger);
+}
+.ksp-expired .ksp-result-title {
+    color: var(--text-muted);
+}
+
+/* ─── 키워드 검색 자격요건 칩 ─── */
+.ksp-qual-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+.ksp-qual-chip {
+    font-size: 0.7rem;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.ksp-qual-chip.critical {
+    background: rgba(239,68,68,0.1);
+    color: var(--danger);
+    border: 1px solid rgba(239,68,68,0.2);
+}
+.ksp-qual-chip.region {
+    background: rgba(6,182,212,0.08);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(6,182,212,0.2);
+}
+.ksp-qual-chip.method {
+    background: rgba(99,102,241,0.08);
+    color: var(--text-accent);
+    border: 1px solid rgba(99,102,241,0.15);
+}
+
+/* ─── 브리핑 패널 고도화 ─── */
+.briefing-empty {
+    text-align: center;
+    padding: 32px 16px;
+    color: var(--text-muted);
+}
+.briefing-empty span {
+    font-size: 2rem;
+    display: block;
+    margin-bottom: 8px;
+}
+.briefing-empty p {
+    font-size: 0.92rem;
+    margin-bottom: 4px;
+}
+.briefing-empty small {
+    font-size: 0.78rem;
+    opacity: 0.7;
+}
+
+.briefing-days {
+    font-size: 0.68rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.briefing-days.urgent {
+    background: rgba(239,68,68,0.15);
+    color: var(--danger);
+}
+.briefing-days.soon {
+    background: rgba(245,158,11,0.12);
+    color: var(--warning);
+}
+.briefing-days.safe {
+    background: rgba(16,185,129,0.1);
+    color: var(--success);
+}
+
+.briefing-qual-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+.briefing-qual {
+    font-size: 0.68rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+.briefing-qual.critical {
+    background: rgba(239,68,68,0.1);
+    color: var(--danger);
+}
+.briefing-qual.region {
+    background: rgba(6,182,212,0.08);
+    color: var(--accent-cyan);
+}
+.briefing-qual.method {
+    background: rgba(99,102,241,0.08);
+    color: var(--text-accent);
+}
+
+.briefing-rank.grade-a {
+    background: var(--gradient-primary);
+    color: #fff;
+}
+.briefing-rank.grade-b {
+    background: rgba(245,158,11,0.15);
+    color: var(--warning);
+}
+.briefing-rank.grade-c {
+    background: rgba(100,116,139,0.1);
+    color: var(--text-muted);
+}
+
+/* ─── 라이트 테마 ─── */
+[data-theme="light"] .ksp-expired {
+    opacity: 0.5;
+}
+[data-theme="light"] .ksp-qual-chip.critical {
+    background: rgba(239,68,68,0.06);
+}
+[data-theme="light"] .briefing-qual.critical {
+    background: rgba(239,68,68,0.06);
+}

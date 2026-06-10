@@ -3317,7 +3317,7 @@ function renderTop10(data) {
 
 
 // ──────────────────────────────────────────────
-// 22-B. 오늘의 브리핑 (7일 이상 남은 공고 중심)
+// 22-B. 오늘의 추천 공고 브리핑 (사업자 맞춤)
 // ──────────────────────────────────────────────
 function renderBriefing(data) {
     const body = document.getElementById('briefing-body');
@@ -3326,14 +3326,16 @@ function renderBriefing(data) {
 
     const items = data?.top10 || [];
 
-    // 7일 이상 남은 공고만 필터
-    const viable = items.filter(item => {
-        return item.days_left >= 7 || item.days_left === 999;
-    });
+    // 마감되지 않은 공고만 (D-day 1일 이상)
+    const viable = items.filter(item => item.days_left > 0 || item.days_left === 999);
 
     if (!viable.length) {
         if (badge) badge.textContent = '공고 없음';
-        body.innerHTML = '<p style="color:var(--text-muted)">참여 가능한 공고가 없습니다. 공고를 수집해주세요.</p>';
+        body.innerHTML = `<div class="briefing-empty">
+            <span>📭</span>
+            <p>참여 가능한 추천 공고가 없습니다</p>
+            <small>공고를 수집하면 사업자 프로필에 맞는 공고를 추천합니다</small>
+        </div>`;
         return;
     }
 
@@ -3342,20 +3344,26 @@ function renderBriefing(data) {
 
     body.innerHTML = top.map((item, i) => {
         const grade = item.grade || 'C';
-        const gradeLabel = grade === 'A' ? '적극 추천' : grade === 'B' ? '검토 추천' : '참고';
+        const gradeLabel = grade === 'A' ? '적극추천' : grade === 'B' ? '검토추천' : '참고';
         const daysText = item.days_left === 999 ? '마감미정' : `D-${item.days_left}`;
+        const daysClass = item.days_left <= 3 ? 'urgent' : item.days_left <= 7 ? 'soon' : 'safe';
         const budgetText = displayBudget(item.budget);
-        const kwText = (item.matched_keywords || []).join(', ');
-        const reqText = (item.requirements || []).join(' · ');
         const naraUrl = getNaraDetailUrl(item.bid_ntce_no);
 
+        // 자격요건 칩
+        const qualChips = [];
+        if (item.license_limit) qualChips.push(`<span class="briefing-qual critical">⚠️ ${escapeHTML(item.license_limit.substring(0, 20))}</span>`);
+        if (item.region) qualChips.push(`<span class="briefing-qual region">📍 ${escapeHTML(item.region)}</span>`);
+        if (item.contract_method) qualChips.push(`<span class="briefing-qual method">📝 ${escapeHTML(item.contract_method)}</span>`);
+
         return `<div class="briefing-item" data-bid-no="${escapeHTML(item.bid_ntce_no || '')}" data-title="${escapeHTML(item.title || '')}" data-org-name="${escapeHTML(item.org_name || '')}" data-budget="${item.budget || ''}" data-close-dt="${escapeHTML(item.bid_close_dt || '')}">
-            <div class="briefing-rank">${i + 1}</div>
+            <div class="briefing-rank grade-${grade.toLowerCase()}">${i + 1}</div>
             <div class="briefing-content">
                 <div class="briefing-item-header">
                     <span class="briefing-item-title">${escapeHTML(item.title)}</span>
-                    <div style="display:flex;gap:4px;align-items:center">
+                    <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
                         <span class="briefing-grade grade-${grade.toLowerCase()}">${gradeLabel}</span>
+                        <span class="briefing-days ${daysClass}">${daysText}</span>
                         <button class="btn-mini-fav ${isFavorite(item.bid_ntce_no) ? 'active' : ''}"
                             onclick="event.stopPropagation(); toggleFavFromBid('${escapeHTML(item.bid_ntce_no)}', '${escapeHTML((item.title||'').replace(/'/g,''))}', '${escapeHTML((item.org_name||'').replace(/'/g,''))}', '${item.budget||''}', '${escapeHTML(item.bid_close_dt||'')}', this); this.textContent=this.classList.contains('active')?'⭐':'☆'"
                             title="관심공고">${isFavorite(item.bid_ntce_no) ? '⭐' : '☆'}</button>
@@ -3363,11 +3371,11 @@ function renderBriefing(data) {
                     </div>
                 </div>
                 <div class="briefing-item-meta">
-                    🏢 ${escapeHTML(item.org_name || '기관 미상')} · 💰 ${budgetText} · 📅 ${daysText}
+                    🏢 ${escapeHTML(item.org_name || '기관 미상')} · 💰 ${budgetText}
                 </div>
-                ${item.matched_business ? `<div class="briefing-match-reason">✅ ${escapeHTML(item.matched_business)}와 매칭 (⭐${item.total_score}점)</div>` : ''}
-                ${reqText ? `<div class="briefing-item-reqs">📜 ${escapeHTML(reqText)}</div>` : ''}
-                ${kwText ? `<div class="briefing-item-kw">🏷️ ${escapeHTML(kwText)}</div>` : ''}
+                ${item.matched_business ? `<div class="briefing-match-reason">✅ ${escapeHTML(item.matched_business)}와 매칭 (${item.total_score}점)</div>` : ''}
+                ${qualChips.length ? `<div class="briefing-qual-row">${qualChips.join('')}</div>` : ''}
+                ${(item.matched_keywords||[]).length ? `<div class="briefing-item-kw">🏷️ ${(item.matched_keywords||[]).join(', ')}</div>` : ''}
             </div>
         </div>`;
     }).join('');
@@ -3991,26 +3999,35 @@ function _renderKspResults(bids, keyword, collected, saved) {
             else if (daysLeft <= 3) badgeClass = 'urgent';
             else badgeClass = 'active';
         }
-        const naraUrl = getNaraDetailUrl(b.bid_ntce_no);
+        const isExpired = badgeClass === 'closed';
+        const naraUrl = getNaraDetailUrl(b.bid_ntce_no, b.bid_ntce_ord);
+
+        // 자격요건 칩 생성
+        const qualChips = [];
+        if (b.license_limit) qualChips.push(`<span class="ksp-qual-chip critical">⚠️ ${escapeHTML(b.license_limit.substring(0, 30))}</span>`);
+        if (b.region) qualChips.push(`<span class="ksp-qual-chip region">📍 ${escapeHTML(b.region)}</span>`);
+        if (b.contract_method) qualChips.push(`<span class="ksp-qual-chip method">📝 ${escapeHTML(b.contract_method)}</span>`);
+        if (b.bid_method) qualChips.push(`<span class="ksp-qual-chip method">🏷️ ${escapeHTML(b.bid_method)}</span>`);
 
         return `
-            <div class="ksp-result-card" data-bid-no="${escapeHTML(b.bid_ntce_no || '')}" data-title="${escapeHTML(title)}" data-org-name="${escapeHTML(org)}" data-budget="${b.budget || ''}" data-close-dt="${escapeHTML(b.bid_close_dt || '')}">
+            <div class="ksp-result-card ${isExpired ? 'ksp-expired' : ''}" data-bid-no="${escapeHTML(b.bid_ntce_no || '')}" data-title="${escapeHTML(title)}" data-org-name="${escapeHTML(org)}" data-budget="${b.budget || ''}" data-close-dt="${escapeHTML(b.bid_close_dt || '')}">
                 <div class="ksp-result-info">
-                    <div class="ksp-result-title">${escapeHTML(title)}</div>
-                    <div class="ksp-result-meta">
-                        <span>🏢 ${escapeHTML(org)}</span>
-                        ${b.region ? `<span>📍 ${escapeHTML(b.region)}</span>` : ''}
-                        <span class="bid-status-badge ${badgeClass}">${daysLeftText}</span>
+                    <div class="ksp-result-title">
+                        <span class="bid-status-badge ${badgeClass}" style="flex-shrink:0">${daysLeftText}</span>
+                        ${escapeHTML(title)}
                     </div>
-                    ${b.license_limit ? `<div class="ksp-result-qualify">⚠️ ${escapeHTML(b.license_limit)}</div>` : ''}
+                    <div class="ksp-result-meta">
+                        🏢 ${escapeHTML(org)} · 💰 ${budget}
+                    </div>
+                    ${qualChips.length ? `<div class="ksp-qual-chips">${qualChips.join('')}</div>` : ''}
                 </div>
                 <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
-                    <span class="ksp-result-badge budget">💰 ${budget}</span>
                     <button class="btn-mini-fav ${isFavorite(b.bid_ntce_no) ? 'active' : ''}"
                         onclick="event.stopPropagation(); toggleFavFromBid('${escapeHTML(b.bid_ntce_no)}', '${escapeHTML((title||'').replace(/'/g,''))}', '${escapeHTML((org||'').replace(/'/g,''))}', '${b.budget||''}', '${escapeHTML(b.bid_close_dt||'')}', this); this.textContent=this.classList.contains('active')?'⭐':'☆'"
                         title="관심공고">${isFavorite(b.bid_ntce_no) ? '⭐' : '☆'}</button>
-                    <button class="btn btn-sm btn-prepare"
-                        onclick="event.stopPropagation(); prepareBid('${escapeHTML(b.bid_ntce_no)}', '${escapeHTML((title||'').replace(/'/g,''))}', '${escapeHTML((org||'').replace(/'/g,''))}', '${b.budget||''}', '${escapeHTML(b.bid_close_dt||'')}')" title="입찰준비">📋 입찰준비</button>
+                    ${isExpired ? '' : `<button class="btn btn-sm btn-prepare"
+                        onclick="event.stopPropagation(); prepareBid('${escapeHTML(b.bid_ntce_no)}', '${escapeHTML((title||'').replace(/'/g,''))}', '${escapeHTML((org||'').replace(/'/g,''))}', '${b.budget||''}', '${escapeHTML(b.bid_close_dt||'')}')" title="입찰준비">📋 입찰준비</button>`}
+                    <a href="${escapeHTML(naraUrl)}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-nara" onclick="event.stopPropagation()" title="나라장터">🔗</a>
                     <button class="btn-mini-analyze btn-strategy-analyze" data-bid-no="${escapeHTML(b.bid_ntce_no)}"
                         onclick="event.stopPropagation()" title="AI 분석">🎯</button>
                 </div>

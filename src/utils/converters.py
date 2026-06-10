@@ -48,6 +48,7 @@ def bid_to_matcher_dict(bid: Union[Any, dict]) -> dict:
         return bid
     return {
         "bid_ntce_no": bid.bid_ntce_no,
+        "bid_ntce_ord": bid.bid_ntce_ord,
         "title": bid.title,
         "bidNtceNm": bid.title,
         "org_name": bid.org_name,
@@ -59,6 +60,9 @@ def bid_to_matcher_dict(bid: Union[Any, dict]) -> dict:
         "region": bid.region,
         "required_licenses": [bid.license_limit] if bid.license_limit else [],
         "license_limit": bid.license_limit,
+        "contract_method": bid.contract_method,
+        "bid_method": bid.bid_method,
+        "bid_begin_dt": bid.bid_begin_dt,
         "bid_close_dt": bid.bid_close_dt,
         "bidClseDt": bid.bid_close_dt,
         "rfp_url": bid.rfp_url,

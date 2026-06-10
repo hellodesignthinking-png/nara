@@ -345,13 +345,22 @@ async def get_daily_top10(db=Depends(get_db)):
                 "match_reason": match_reason,
                 "requirements": requirements,
                 "strategy_summary": existing_analysis or "",
+                # 자격요건 상세 정보
+                "region": scored_bid.get("region", ""),
+                "license_limit": scored_bid.get("license_limit", ""),
+                "contract_method": scored_bid.get("contract_method", ""),
+                "bid_method": scored_bid.get("bid_method", ""),
+                "category": scored_bid.get("category", ""),
             })
 
         # 종합 점수 내림차순 → 마감 임박 우선
         results.sort(key=lambda x: (-x["total_score"], x.get("days_left", 999)))
 
+        # 마감 안 된 공고만 TOP10에 포함 (마감 공고는 제외)
+        active_results = [r for r in results if r.get("days_left", 999) > 0]
+
         return {
-            "top10": results[:10],
+            "top10": active_results[:10],
             "total_matched": len(results),
             "keywords_used": keywords,
         }
