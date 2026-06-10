@@ -1087,16 +1087,49 @@ async function _runAutoCollect() {
     _showCollectingBanner(true);
 
     try {
-        // 관심 키워드 기반 자동 수집 (body 없이 POST → 서버에서 settings 키워드 사용)
-        const result = await api('POST', '/bids/collect', {});
-        console.log(`✅ 자동 수집 완료: ${result.collected}건 수집, ${result.saved}건 신규 저장`);
+        // 먼저 설정에서 키워드 목록 가져오기
+        let keywords = [];
+        try {
+            const settings = await api('GET', '/settings/full');
+            keywords = settings?.keywords || [];
+        } catch (e) {
+            console.warn('설정 로드 실패:', e.message);
+        }
 
-        _showCollectingBanner(false, result);
+        if (!keywords.length) {
+            _showCollectingBanner(false, null, '관심 키워드가 설정되지 않았습니다. 설정에서 키워드를 추가해주세요.');
+            _autoCollectRunning = false;
+            return;
+        }
 
-        // 수집 후 대시보드 데이터 갱신 (통계, TOP10, 차트)
+        // 키워드를 하나씩 순차 수집 (타임아웃 방지)
+        let totalCollected = 0;
+        let totalSaved = 0;
+        for (let i = 0; i < keywords.length; i++) {
+            const kw = keywords[i];
+            _showCollectingProgress(kw, i + 1, keywords.length, totalCollected);
+
+            try {
+                const result = await api('POST', '/bids/collect', { keyword: kw }, { timeout: 60000 });
+                totalCollected += result.collected || 0;
+                totalSaved += result.saved || 0;
+                console.log(`  📋 "${kw}" → ${result.collected}건 수집, ${result.saved}건 저장`);
+            } catch (kwErr) {
+                console.warn(`  ⚠️ "${kw}" 수집 실패:`, kwErr.message);
+            }
+
+            // 3개 키워드 수집 후 중간 갱신 (사용자가 빨리 결과를 볼 수 있도록)
+            if ((i + 1) % 3 === 0 && totalSaved > 0) {
+                loadTop10();
+            }
+        }
+
+        console.log(`✅ 자동 수집 완료: 총 ${totalCollected}건 수집, ${totalSaved}건 신규 저장`);
+        _showCollectingBanner(false, { collected: totalCollected, saved: totalSaved });
+
+        // 수집 후 대시보드 데이터 갱신
         setTimeout(async () => {
             try {
-                // 통계 갱신
                 const newStats = await api('GET', '/dashboard/stats');
                 if (newStats) {
                     animateCounter('stat-bids', newStats.bids || 0);
@@ -1107,9 +1140,7 @@ async function _runAutoCollect() {
                         bidsChangeEl.style.opacity = '1';
                     }
                 }
-                // TOP10 + 브리핑 갱신
                 loadTop10();
-                // 차트 갱신
                 loadCharts();
             } catch (e) {
                 console.warn('갱신 실패:', e.message);
@@ -1166,6 +1197,29 @@ function _showCollectingBanner(isLoading, result, errorMsg) {
             </div>`;
         if (briefingBody) briefingBody.innerHTML = doneHTML;
     }
+}
+
+function _showCollectingProgress(keyword, current, total, collectedSoFar) {
+    const briefingBody = document.getElementById('briefing-body');
+    const briefingBadge = document.getElementById('briefing-badge');
+    const top10List = document.getElementById('top10-list');
+    const pct = Math.round((current / total) * 100);
+
+    if (briefingBadge) briefingBadge.textContent = `수집중 ${current}/${total}`;
+
+    const progressHTML = `
+        <div class="auto-collect-banner collecting">
+            <div class="auto-collect-spinner"></div>
+            <div class="auto-collect-text">
+                <strong>🔄 공고 수집 중 (${current}/${total})</strong>
+                <span>"${escapeHTML(keyword)}" 키워드 수집중... ${collectedSoFar > 0 ? `(현재 ${collectedSoFar}건 수집됨)` : ''}</span>
+                <div class="auto-collect-progress">
+                    <div class="auto-collect-progress-bar" style="width:${pct}%"></div>
+                </div>
+            </div>
+        </div>`;
+    if (briefingBody) briefingBody.innerHTML = progressHTML;
+    if (top10List) top10List.innerHTML = progressHTML;
 }
 
 async function loadDashboard() {
