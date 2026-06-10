@@ -31,13 +31,20 @@ from src.models.database import DatabaseManager
 from src.api.routes import create_main_router
 from src.scheduler import DailyScheduler
 from src.api import app_state
+from src.api.routes._helpers import _load_settings
 
-# 로깅 설정
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+__version__ = "1.1.0"
+
+# 로깅 설정 (구조화 로깅 모듈 사용)
+try:
+    from src.utils.logging_config import setup_logging
+    setup_logging()
+except Exception:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 logger = logging.getLogger("nara.api")
 
 # 정적 파일 디렉터리 경로 (모듈 로드 시점에 생성하여 mount 등록 보장)
@@ -76,18 +83,10 @@ async def scheduled_analysis_job() -> dict:
         "notified": False,
     }
 
-    # settings.json에서 키워드 로드
-    settings_path = Path(config.db_path).parent / "settings.json"
-    saved_keywords = []
-    exclude_keywords = []
-    try:
-        if settings_path.exists():
-            with open(settings_path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
-                saved_keywords = settings.get("keywords") or config.keywords or []
-                exclude_keywords = settings.get("exclude_keywords") or []
-    except Exception:
-        saved_keywords = config.keywords or []
+    # settings.json에서 설정 로드 (한 번만 읽기)
+    user_settings = _load_settings()
+    saved_keywords = user_settings.get("keywords") or config.keywords or []
+    exclude_keywords = user_settings.get("exclude_keywords") or []
 
     # 1단계: 키워드 기반 공고 수집
     try:
@@ -124,6 +123,7 @@ async def scheduled_analysis_job() -> dict:
 
         # DB에 저장
         db = DatabaseManager(config.db_path)
+        db.connect()
         try:
             db.save_bids(all_bids)
         finally:
@@ -135,17 +135,15 @@ async def scheduled_analysis_job() -> dict:
     # 2단계: Slack 알림
     try:
         slack_url = os.getenv("SLACK_WEBHOOK_URL", "")
-        # settings.json에서도 확인
-        try:
-            if settings_path.exists():
-                with open(settings_path, "r", encoding="utf-8") as f:
-                    slack_url = json.load(f).get("slack_webhook_url", "") or slack_url
-        except Exception:
-            pass
+        # 이미 읽은 user_settings에서 Slack URL 확인
+        slack_url = user_settings.get("slack_webhook_url", "") or slack_url
 
         if slack_url and result_summary["collected"] > 0:
             slack = SlackReporter(webhook_url=slack_url)
-            slack.send_daily_report(result_summary)
+            slack.send_alert(
+                title="스케줄 수집 완료",
+                message=f"📋 스케줄 수집 완료: {result_summary['collected']}건 수집",
+            )
             result_summary["notified"] = True
             logger.info("📨 Slack 알림 전송 완료")
     except Exception as e:
@@ -221,17 +219,13 @@ async def lifespan(app: FastAPI):
     sched_enabled = os.getenv("SCHEDULER_ENABLED", "true").lower() in ("true", "1", "yes")
 
     # settings.json에서 스케줄 시간 우선 적용
-    import json as _json
-    settings_path = Path(config.db_path).parent / "settings.json"
     try:
-        if settings_path.exists():
-            with open(settings_path, "r", encoding="utf-8") as f:
-                user_settings = _json.load(f)
-                schedule_time_str = user_settings.get("schedule_time", "")
-                if schedule_time_str and ":" in schedule_time_str:
-                    parts = schedule_time_str.split(":")
-                    sched_hour = int(parts[0])
-                    sched_min = int(parts[1])
+        user_settings = _load_settings()
+        schedule_time_str = user_settings.get("schedule_time", "")
+        if schedule_time_str and ":" in schedule_time_str:
+            parts = schedule_time_str.split(":")
+            sched_hour = int(parts[0])
+            sched_min = int(parts[1])
     except Exception:
         pass  # settings.json 읽기 실패 시 환경변수 값 유지
 
@@ -263,7 +257,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NARA Analyzer",
     description="나라장터 용역 자동 분석 시스템 API",
-    version="0.2.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -279,9 +273,29 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,  # 환경변수로 허용 출처 제어
     allow_credentials=False,
-    allow_methods=["*"],            # 모든 HTTP 메서드 허용
-    allow_headers=["*"],            # 모든 헤더 허용
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
 )
+
+# API Key 인증 미들웨어
+from src.api.middleware.auth import APIKeyAuthMiddleware
+app.add_middleware(APIKeyAuthMiddleware)
+
+# ──────────────────────────────────────────────
+# 헬스체크 엔드포인트
+# ──────────────────────────────────────────────
+
+
+@app.get("/health", tags=["system"])
+async def health_check():
+    """시스템 상태를 확인합니다."""
+    sched = app_state.scheduler
+    return {
+        "status": "healthy",
+        "scheduler_running": sched is not None and getattr(sched, 'is_running', False),
+        "version": __version__,
+    }
+
 
 # ──────────────────────────────────────────────
 # API 라우터 등록
@@ -313,7 +327,7 @@ async def serve_index():
     # index.html이 없으면 API 상태 정보를 반환
     return {
         "service": "NARA Analyzer API",
-        "version": "0.2.0",
+        "version": __version__,
         "status": "running",
         "docs": "/docs",
         "message": "static/index.html을 생성하면 프론트엔드를 서빙합니다.",
@@ -328,10 +342,12 @@ async def serve_index():
 if __name__ == "__main__":
     import uvicorn
 
+    dev_mode = os.getenv("DEV_MODE", "").lower() in ("true", "1", "yes")
+
     uvicorn.run(
         "src.api.app:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
-        reload_dirs=[str(PROJECT_ROOT / "src")],
+        reload=dev_mode,
+        reload_dirs=[str(PROJECT_ROOT / "src")] if dev_mode else None,
     )

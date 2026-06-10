@@ -13,10 +13,13 @@ import logging
 import re
 import time
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 import requests
 
+from src.collectors.base_collector import BaseCollector
 from src.models.schemas import NewsArticle
 
 logger = logging.getLogger(__name__)
@@ -25,13 +28,12 @@ logger = logging.getLogger(__name__)
 NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json"
 MAX_DISPLAY = 100           # 한 번에 최대 반환 건수
 MAX_START = 1000            # 검색 시작 위치 최대값 (API 제한)
-MAX_RETRIES = 3             # 최대 재시도 횟수
 RETRY_DELAY = 1             # 재시도 대기 시간(초)
 REQUEST_TIMEOUT = 15        # 요청 타임아웃(초)
 DAILY_LIMIT = 25_000        # 일일 API 호출 제한
 
 
-class NewsCollector:
+class NewsCollector(BaseCollector):
     """
     네이버 뉴스 검색 수집기
 
@@ -54,9 +56,9 @@ class NewsCollector:
         Args:
             config: Config 객체 (naver_client_id, naver_client_secret 포함)
         """
+        super().__init__(api_key="")
         self.client_id = config.naver_client_id
         self.client_secret = config.naver_client_secret
-        self.session = requests.Session()
 
         # 인증 헤더 설정
         if self.client_id and self.client_secret:
@@ -72,22 +74,7 @@ class NewsCollector:
 
         # 일일 호출 횟수 추적 (간이 카운터)
         self._daily_call_count = 0
-        self._count_reset_date = datetime.now().date()
-
-    def __enter__(self):
-        """Context manager 진입: self를 반환합니다."""
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager 종료: 세션을 정리합니다."""
-        self.close()
-        return False
-
-    def close(self):
-        """내부 requests.Session을 닫고 자원을 해제합니다."""
-        if self.session is not None:
-            self.session.close()
-            self.session = None
+        self._count_reset_date = datetime.now(tz=ZoneInfo("Asia/Seoul")).date()
 
     def _check_daily_limit(self) -> bool:
         """
@@ -96,7 +83,7 @@ class NewsCollector:
         Returns:
             호출 가능 여부
         """
-        today = datetime.now().date()
+        today = datetime.now(tz=ZoneInfo("Asia/Seoul")).date()
         if today != self._count_reset_date:
             # 날짜가 바뀌면 카운터 초기화
             self._daily_call_count = 0
@@ -176,7 +163,7 @@ class NewsCollector:
         all_articles = []
 
         # 날짜 범위 계산 (네이버 API d_from/d_to 형식: YYYYMMDD)
-        end_dt = datetime.now()
+        end_dt = datetime.now(tz=ZoneInfo("Asia/Seoul"))
         start_dt = end_dt - timedelta(days=int(365.25 * years_back))
         d_from = start_dt.strftime("%Y%m%d")
         d_to = end_dt.strftime("%Y%m%d")
@@ -280,18 +267,16 @@ class NewsCollector:
             NewsArticle 리스트
         """
         # close() 호출 후 세션이 해제된 경우 재생성
-        if self.session is None:
-            logger.warning("세션이 닫혀 있어 새로 생성합니다.")
-            self.session = requests.Session()
-            if self.client_id and self.client_secret:
-                self.session.headers.update({
-                    "X-Naver-Client-Id": self.client_id,
-                    "X-Naver-Client-Secret": self.client_secret,
-                })
+        session = self._ensure_session()
+        if self.client_id and self.client_secret:
+            session.headers.update({
+                "X-Naver-Client-Id": self.client_id,
+                "X-Naver-Client-Secret": self.client_secret,
+            })
 
-        for attempt in range(1, MAX_RETRIES + 1):
+        for attempt in range(1, self.MAX_RETRIES + 1):
             try:
-                response = self.session.get(
+                response = session.get(
                     NEWS_API_URL,
                     params=params,
                     timeout=REQUEST_TIMEOUT,
@@ -300,12 +285,15 @@ class NewsCollector:
 
                 # HTTP 오류 확인
                 if response.status_code == 429:
-                    retry_after = int(response.headers.get("Retry-After", RETRY_DELAY * attempt))
+                    try:
+                        retry_after = int(response.headers.get("Retry-After", RETRY_DELAY * attempt))
+                    except (ValueError, TypeError):
+                        retry_after = RETRY_DELAY * attempt
                     logger.warning(
                         "네이버 API 호출 한도 초과 (429), %d초 후 재시도 (시도 %d/%d)",
-                        retry_after, attempt, MAX_RETRIES,
+                        retry_after, attempt, self.MAX_RETRIES,
                     )
-                    if attempt < MAX_RETRIES:
+                    if attempt < self.MAX_RETRIES:
                         time.sleep(retry_after)
                         continue
                     return []
@@ -318,36 +306,36 @@ class NewsCollector:
             except requests.exceptions.HTTPError as e:
                 logger.warning(
                     "API HTTP 오류 (시도 %d/%d): %s",
-                    attempt, MAX_RETRIES, e,
+                    attempt, self.MAX_RETRIES, e,
                 )
             except requests.exceptions.ConnectionError as e:
                 logger.warning(
                     "네트워크 연결 오류 (시도 %d/%d): %s",
-                    attempt, MAX_RETRIES, e,
+                    attempt, self.MAX_RETRIES, e,
                 )
             except requests.exceptions.Timeout as e:
                 logger.warning(
                     "요청 타임아웃 (시도 %d/%d): %s",
-                    attempt, MAX_RETRIES, e,
+                    attempt, self.MAX_RETRIES, e,
                 )
             except requests.exceptions.RequestException as e:
                 logger.warning(
                     "요청 오류 (시도 %d/%d): %s",
-                    attempt, MAX_RETRIES, e,
+                    attempt, self.MAX_RETRIES, e,
                 )
             except (ValueError, KeyError) as e:
                 logger.warning(
                     "응답 파싱 오류 (시도 %d/%d): %s",
-                    attempt, MAX_RETRIES, e,
+                    attempt, self.MAX_RETRIES, e,
                 )
 
             # 마지막 시도가 아니면 대기 후 재시도
-            if attempt < MAX_RETRIES:
+            if attempt < self.MAX_RETRIES:
                 wait_time = RETRY_DELAY * attempt
                 logger.info("%d초 후 재시도...", wait_time)
                 time.sleep(wait_time)
 
-        logger.error("뉴스 검색 최종 실패: '%s' (%d회 시도)", query, MAX_RETRIES)
+        logger.error("뉴스 검색 최종 실패: '%s' (%d회 시도)", query, self.MAX_RETRIES)
         return []
 
     def _parse_response(
@@ -386,7 +374,7 @@ class NewsCollector:
             return []
 
         articles = []
-        now = datetime.now()
+        now = datetime.now(tz=ZoneInfo("Asia/Seoul"))
 
         for item in items:
             try:
@@ -401,7 +389,7 @@ class NewsCollector:
                     title=title,
                     description=description,
                     link=link,
-                    pub_date=item.get("pubDate"),
+                    pub_date=self._parse_pub_date(item.get("pubDate")),
                     search_query=query,
                     related_bid_no=None,
                     collected_at=now,
@@ -435,3 +423,25 @@ class NewsCollector:
         # HTML 엔티티 변환 (html.unescape로 모든 엔티티를 처리)
         clean = html_mod.unescape(clean)
         return clean.strip()
+
+    @staticmethod
+    def _parse_pub_date(date_str: Optional[str]) -> Optional[str]:
+        """
+        RFC822 형식의 pubDate를 ISO 형식으로 변환합니다.
+
+        네이버 API의 pubDate 예시: 'Mon, 09 Jun 2025 09:00:00 +0900'
+
+        Args:
+            date_str: RFC822 형식 날짜 문자열
+
+        Returns:
+            ISO 형식 날짜 문자열 또는 원본 문자열 (변환 실패 시)
+        """
+        if not date_str:
+            return None
+        try:
+            dt = parsedate_to_datetime(date_str)
+            return dt.isoformat()
+        except Exception:
+            logger.debug("pubDate 파싱 실패, 원본 반환: %s", date_str)
+            return date_str

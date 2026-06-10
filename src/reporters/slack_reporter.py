@@ -15,6 +15,7 @@ import logging
 import re
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from src.utils.formatters import format_budget
 from urllib.request import Request, urlopen
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Slack 웹훅 URL 정규식 패턴 (보안: 공식 도메인만 허용)
 _SLACK_WEBHOOK_PATTERN = re.compile(
-    r'^https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[A-Za-z0-9]+$'
+    r'^https://hooks\.slack\.com/services/T[A-Za-z0-9]+/B[A-Za-z0-9]+/[A-Za-z0-9]+$'
 )
 
 
@@ -110,7 +111,7 @@ class SlackReporter:
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} · NARA Analyzer",
+                        "text": f"🕐 {datetime.now(tz=ZoneInfo('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S')} · NARA Analyzer",
                     }
                 ],
             },
@@ -136,7 +137,7 @@ class SlackReporter:
         budget = self._format_budget(bid.get("budget", bid.get("presmptPrce", "")))
         deadline = str(bid.get("deadline", bid.get("bidClseDt", "")))[:16]
 
-        emoji = "🟢" if relevance_score >= 70 else ("🟡" if relevance_score >= 40 else "🔴")
+        emoji = "🟢" if relevance_score >= 70 else ("🟡" if relevance_score >= 45 else "🔴")
 
         blocks = [
             {
@@ -165,12 +166,12 @@ class SlackReporter:
 
     def _build_report_blocks(self, results: list[dict]) -> list[dict]:
         """분석 결과를 Block Kit 형식으로 변환합니다."""
-        now = datetime.now()
+        now = datetime.now(tz=ZoneInfo("Asia/Seoul"))
         total = len(results)
 
         # 점수별 분류
         high = sum(1 for r in results if (r.get("match_score", 0) or r.get("relevance_score", 0)) >= 70)
-        mid = sum(1 for r in results if 40 <= (r.get("match_score", 0) or r.get("relevance_score", 0)) < 70)
+        mid = sum(1 for r in results if 45 <= (r.get("match_score", 0) or r.get("relevance_score", 0)) < 70)
         low = total - high - mid
 
         blocks = [
@@ -215,7 +216,7 @@ class SlackReporter:
             budget = self._format_budget(bid.get("budget", bid.get("presmptPrce", "")))
 
             score = result.get("match_score", result.get("relevance_score", 0))
-            emoji = "🟢" if score >= 70 else ("🟡" if score >= 40 else "🔴")
+            emoji = "🟢" if score >= 70 else ("🟡" if score >= 45 else "🔴")
 
             recommendation = strategy.get("overall_recommendation", "")
             if len(recommendation) > 150:
@@ -271,7 +272,7 @@ class SlackReporter:
 
         urllib만 사용하여 외부 의존성 없이 동작합니다.
         """
-        payload = json.dumps({"blocks": blocks}).encode("utf-8")
+        payload = json.dumps({"blocks": blocks}, ensure_ascii=False).encode("utf-8")
 
         req = Request(
             self.webhook_url,

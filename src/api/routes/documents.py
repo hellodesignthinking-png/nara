@@ -74,7 +74,10 @@ async def get_org_news(
             }
 
         news_collector = NewsCollector(config)
-        articles = news_collector.search_news(org_name, display=limit, sort="date")
+        try:
+            articles = news_collector.search_news(org_name, display=limit, sort="date")
+        finally:
+            news_collector.close()
 
         # ── 3단계: DB에 저장 ──
         if articles:

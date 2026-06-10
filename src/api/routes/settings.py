@@ -7,11 +7,12 @@
 
 import logging
 import os
+import tempfile
 from pathlib import Path as _Path
 
 from fastapi import APIRouter, Body, HTTPException
 
-from src.config import load_config
+from src.config import load_config, reload_config
 
 from ._helpers import _load_settings, _save_settings
 from ._models import (
@@ -194,13 +195,20 @@ async def update_api_keys(request: dict = Body(...)):
             os.environ[env_var] = value
             updated_keys.append(field)
 
-        # .env 저장
-        env_path.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+        # .env 저장 (atomic write: tempfile + rename)
+        new_content = "\n".join(env_lines) + "\n"
+        temp_fd, temp_path = tempfile.mkstemp(dir=str(env_path.parent))
+        try:
+            with os.fdopen(temp_fd, 'w', encoding='utf-8') as tmp:
+                tmp.write(new_content)
+            os.rename(temp_path, str(env_path))
+        except Exception:
+            os.unlink(temp_path)
+            raise
 
         # Config 캐시 무효화 — 다음 load_config() 호출 시 새로운 환경변수 반영
         try:
-            import src.config as _cfg_module
-            _cfg_module._config_instance = None
+            reload_config()
         except Exception:
             pass
 

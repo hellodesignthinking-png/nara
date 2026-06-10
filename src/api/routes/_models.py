@@ -38,6 +38,12 @@ class StrategyAnalysisRequest(BaseModel):
     bid_ntce_no: str = Field(..., description="분석할 공고번호")
 
 
+class ProposalStrategyRequest(BaseModel):
+    """제안서 고도화 전략 분석 요청 본문"""
+    bid_ntce_no: str = Field(..., description="분석할 공고번호")
+    biz_id: Optional[str] = Field(None, description="매칭할 사업자 ID (미지정 시 자동 선택)")
+
+
 class KeywordsUpdateRequest(BaseModel):
     """키워드 업데이트 요청"""
     keywords: list[str] = Field(..., description="관심 키워드 목록")

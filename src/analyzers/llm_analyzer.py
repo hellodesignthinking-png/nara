@@ -9,9 +9,15 @@ API 키 미설정 시에도 더미 결과를 반환하여 시스템이 중단되
 
 import json
 import logging
+import re
+import time
 
 
 logger = logging.getLogger(__name__)
+
+# RFP 텍스트 최대 길이 (토큰 제한 고려)
+MAX_RFP_LENGTH_ANALYSIS = 6000
+MAX_RFP_LENGTH_STRATEGY = 4000
 
 # openai 라이브러리 선택적 임포트
 try:
@@ -55,14 +61,15 @@ class LLMAnalyzer:
         self.client = None
         self.gemini_client = None
         self._fallback_mode = True
+        self._total_tokens_used = 0
 
         if engine == 'gemini' and api_key and GEMINI_AVAILABLE:
             try:
                 self.gemini_client = genai.Client(api_key=api_key)
                 self._fallback_mode = False
-                logger.info(f"Gemini 분석기 초기화 완료 (모델: {model})")
+                logger.info("Gemini 분석기 초기화 완료 (모델: %s)", model)
             except Exception as e:
-                logger.warning(f"Gemini 클라이언트 초기화 실패: {e}. Fallback 모드로 동작합니다.")
+                logger.warning("Gemini 클라이언트 초기화 실패: %s. Fallback 모드로 동작합니다.", e)
         elif engine == 'openai' and api_key and OPENAI_AVAILABLE:
             try:
                 self.client = openai.OpenAI(
@@ -71,9 +78,9 @@ class LLMAnalyzer:
                     timeout=60.0,
                 )
                 self._fallback_mode = False
-                logger.info(f"OpenAI 분석기 초기화 완료 (모델: {model})")
+                logger.info("OpenAI 분석기 초기화 완료 (모델: %s)", model)
             except Exception as e:
-                logger.warning(f"OpenAI 클라이언트 초기화 실패: {e}. Fallback 모드로 동작합니다.")
+                logger.warning("OpenAI 클라이언트 초기화 실패: %s. Fallback 모드로 동작합니다.", e)
         else:
             if engine == 'gemini' and not GEMINI_AVAILABLE:
                 logger.info("google-genai 라이브러리 미설치 → Fallback 모드")
@@ -82,10 +89,54 @@ class LLMAnalyzer:
             elif not api_key:
                 logger.info("API 키 미설정 → Fallback 모드")
 
+    def __repr__(self) -> str:
+        return f"LLMAnalyzer(engine={self.engine}, api_key=****)"
+
     @property
     def is_available(self) -> bool:
         """LLM 분석이 사용 가능한지 여부를 반환합니다."""
         return not self._fallback_mode
+
+    @property
+    def total_tokens_used(self) -> int:
+        """API 호출에 사용된 총 토큰 수를 반환합니다."""
+        return self._total_tokens_used
+
+    @staticmethod
+    def _sanitize_input(text: str) -> str:
+        """
+        사용자 입력에서 잠재적 프롬프트 인젝션 패턴을 제거합니다.
+
+        'IGNORE', 'SYSTEM:', 'You are' 등으로 시작하는 줄을
+        필터링하여 보안을 강화합니다.
+
+        Args:
+            text: 원본 텍스트
+
+        Returns:
+            정제된 텍스트
+        """
+        if not text:
+            return text
+        injection_patterns = [
+            r'^\s*IGNORE\b',
+            r'^\s*SYSTEM\s*:',
+            r'^\s*You are\b',
+            r'^\s*Forget\s+(all|previous|your)\b',
+            r'^\s*Disregard\b',
+            r'^\s*Override\b',
+        ]
+        lines = text.splitlines()
+        filtered_lines = []
+        for line in lines:
+            is_injection = False
+            for pattern in injection_patterns:
+                if re.match(pattern, line, re.IGNORECASE):
+                    is_injection = True
+                    break
+            if not is_injection:
+                filtered_lines.append(line)
+        return '\n'.join(filtered_lines)
 
     # ══════════════════════════════════════════════
     # 공개 API
@@ -119,9 +170,9 @@ class LLMAnalyzer:
         if self._fallback_mode:
             return self._generate_fallback_analysis(bid)
 
-        # 프롬프트 구성
+        # 프롬프트 구성 (사용자 입력 정제 적용)
         system_prompt = self._build_system_prompt()
-        user_prompt = self._build_analysis_prompt(bid, rfp_text)
+        user_prompt = self._build_analysis_prompt(bid, self._sanitize_input(rfp_text))
 
         try:
             response = self._call_api(system_prompt, user_prompt)
@@ -129,7 +180,7 @@ class LLMAnalyzer:
             result['analysis_source'] = self.model
             return result
         except Exception as e:
-            logger.error(f"LLM 분석 실패: {e}. Fallback 결과를 반환합니다.")
+            logger.error("LLM 분석 실패: %s. Fallback 결과를 반환합니다.", e)
             return self._generate_fallback_analysis(bid)
 
     def analyze_with_context(
@@ -172,7 +223,7 @@ class LLMAnalyzer:
 
         system_prompt = self._build_strategy_system_prompt()
         user_prompt = self._build_strategy_prompt(
-            bid, rfp_text, past_awards, news_articles, business_profile
+            bid, self._sanitize_input(rfp_text), past_awards, news_articles, business_profile
         )
 
         # 수집된 과거 데이터/뉴스가 없으면 Gemini Google Search 도구 활용
@@ -185,11 +236,11 @@ class LLMAnalyzer:
                 )
             else:
                 response = self._call_api(system_prompt, user_prompt, max_tokens=4000)
-            result = self._parse_strategy_response(response)
+            result = self._parse_strategy_response(response, bid=bid, business_profile=business_profile)
             result['analysis_source'] = self.model + (' +search' if use_grounding else '')
             return result
         except Exception as e:
-            logger.error(f"LLM 컨텍스트 분석 실패: {e}. Fallback 결과를 반환합니다.")
+            logger.error("LLM 컨텍스트 분석 실패: %s. Fallback 결과를 반환합니다.", e)
             return self._generate_fallback_strategy(bid, business_profile)
 
     # ══════════════════════════════════════════════
@@ -238,7 +289,7 @@ JSON 구조:
 
         if rfp_text:
             # RFP가 너무 길면 앞부분만 사용 (토큰 제한 고려)
-            max_rfp_length = 6000
+            max_rfp_length = MAX_RFP_LENGTH_ANALYSIS
             truncated_rfp = rfp_text[:max_rfp_length]
             if len(rfp_text) > max_rfp_length:
                 truncated_rfp += "\n\n... (이하 생략) ..."
@@ -336,7 +387,7 @@ JSON 구조:
 
         # RFP 내용 추가
         if rfp_text:
-            max_len = 4000
+            max_len = MAX_RFP_LENGTH_STRATEGY
             truncated = rfp_text[:max_len]
             if len(rfp_text) > max_len:
                 truncated += "\n... (이하 생략) ..."
@@ -486,7 +537,9 @@ JSON 구조:
         content = response.choices[0].message.content or ''
         if not content:
             raise RuntimeError('LLM API 응답 content가 비어있습니다')
-        logger.debug(f"OpenAI API 응답 토큰: {response.usage.total_tokens}")
+        if response.usage:
+            self._total_tokens_used += response.usage.total_tokens
+            logger.debug("OpenAI API 응답 토큰: %s", response.usage.total_tokens)
         return content
 
     def _call_gemini(
@@ -502,19 +555,38 @@ JSON 구조:
         from google.genai import types
 
         full_prompt = f"{system_prompt}\n\n{user_prompt}\n\n위 내용을 분석하여 JSON 형식으로 답변해주세요."
-        response = self.gemini_client.models.generate_content(
-            model=self.model,
-            contents=full_prompt,
-            config=types.GenerateContentConfig(
-                temperature=temperature,
-                max_output_tokens=max_tokens,
-                response_mime_type="application/json",
-            ),
-        )
 
-        content = response.text
-        logger.debug(f"Gemini API 응답 받음")
-        return content
+        # 재시도 로직 (지수 백오프)
+        max_retries = 3
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                response = self.gemini_client.models.generate_content(
+                    model=self.model,
+                    contents=full_prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=temperature,
+                        max_output_tokens=max_tokens,
+                        response_mime_type="application/json",
+                    ),
+                )
+
+                content = response.text
+                self._total_tokens_used += len(full_prompt) // 4 + len(content) // 4  # 추정 토큰 수
+                logger.debug("Gemini API 응답 받음")
+                return content
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.warning(
+                        "Gemini API 호출 실패 (시도 %d/%d): %s. %d초 후 재시도...",
+                        attempt + 1, max_retries, e, wait_time
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error("Gemini API 호출 최종 실패: %s", e)
+        raise last_error
 
     def _call_gemini_with_search(
         self,
@@ -563,15 +635,25 @@ JSON 구조:
 
             content = response.text or ''
             # JSON 블록 추출 (```json ... ``` 형태로 올 수 있음)
-            import re
+
             json_match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
             if json_match:
                 content = json_match.group(1)
             else:
-                # { 로 시작하는 JSON 찾기
-                brace_match = re.search(r'\{.*\}', content, re.DOTALL)
-                if brace_match:
-                    content = brace_match.group(0)
+                # { 로 시작하는 JSON 찾기 (중첩된 괄호 지원)
+                brace_start = content.find('{')
+                if brace_start != -1:
+                    depth = 0
+                    brace_end = brace_start
+                    for i in range(brace_start, len(content)):
+                        if content[i] == '{':
+                            depth += 1
+                        elif content[i] == '}':
+                            depth -= 1
+                            if depth == 0:
+                                brace_end = i
+                                break
+                    content = content[brace_start:brace_end + 1]
 
             logger.info("Gemini + Google Search 응답 받음 (grounding 활용)")
             return content
@@ -602,7 +684,7 @@ JSON 구조:
                 'risks': ['API 응답을 정상적으로 파싱하지 못했습니다.'],
             }
 
-    def _parse_strategy_response(self, response_text: str) -> dict:
+    def _parse_strategy_response(self, response_text: str, bid=None, business_profile=None) -> dict:
         """전략 분석 API 응답을 파싱합니다."""
         try:
             data = json.loads(response_text)
@@ -621,7 +703,7 @@ JSON 구조:
             }
         except json.JSONDecodeError:
             logger.warning("전략 분석 JSON 파싱 실패.")
-            return self._generate_fallback_strategy({}, {})
+            return self._generate_fallback_strategy(bid or {}, business_profile or {})
 
     # ══════════════════════════════════════════════
     # Fallback (더미 결과)
@@ -685,3 +767,339 @@ JSON 구조:
             'overall_recommendation': 'AI 분석이 비활성화되어 자동 전략 수립이 제한됩니다. GEMINI_API_KEY 또는 OPENAI_API_KEY를 설정하세요.',
             'analysis_source': 'fallback',
         }
+
+    # ══════════════════════════════════════════════
+    # 강화된 전략 분석 (구조화 분석 데이터 통합)
+    # ══════════════════════════════════════════════
+
+    def generate_enhanced_strategy(self, bid: dict, business_profile: dict,
+                                    structured_analysis: dict) -> dict:
+        """
+        구조화된 분석 결과를 포함한 강화된 전략 보고서를 생성합니다.
+
+        경쟁사 수주 패턴, 발주기관 정책 방향, 지역/도시 트렌드,
+        투찰률 최적화, RFP 전년 대비 변화점 데이터를 LLM 프롬프트에
+        통합하여 기존 전략 보고서 대비 훨씬 정밀한 결과를 생성합니다.
+
+        Args:
+            bid: 공고 정보 dict
+            business_profile: 사업자 프로필 dict
+            structured_analysis: 사전 분석 결과 dict
+                - competitor_data: 경쟁사 수주 패턴 분석 결과
+                - org_policy: 발주기관 정책 방향 분석 결과
+                - regional_trend: 지역/도시 트렌드 분석 결과
+                - bid_rate_optimization: 투찰률 최적화 분석 결과
+                - rfp_changes: RFP 전년 대비 변화점
+                - past_awards: 과거 낙찰 이력 리스트
+
+        Returns:
+            강화된 전략 보고서 dict (bid_summary, competitor_analysis,
+            differentiation_strategy 등 포함)
+        """
+        if self._fallback_mode:
+            return self._generate_fallback_strategy(bid, business_profile)
+
+        # ── 시스템 프롬프트 구성 (기존 전략 프롬프트 + 추가 분석 데이터 지침) ──
+        base_system_prompt = self._build_strategy_system_prompt()
+
+        enhanced_system_prompt = base_system_prompt + """
+
+## 추가 분석 데이터 활용 지침
+
+이번 분석에는 아래 5가지 사전 분석 결과가 함께 제공됩니다.
+반드시 이 데이터를 전략 수립에 반영하세요:
+
+1. **경쟁사 수주 패턴 데이터**: 과거 낙찰 이력에서 도출된 주요 경쟁사 목록,
+   수주 빈도, 평균 투찰률, 강점/약점을 분석에 활용하세요.
+
+2. **발주기관 정책 방향 데이터**: 해당 기관의 최근 정책 기조, 역점 사업,
+   기관장 방향성을 제안서의 배경/목적에 연계하세요.
+
+3. **지역/도시 트렌드 데이터**: 해당 지역의 산업 트렌드, 예산 규모 변화,
+   주요 발주 카테고리를 분석에 반영하세요.
+
+4. **투찰률 최적화 분석**: 과거 낙찰 데이터 기반 통계적 최적 투찰률과
+   범위를 예산 분석에 반드시 반영하세요.
+
+5. **RFP 전년 대비 변화점**: 전년도 동일/유사 사업 대비 올해 RFP에서
+   추가/삭제/변경된 요구사항이 핵심 평가 포인트입니다.
+   이 변화점을 차별화 전략의 중심에 두세요."""
+
+        # ── 사용자 프롬프트 구성 ──
+        user_prompt = self._build_enhanced_user_prompt(
+            bid, business_profile, structured_analysis
+        )
+
+        try:
+            response = self._call_api(
+                enhanced_system_prompt, user_prompt,
+                max_tokens=5000, temperature=0.3,
+            )
+            result = self._parse_strategy_response(
+                response, bid=bid, business_profile=business_profile
+            )
+            result['analysis_source'] = self.model + ' (enhanced)'
+            return result
+
+        except Exception as e:
+            logger.error("강화 전략 분석 LLM 호출 실패: %s. 폴백 결과를 반환합니다.", e)
+            return self._generate_fallback_strategy(bid, business_profile)
+
+    def _build_enhanced_user_prompt(
+        self,
+        bid: dict,
+        business_profile: dict,
+        structured_analysis: dict,
+    ) -> str:
+        """
+        강화된 전략 분석용 사용자 프롬프트를 구성합니다.
+
+        기존 공고/사업자 정보에 5가지 구조화된 분석 데이터를
+        읽기 쉬운 섹션 형태로 추가합니다.
+
+        Args:
+            bid: 공고 정보 dict
+            business_profile: 사업자 프로필 dict
+            structured_analysis: 사전 분석 결과 dict
+
+        Returns:
+            사용자 프롬프트 문자열
+        """
+        title = bid.get('title', bid.get('bidNtceNm', '제목 없음'))
+        org = bid.get('org_name', bid.get('ntceInsttNm', bid.get('organization', '')))
+        budget = bid.get('budget', bid.get('presmptPrce', ''))
+        deadline = bid.get('bid_close_dt', bid.get('bidClseDt', bid.get('deadline', '')))
+        rfp_text = self._sanitize_input(bid.get('rfp_text', '') or '')
+
+        prompt = f"""다음 입찰 공고에 대한 고도화 전략 분석을 수행해 주세요.
+아래에 5가지 사전 분석 데이터가 함께 제공됩니다.
+
+═══════════════════════════════════════
+▶ 1. 공고 기본 정보
+═══════════════════════════════════════
+- 공고명: {title}
+- 발주기관: {org}
+- 추정가격: {budget}
+- 입찰마감: {deadline}
+- 분류: {bid.get('category', '')}
+- 지역: {bid.get('region', '')}
+- 계약방법: {bid.get('contract_method', '')}
+"""
+
+        # RFP 내용
+        if rfp_text:
+            max_len = MAX_RFP_LENGTH_STRATEGY
+            truncated = rfp_text[:max_len]
+            if len(rfp_text) > max_len:
+                truncated += "\n... (이하 생략) ..."
+            prompt += f"""
+═══════════════════════════════════════
+▶ 2. RFP(제안요청서) 내용
+═══════════════════════════════════════
+{truncated}
+"""
+
+        # 사업자 프로필
+        if business_profile:
+            biz_name = business_profile.get('company_name', business_profile.get('name', ''))
+            biz_types = business_profile.get('business_types', '[]')
+            biz_licenses = business_profile.get('licenses', '[]')
+            biz_regions = business_profile.get('regions', business_profile.get('region', ''))
+
+            prompt += f"""
+═══════════════════════════════════════
+▶ 3. 참여 검토 사업자 정보
+═══════════════════════════════════════
+- 업체명: {biz_name}
+- 업종: {biz_types}
+- 보유 면허: {biz_licenses}
+- 소재지: {biz_regions}
+"""
+
+        # ── 구조화된 분석 데이터 추가 ──
+
+        # 경쟁사 수주 패턴 데이터
+        competitor_data = structured_analysis.get('competitor_data', {})
+        competitors = competitor_data.get('top_competitors', competitor_data.get('competitors', []))
+        prompt += """
+═══════════════════════════════════════
+▶ 4. 경쟁사 수주 패턴 분석 데이터
+═══════════════════════════════════════
+"""
+        if competitors:
+            for i, comp in enumerate(competitors[:10], 1):
+                name = comp.get('name', comp.get('winner_name', ''))
+                count = comp.get('win_count', comp.get('award_count', 0))
+                avg_rate = comp.get('avg_bid_rate', comp.get('avg_rate', ''))
+                prompt += f"  {i}. {name}: 수주 {count}건"
+                if avg_rate:
+                    prompt += f", 평균 투찰률 {avg_rate}%"
+                prompt += "\n"
+        else:
+            prompt += "  (경쟁사 수주 데이터 없음)\n"
+
+        # 발주기관 정책 방향 데이터
+        org_policy = structured_analysis.get('org_policy', {})
+        prompt += """
+═══════════════════════════════════════
+▶ 5. 발주기관 정책 방향 분석 데이터
+═══════════════════════════════════════
+"""
+        if org_policy and not org_policy.get('error'):
+            org_name = org_policy.get('org_name', '')
+            total_bids = org_policy.get('total_bids', 0)
+            total_awards = org_policy.get('total_awards', 0)
+            if org_name:
+                prompt += f"  기관명: {org_name}\n"
+            if total_bids:
+                prompt += f"  총 공고 건수: {total_bids}건, 총 낙찰 건수: {total_awards}건\n"
+            top_categories = org_policy.get('top_categories', [])
+            if top_categories:
+                cat_str = ', '.join(f"{c['category']}({c['count']}건)" for c in top_categories[:5])
+                prompt += f"  주력 분야: {cat_str}\n"
+            preferred_vendors = org_policy.get('preferred_vendors', [])
+            if preferred_vendors:
+                vendor_str = ', '.join(f"{v['name']}({v['win_count']}건)" for v in preferred_vendors[:5])
+                prompt += f"  선호 업체: {vendor_str}\n"
+            award_stats = org_policy.get('award_stats', {})
+            if award_stats.get('avg_bid_rate'):
+                prompt += f"  평균 투찰률: {award_stats['avg_bid_rate']}%\n"
+            bid_chars = org_policy.get('bid_characteristics', {})
+            if bid_chars.get('common_bid_methods'):
+                methods = ', '.join(m['method'] for m in bid_chars['common_bid_methods'][:3])
+                prompt += f"  주요 입찰방식: {methods}\n"
+        else:
+            prompt += "  (발주기관 정책 데이터 없음)\n"
+
+        # 지역/도시 트렌드 데이터
+        regional_trend = structured_analysis.get('regional_trend', {})
+        prompt += """
+═══════════════════════════════════════
+▶ 6. 지역/도시 트렌드 분석 데이터
+═══════════════════════════════════════
+"""
+        if regional_trend and not regional_trend.get('error'):
+            region_name = regional_trend.get('region', '')
+            market = regional_trend.get('market_overview', {})
+            if region_name:
+                prompt += f"  지역: {region_name}\n"
+            if market.get('total_awards'):
+                prompt += f"  총 낙찰 건수: {market['total_awards']}건\n"
+                prompt += f"  총 낙찰 금액: {market.get('total_budget', 0):,}원\n"
+                prompt += f"  평균 낙찰 금액: {market.get('avg_award_amount', 0):,}원\n"
+            sector_analysis = regional_trend.get('sector_analysis', [])
+            if sector_analysis:
+                sector_str = ', '.join(
+                    f"{s['sector']}({s['bid_count']}건)" for s in sector_analysis[:5]
+                )
+                prompt += f"  주요 발주 분야: {sector_str}\n"
+                for s in sector_analysis[:3]:
+                    if s.get('top_winners'):
+                        prompt += f"    {s['sector']} 상위 수주사: {', '.join(s['top_winners'])}\n"
+            local_pref = regional_trend.get('local_preference', {})
+            if local_pref.get('recommendation'):
+                prompt += f"  지역 업체 우대: {local_pref['recommendation']}\n"
+            pa = regional_trend.get('policy_alignment', {})
+            if pa.get('recommendation'):
+                prompt += f"  정책 부합도: {pa['recommendation']}\n"
+        else:
+            prompt += "  (지역 트렌드 데이터 없음)\n"
+
+        # 투찰률 최적화 분석
+        bid_rate = structured_analysis.get('bid_rate_optimization', {})
+        prompt += """
+═══════════════════════════════════════
+▶ 7. 투찰률 최적화 분석 데이터
+═══════════════════════════════════════
+"""
+        if bid_rate and not bid_rate.get('error'):
+            rec = bid_rate.get('recommended_rate', {})
+            optimal = rec.get('optimal', '')
+            range_low = rec.get('range_low', '')
+            range_high = rec.get('range_high', '')
+            confidence = rec.get('confidence', 0)
+            source = rec.get('source', '')
+            if optimal:
+                prompt += f"  추천 투찰률: {optimal}%\n"
+            if range_low and range_high:
+                prompt += f"  투찰률 범위: {range_low}% ~ {range_high}%\n"
+            if confidence:
+                prompt += f"  신뢰도: {confidence * 100:.0f}%\n"
+            if source:
+                prompt += f"  데이터 출처: {source}\n"
+            # 기관별 데이터
+            by_org = bid_rate.get('by_org', {})
+            if by_org.get('org_avg_rate'):
+                prompt += f"  발주기관 평균 투찰률: {by_org['org_avg_rate']}% ({by_org.get('org_data_count', 0)}건)\n"
+            # 위험도 평가
+            risk = bid_rate.get('risk_assessment', {})
+            if risk.get('strategy'):
+                prompt += f"  전략 가이드: {risk['strategy']}\n"
+        else:
+            prompt += "  (투찰률 최적화 데이터 없음)\n"
+
+        # RFP 전년 대비 변화점
+        rfp_changes = structured_analysis.get('rfp_changes', {})
+        prompt += """
+═══════════════════════════════════════
+▶ 8. RFP 전년 대비 변화점
+═══════════════════════════════════════
+"""
+        if rfp_changes.get('key_changes'):
+            diff_summary = rfp_changes.get('diff_summary', {})
+            prompt += (
+                f"  유사도: {diff_summary.get('similarity_ratio', 0) * 100:.1f}%, "
+                f"변경 {diff_summary.get('changed_count', 0)}건\n"
+            )
+            for i, change in enumerate(rfp_changes['key_changes'][:10], 1):
+                change_type = change.get('type', '')
+                content = change.get('content', '')[:200]
+                type_label = {'added': '추가', 'removed': '삭제', 'modified': '수정'}.get(
+                    change_type, change_type
+                )
+                prompt += f"  {i}. [{type_label}] {content}\n"
+        elif rfp_changes.get('past_bid'):
+            past = rfp_changes['past_bid']
+            prompt += f"  유사 과거 입찰: {past.get('bid_title', '')} (유사도: {past.get('similarity', 0) * 100:.1f}%)\n"
+            if rfp_changes.get('note'):
+                prompt += f"  참고: {rfp_changes['note']}\n"
+        else:
+            note = rfp_changes.get('note', 'RFP 변화 데이터 없음')
+            prompt += f"  {note}\n"
+
+        # 과거 낙찰 이력
+        past_awards = structured_analysis.get('past_awards', [])
+        if past_awards:
+            prompt += """
+═══════════════════════════════════════
+▶ 9. 과거 유사 사업 낙찰 이력
+═══════════════════════════════════════
+"""
+            for i, award in enumerate(past_awards[:10], 1):
+                award_title = award.get('bid_title', '')
+                winner = award.get('winner_name', '')
+                amount = award.get('award_amount', '')
+                rate = award.get('bid_rate', '')
+                date = award.get('award_date', '')
+                prompt += f"  {i}. [{date}] {award_title}\n"
+                prompt += f"     - 낙찰업체: {winner}\n"
+                if amount:
+                    prompt += f"     - 낙찰금액: {amount}\n"
+                if rate:
+                    prompt += f"     - 투찰률: {rate}%\n"
+
+        prompt += """
+═══════════════════════════════════════
+
+위 모든 데이터(공고 정보 + 사전 분석 5종 + 과거 이력)를
+종합하여 고도화된 입찰 전략을 JSON 형식으로 분석해 주세요.
+
+## 특히 주의사항:
+1. 경쟁사 데이터가 있다면, 주요 경쟁사의 강점/약점을 구체적으로 분석하세요.
+2. 투찰률 최적화 데이터를 예산 분석에 반드시 반영하세요.
+3. RFP 변화점이 있다면, 이를 차별화 전략의 핵심으로 삼으세요.
+4. 발주기관 정책 방향을 제안서 기획의 배경/목적에 연계하세요.
+5. 지역 트렌드를 반영한 시의성 있는 전략을 수립하세요.
+"""
+        return prompt
+

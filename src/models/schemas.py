@@ -16,9 +16,17 @@ from typing import Optional
 # 헬퍼 함수
 # ──────────────────────────────────────────────
 
-def _parse_json_field(value):
+def _parse_json_field(value) -> list:
     """JSON 문자열 또는 리스트를 파이썬 리스트로 변환합니다.
-    비-JSON 문자열(마크다운 등)은 원본 문자열을 그대로 반환합니다."""
+
+    반환 타입은 항상 list입니다:
+    - None → []
+    - list → 그대로 반환
+    - dict → [dict]
+    - JSON 배열 문자열 → 파싱된 리스트
+    - JSON 객체 문자열 → [파싱된 dict]
+    - 비-JSON 문자열 → 쉼표/줄바꿈으로 분리한 리스트
+    """
     if value is None:
         return []
     if isinstance(value, list):
@@ -34,9 +42,16 @@ def _parse_json_field(value):
                 return parsed
             elif isinstance(parsed, dict):
                 return [parsed]
-            return value  # JSON 파싱 결과가 문자열이면 원본 반환
+            # JSON 파싱 결과가 문자열/숫자인 경우 리스트로 감싸기
+            return [str(parsed)]
         except (json.JSONDecodeError, TypeError):
-            return value  # 비-JSON 문자열(마크다운 등)은 원본 그대로 반환
+            # 비-JSON 문자열: 쉼표 또는 줄바꿈으로 분리
+            if ',' in value:
+                return [s.strip() for s in value.split(',') if s.strip()]
+            elif '\n' in value:
+                return [s.strip() for s in value.split('\n') if s.strip()]
+            # 단일 문자열은 리스트로 감싸기
+            return [value]
     return []
 
 
@@ -89,13 +104,13 @@ class BusinessProfile:
     biz_id: str                              # 사업자등록번호 (PK)
     company_name: str                        # 회사명
     ceo_name: Optional[str] = None           # 대표자명
-    business_types: list = field(default_factory=list)   # 업종 목록
-    licenses: list = field(default_factory=list)         # 보유 면허/자격
-    regions: list = field(default_factory=list)          # 활동 가능 지역
-    past_projects: list = field(default_factory=list)    # 과거 수행실적
+    business_types: list[str] = field(default_factory=list)   # 업종 목록
+    licenses: list[str] = field(default_factory=list)         # 보유 면허/자격
+    regions: list[str] = field(default_factory=list)          # 활동 가능 지역
+    past_projects: list[dict] = field(default_factory=list)   # 과거 수행실적
     annual_revenue: Optional[int] = None     # 연매출
     employee_count: Optional[int] = None     # 직원 수
-    keywords: list = field(default_factory=list)         # 관심 키워드
+    keywords: list[str] = field(default_factory=list)         # 관심 키워드
     min_budget: Optional[int] = None         # 최소 예산
     max_budget: Optional[int] = None         # 최대 예산
     created_at: Optional[datetime] = None    # 생성일시
@@ -104,9 +119,15 @@ class BusinessProfile:
     @classmethod
     def from_dict(cls, data: dict) -> "BusinessProfile":
         """딕셔너리에서 BusinessProfile 객체를 생성합니다."""
+        biz_id = data.get("biz_id", "")
+        if not biz_id or not str(biz_id).strip():
+            raise ValueError("biz_id는 필수 필드이며 빈 값일 수 없습니다.")
+        company_name = data.get("company_name", "")
+        if not company_name or not str(company_name).strip():
+            raise ValueError("company_name은 필수 필드이며 빈 값일 수 없습니다.")
         return cls(
-            biz_id=data.get("biz_id", ""),
-            company_name=data.get("company_name", ""),
+            biz_id=biz_id,
+            company_name=company_name,
             ceo_name=data.get("ceo_name"),
             business_types=_parse_json_field(data.get("business_types")),
             licenses=_parse_json_field(data.get("licenses")),
@@ -354,7 +375,7 @@ class AnalysisResult:
     match_score: Optional[float] = None      # 사업자 매칭 점수 (0~100)
     summary: Optional[str] = None            # AI 요약
     strategy_report: Optional[str] = None    # 전략 보고서
-    competitors: list = field(default_factory=list)  # 경쟁사 정보 (JSON)
+    competitors: list[dict] = field(default_factory=list)  # 경쟁사 정보 (JSON)
     analyzed_at: Optional[datetime] = None   # 분석일시
 
     @classmethod
@@ -456,7 +477,8 @@ CREATE TABLE IF NOT EXISTS award_infos (
     award_date      TEXT,
     budget          INTEGER,
     collected_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(bid_ntce_no, winner_name)
+    UNIQUE(bid_ntce_no, winner_name),
+    FOREIGN KEY (bid_ntce_no) REFERENCES bid_announcements(bid_ntce_no)
 );
 
 -- 뉴스기사 테이블
@@ -482,15 +504,19 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     strategy_report TEXT,
     competitors     TEXT,           -- JSON
     analyzed_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(bid_ntce_no, biz_id)
+    UNIQUE(bid_ntce_no, biz_id),
+    FOREIGN KEY (bid_ntce_no) REFERENCES bid_announcements(bid_ntce_no),
+    FOREIGN KEY (biz_id) REFERENCES business_profiles(biz_id)
 );
 
--- 인덱스: 자주 조회되는 컬럼에 대한 인덱스
+-- 인덱스: 자주 조회되는 컨럼에 대한 인덱스
 CREATE INDEX IF NOT EXISTS idx_bid_collected_at ON bid_announcements(collected_at);
 CREATE INDEX IF NOT EXISTS idx_bid_org_name ON bid_announcements(org_name);
 CREATE INDEX IF NOT EXISTS idx_award_bid_no ON award_infos(bid_ntce_no);
 CREATE INDEX IF NOT EXISTS idx_award_winner ON award_infos(winner_name);
+CREATE INDEX IF NOT EXISTS idx_award_bid_title ON award_infos(bid_title);
 CREATE INDEX IF NOT EXISTS idx_news_query ON news_articles(search_query);
+CREATE INDEX IF NOT EXISTS idx_news_title ON news_articles(title);
 CREATE INDEX IF NOT EXISTS idx_analysis_bid ON analysis_results(bid_ntce_no);
 CREATE INDEX IF NOT EXISTS idx_analysis_biz ON analysis_results(biz_id);
 """

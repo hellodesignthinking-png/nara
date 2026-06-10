@@ -11,6 +11,12 @@ window.addEventListener('unhandledrejection', e => {
     }
 });
 
+// ===== 상수 정의 =====
+const API_TIMEOUT_DEFAULT = 120000;
+const API_TIMEOUT_ANALYSIS = 180000;
+const PAGE_SIZE_DEFAULT = 50;
+const CHART_DAYS_DEFAULT = 30;
+
 // ──────────────────────────────────────────────
 // 0. 빈값 표시 유틸리티
 // ──────────────────────────────────────────────
@@ -33,6 +39,52 @@ function formatDaysLeft(dateStr) {
     if (days === 0) return '오늘 마감';
     if (days <= 3) return `D-${days} ⏰`;
     return `D-${days}`;
+}
+
+// ──────────────────────────────────────────────
+// 0-b. 테마 전환
+// ──────────────────────────────────────────────
+function getPreferredTheme() {
+    const stored = localStorage.getItem('nara_theme');
+    if (stored) return stored;
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    const btn = document.getElementById('theme-toggle-btn');
+    if (btn) {
+        btn.textContent = theme === 'light' ? '🌙 다크 모드' : '☀️ 라이트 모드';
+    }
+}
+
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('nara_theme', next);
+    applyTheme(next);
+}
+
+// 초기 테마 적용
+applyTheme(getPreferredTheme());
+
+// 시스템 테마 변경 감지
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+    if (!localStorage.getItem('nara_theme')) {
+        applyTheme(e.matches ? 'light' : 'dark');
+    }
+});
+
+// ──────────────────────────────────────────────
+// 0-c. 빈 상태 공통 렌더러
+// ──────────────────────────────────────────────
+function renderEmptyState(icon, title, message, actionHtml = '') {
+    return `<div class="empty-state-unified">
+        <div class="empty-icon">${icon}</div>
+        <h3>${title}</h3>
+        <p>${message}</p>
+        ${actionHtml}
+    </div>`;
 }
 
 // ──────────────────────────────────────────────
@@ -92,7 +144,7 @@ function getFavorites() {
             result: null,
             ...f,
         }));
-    } catch { return []; }
+    } catch (e) { console.warn('관심공고 로컬 데이터 파싱 실패', e); return []; }
 }
 
 function saveFavorites(favs) {
@@ -232,21 +284,12 @@ function loadFavorites() {
     });
 
     if (allFavs.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <span style="font-size:3rem">⭐</span>
-                <h3>관심공고가 없습니다</h3>
-                <p>공고 목록이나 대시보드에서<br>⭐ 버튼을 눌러 관심공고를 추가해보세요.</p>
-                <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:center">
-                    <button class="btn btn-primary" onclick="navigate('bids')">📝 공고 목록 보기</button>
-                    <button class="btn btn-outline" onclick="navigate('dashboard')">🔍 키워드 검색하기</button>
-                </div>
-            </div>`;
+        container.innerHTML = renderEmptyState('⭐', '관심공고가 없습니다', '공고 목록에서 ⭐ 버튼을 눌러 관심공고를 추가해보세요.', '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:center"><button class="btn btn-primary" onclick="navigate(\'bids\')">📝 공고 목록 보기</button><button class="btn btn-outline" onclick="navigate(\'dashboard\')">🔍 키워드 검색하기</button></div>');
         return;
     }
 
     if (favs.length === 0) {
-        container.innerHTML = `<div class="empty-state"><span style="font-size:2rem">💭</span><p>${searchQuery ? `'${escapeHTML(searchQuery)}' 검색 결과가 없습니다.` : `'${FAV_STATUSES[_favFilterStatus]?.label || _favFilterStatus}' 상태의 공고가 없습니다.`}</p></div>`;
+        container.innerHTML = renderEmptyState('💭', searchQuery ? '검색 결과 없음' : '해당 상태 없음', searchQuery ? `'${escapeHTML(searchQuery)}' 검색 결과가 없습니다.` : `'${FAV_STATUSES[_favFilterStatus]?.label || _favFilterStatus}' 상태의 공고가 없습니다.`);
         return;
     }
 
@@ -317,7 +360,7 @@ function loadFavorites() {
                             ${analysisBadge}
                         </div>
                         ${(() => {
-                            if (isExpired) return '<div class="fav-card-next-task" style="color:#ef4444">⏰ 마감된 공고입니다</div>';
+                            if (isExpired) return '<div class="fav-card-next-task" style="color:var(--danger)">⏰ 마감된 공고입니다</div>';
                             const cl = f.checklist || [];
                             if (cl.length === 0) return '';
                             const done = cl.filter(c => c.done).length;
@@ -328,7 +371,7 @@ function loadFavorites() {
                                 : `<div class="fav-card-next-task all-done">✅ 입찰 준비 완료!</div>`;
                             return `<div class="fav-progress-bar">
                                 <div class="fav-progress-track">
-                                    <div class="fav-progress-fill" style="width:${pct}%;background:${pct===100?'#10b981':'#6366f1'}"></div>
+                                    <div class="fav-progress-fill" style="width:${pct}%;background:${pct===100?'var(--success)':'var(--accent-indigo, #6366f1)'}"></div>
                                 </div>
                                 <span class="fav-progress-text">${done}/${cl.length}</span>
                             </div>
@@ -426,7 +469,7 @@ function openBidQuickView(bidData) {
         <div class="bqv-row"><span class="bqv-label">📅 마감일</span><span class="bqv-value">${daysLeftText}${closeDateRaw ? ' <small style="color:var(--text-muted)">(' + escapeHTML(closeDateRaw) + ')</small>' : ''}</span></div>
         <div class="bqv-row"><span class="bqv-label">📋 공고번호</span><span class="bqv-value" style="font-size:0.8rem">${escapeHTML(bidNo)}</span></div>
         ${bidData.region ? `<div class="bqv-row"><span class="bqv-label">📍 지역</span><span class="bqv-value">${escapeHTML(bidData.region)}</span></div>` : ''}
-        ${bidData.license_limit ? `<div class="bqv-row"><span class="bqv-label">⚠️ 참가자격</span><span class="bqv-value" style="color:#ef4444;font-weight:500">${escapeHTML(bidData.license_limit)}</span></div>` : ''}
+        ${bidData.license_limit ? `<div class="bqv-row"><span class="bqv-label">⚠️ 참가자격</span><span class="bqv-value" style="color:var(--danger);font-weight:500">${escapeHTML(bidData.license_limit)}</span></div>` : ''}
         ${bidData.bid_type ? `<div class="bqv-row"><span class="bqv-label">📑 입찰방식</span><span class="bqv-value">${escapeHTML(bidData.bid_type)}</span></div>` : ''}
         ${bidData.matched_keywords?.length ? `<div class="bqv-row"><span class="bqv-label">🏷️ 매칭키워드</span><span class="bqv-value">${bidData.matched_keywords.map(k => '<span class="kw-chip">' + escapeHTML(k) + '</span>').join(' ')}</span></div>` : ''}
         ${bidData.requirements?.length ? `<div class="bqv-row" style="flex-direction:column;align-items:flex-start;gap:4px"><span class="bqv-label">📜 참가요건</span><div style="font-size:0.82rem;color:var(--text-secondary)">${bidData.requirements.map(r => escapeHTML(r)).join(' · ')}</div></div>` : ''}
@@ -483,7 +526,7 @@ function openFavDetail(bidNo) {
                 <span style="font-size:0.78rem;color:var(--text-muted)">준비 ${clPct}%</span>
             </div>
             <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:6px 0 12px">
-                <div style="width:${clPct}%;height:100%;background:${clPct===100?'#10b981':'#6366f1'};border-radius:3px;transition:width 0.3s"></div>
+                <div style="width:${clPct}%;height:100%;background:${clPct===100?'var(--success)':'var(--accent-indigo, #6366f1)'};border-radius:3px;transition:width 0.3s"></div>
             </div>
         </div>
         <div class="bqv-row"><span class="bqv-label">🏢 발주기관</span><span class="bqv-value">${escapeHTML(fav.org_name || '-')}</span></div>
@@ -515,7 +558,7 @@ function openFavDetail(bidNo) {
     if (suggestEl && suggestions.length > 0) {
         suggestEl.innerHTML = `
             <div style="margin-top:8px;padding:8px 10px;background:rgba(99,102,241,0.05);border-radius:8px;border:1px dashed rgba(99,102,241,0.3)">
-                <div style="font-size:0.75rem;color:#6366f1;font-weight:600;margin-bottom:4px">💡 이전 협업사 추천</div>
+                <div style="font-size:0.75rem;color:var(--accent-indigo, #6366f1);font-weight:600;margin-bottom:4px">💡 이전 협업사 추천</div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">${suggestions.map(s => `
                     <button class="btn btn-sm btn-ghost" style="font-size:0.75rem;padding:2px 8px" onclick="addSuggestedPartner('${escapeHTML(s.name.replace(/'/g,''))}', '${escapeHTML(s.role.replace(/'/g,''))}', '${escapeHTML(s.contact.replace(/'/g,''))}')">
                         + ${escapeHTML(s.name)} (${s.count}회)
@@ -543,7 +586,7 @@ function openFavDetail(bidNo) {
         checklistEl.innerHTML = `
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                 <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
-                    <div style="width:${progress}%;height:100%;background:${progress===100?'#10b981':'#6366f1'};border-radius:3px;transition:width 0.3s"></div>
+                    <div style="width:${progress}%;height:100%;background:${progress===100?'var(--success)':'var(--accent-indigo, #6366f1)'};border-radius:3px;transition:width 0.3s"></div>
                 </div>
                 <span style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap">${doneCount}/${checklist.length} (${progress}%)</span>
             </div>
@@ -641,7 +684,7 @@ function renderFavPartners(partners) {
             <div style="display:flex;align-items:center;gap:6px;width:100%">
                 <span style="font-weight:600">🤝 ${escapeHTML(name)}</span>
                 ${role ? `<span style="font-size:0.72rem;background:var(--bg-hover);padding:1px 6px;border-radius:4px">${escapeHTML(role)}</span>` : ''}
-                ${share ? `<span style="font-size:0.72rem;color:#f59e0b;font-weight:600">${share}%</span>` : ''}
+                ${share ? `<span style="font-size:0.72rem;color:var(--warning);font-weight:600">${share}%</span>` : ''}
                 <button class="fav-partner-remove" onclick="removeFavPartner(${i})" style="margin-left:auto">×</button>
             </div>
             ${contact ? `<span style="font-size:0.72rem;color:var(--text-muted)">📞 ${escapeHTML(contact)}</span>` : ''}
@@ -745,7 +788,7 @@ function toggleChecklistItem(bidNo, index, checked) {
         const fill = progressBar.querySelector('div[style*="width"]');
         if (fill) {
             fill.style.width = pct + '%';
-            fill.style.background = pct === 100 ? '#10b981' : '#6366f1';
+            fill.style.background = pct === 100 ? 'var(--success)' : 'var(--accent-indigo, #6366f1)';
         }
         const pctText = progressBar.querySelector('.fav-progress-header span:last-child');
         if (pctText) pctText.textContent = `준비 ${pct}%`;
@@ -759,21 +802,22 @@ function toggleChecklistItem(bidNo, index, checked) {
         const barFill = checklistEl.querySelector('div[style*="width"]');
         if (barFill) {
             barFill.style.width = pct + '%';
-            barFill.style.background = pct === 100 ? '#10b981' : '#6366f1';
+            barFill.style.background = pct === 100 ? 'var(--success)' : 'var(--accent-indigo, #6366f1)';
         }
     }
 }
 
 function deleteFavsByStatus(status) {
     const label = status === 'all' ? '모든' : (FAV_STATUSES[status]?.label || status);
-    if (!confirm(`${label} 관심공고를 삭제하시겠습니까?`)) return;
-    if (status === 'all') {
-        saveFavorites([]);
-    } else {
-        saveFavorites(getFavorites().filter(f => f.status !== status));
-    }
-    loadFavorites();
-    updateFavBadge();
+    showConfirm('관심공고 삭제', `${label} 관심공고를 삭제하시겠습니까?`, () => {
+        if (status === 'all') {
+            saveFavorites([]);
+        } else {
+            saveFavorites(getFavorites().filter(f => f.status !== status));
+        }
+        loadFavorites();
+        updateFavBadge();
+    });
 }
 
 // 관심공고 요약 텍스트를 클립보드에 복사
@@ -799,14 +843,7 @@ function shareFavSummary() {
     navigator.clipboard.writeText(lines.join('\n')).then(() => {
         showToast('관심공고 요약이 클립보드에 복사되었습니다!', 'success');
     }).catch(() => {
-        // 폴백: textarea
-        const ta = document.createElement('textarea');
-        ta.value = lines.join('\n');
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        showToast('관심공고 요약이 클립보드에 복사되었습니다!', 'success');
+        showToast('클립보드 복사에 실패했습니다. 브라우저 권한을 확인해주세요.', 'error');
     });
 }
 
@@ -826,16 +863,17 @@ function exportFavoritesJSON() {
 
 function removeFavFromDetail() {
     if (!_favDetailBidNo) return;
-    if (!confirm('이 관심공고를 삭제하시겠습니까?')) return;
+    showConfirm('관심공고 삭제', '이 관심공고를 삭제하시겠습니까?', () => {
 
-    let favs = getFavorites();
-    favs = favs.filter(f => f.bid_ntce_no !== _favDetailBidNo);
-    saveFavorites(favs);
+        let favs = getFavorites();
+        favs = favs.filter(f => f.bid_ntce_no !== _favDetailBidNo);
+        saveFavorites(favs);
 
-    document.getElementById('fav-detail-overlay').classList.remove('active');
-    if (state.currentView === 'favorites') loadFavorites();
-    updateFavBadge();
-    showToast('관심공고가 삭제되었습니다.', 'info');
+        document.getElementById('fav-detail-overlay').classList.remove('active');
+        if (state.currentView === 'favorites') loadFavorites();
+        updateFavBadge();
+        showToast('관심공고가 삭제되었습니다.', 'info');
+    });
 }
 
 // 공고 목록에서 바로 관심공고 토글
@@ -994,6 +1032,20 @@ function navigate(view) {
         case 'analysis': loadAnalyses(); break;
         case 'settings': loadSettings(); break;
     }
+
+    // 접근성: 뷰 전환 시 포커스 이동
+    const viewId = `view-${view}`;
+    const activeSection = document.getElementById(viewId);
+    if (activeSection) {
+        const heading = activeSection.querySelector('h2, h3, [tabindex="-1"]');
+        if (heading) {
+            heading.setAttribute('tabindex', '-1');
+            heading.focus({ preventScroll: true });
+        }
+    }
+
+    // 뷰 전환 stagger 등장 애니메이션
+    animateViewCards(view);
 }
 
 
@@ -1001,18 +1053,20 @@ function navigate(view) {
 // 4. 대시보드
 // ──────────────────────────────────────────────
 async function loadDashboard() {
+    // 대시보드 통계를 한 번만 호출하고 결과를 재사용
+    let dashboardStats = null;
     try {
-        const stats = await api('GET', '/dashboard/stats');
-        if (stats) {
-            animateCounter('stat-businesses', stats.businesses || 0);
-            animateCounter('stat-bids', stats.bids || 0);
-            animateCounter('stat-analyses', stats.analyses || 0);
-            animateCounter('stat-urgent', stats.urgent_count || 0);
+        dashboardStats = await api('GET', '/dashboard/stats');
+        if (dashboardStats) {
+            animateCounter('stat-businesses', dashboardStats.businesses || 0);
+            animateCounter('stat-bids', dashboardStats.bids || 0);
+            animateCounter('stat-analyses', dashboardStats.analyses || 0);
+            animateCounter('stat-urgent', dashboardStats.urgent_count || 0);
 
             // 오늘 수집 건수 표시
             const bidsChangeEl = document.getElementById('stat-bids-change');
-            if (bidsChangeEl && stats.today_bids > 0) {
-                bidsChangeEl.textContent = `오늘 +${stats.today_bids}건`;
+            if (bidsChangeEl && dashboardStats.today_bids > 0) {
+                bidsChangeEl.textContent = `오늘 +${dashboardStats.today_bids}건`;
                 bidsChangeEl.style.opacity = '1';
             }
 
@@ -1020,7 +1074,7 @@ async function loadDashboard() {
             const footerText = document.querySelector('.footer-text');
             const footerDot = document.getElementById('footer-status-dot');
             if (footerText) footerText.textContent = '시스템 정상 가동';
-            if (footerDot) footerDot.style.background = '#10b981';
+            if (footerDot) footerDot.style.background = 'var(--success)';
         }
     } catch (err) {
         console.warn('대시보드 통계 로드 실패:', err.message);
@@ -1031,7 +1085,7 @@ async function loadDashboard() {
         const footerText = document.querySelector('.footer-text');
         const footerDot = document.getElementById('footer-status-dot');
         if (footerText) footerText.textContent = '연결 오류';
-        if (footerDot) footerDot.style.background = '#ef4444';
+        if (footerDot) footerDot.style.background = 'var(--danger)';
     }
 
     try {
@@ -1066,15 +1120,16 @@ async function loadDashboard() {
     // 관심공고 배지 갱신
     updateFavBadge();
 
-    // 동적 온보딩 가이드
+    // 동적 온보딩 가이드 (dashboardStats 재사용 — 이중 호출 방지)
     const guideEl = document.getElementById('hero-guide');
-    if (guideEl) {
+    // getFavorites()를 한 번만 호출하여 캐싱
+    const _cachedFavs = getFavorites();
+    if (guideEl && dashboardStats) {
         try {
-            const stats = await api('GET', '/dashboard/stats');
-            const hasBiz = (stats?.businesses || 0) > 0;
-            const hasBids = (stats?.bids || 0) > 0;
-            const hasAnalysis = (stats?.analyses || 0) > 0;
-            const hasFav = getFavorites().length > 0;
+            const hasBiz = (dashboardStats.businesses || 0) > 0;
+            const hasBids = (dashboardStats.bids || 0) > 0;
+            const hasAnalysis = (dashboardStats.analyses || 0) > 0;
+            const hasFav = _cachedFavs.length > 0;
 
             const steps = [
                 { done: hasBiz, label: '사업자 등록', action: "navigate('businesses')", icon: '🏢' },
@@ -1085,7 +1140,7 @@ async function loadDashboard() {
 
             const allDone = steps.every(s => s.done);
             if (allDone) {
-                guideEl.innerHTML = '<span style="color:#10b981">✅ 모든 설정이 완료되었습니다! 공고를 검토하고 입찰에 참여하세요.</span>';
+                guideEl.innerHTML = '<span style="color:var(--success)">✅ 모든 설정이 완료되었습니다! 공고를 검토하고 입찰에 참여하세요.</span>';
             } else {
                 guideEl.innerHTML = steps.map((s, i) => `
                     <span class="onboard-step ${s.done ? 'done' : ''}" onclick="${s.action}" style="cursor:${s.done ? 'default' : 'pointer'}">
@@ -1094,11 +1149,11 @@ async function loadDashboard() {
                     ${i < steps.length - 1 ? '<span class="onboard-arrow">→</span>' : ''}
                 `).join('');
             }
-        } catch(e) { /* 가이드 업데이트 실패 시 정적 텍스트 유지 */ }
+        } catch(e) { console.warn('가이드 업데이트 실패', e); }
     }
 
     // 대시보드 관심공고 요약
-    const favs = getFavorites();
+    const favs = _cachedFavs;
     const activeFavs = favs.filter(f => f.status !== 'completed' && f.status !== 'abandoned');
     const urgentFavs = activeFavs.filter(f => {
         const d = getDaysLeft(f.bid_close_dt);
@@ -1126,7 +1181,7 @@ async function loadDashboard() {
         favSummary.innerHTML = `
             <span>⭐ 관심공고 ${favs.length}건</span>
             <span>📋 진행중 ${activeFavs.length}건</span>
-            ${urgentFavs.length > 0 ? `<span style="color:#ef4444;font-weight:600;cursor:pointer" onclick="navigate('favorites')">⏰ 마감임박 ${urgentFavs.length}건</span>` : ''}
+            ${urgentFavs.length > 0 ? `<span style="color:var(--danger);font-weight:600;cursor:pointer" onclick="navigate('favorites')">⏰ 마감임박 ${urgentFavs.length}건</span>` : ''}
         `;
         if (nextAction) {
             const d = getDaysLeft(nextAction.fav.bid_close_dt);
@@ -1138,8 +1193,8 @@ async function loadDashboard() {
                 heroContent.appendChild(nextEl);
             }
             nextEl.innerHTML = `
-                <div style="font-weight:600;color:#6366f1;margin-bottom:2px">🎯 다음 할 일</div>
-                <div>${escapeHTML(nextAction.fav.title?.substring(0, 35) || nextAction.fav.bid_ntce_no)}${nextAction.fav.title?.length > 35 ? '...' : ''} <span style="color:#ef4444;font-weight:500">(D-${d})</span></div>
+                <div style="font-weight:600;color:var(--accent-indigo, #6366f1);margin-bottom:2px">🎯 다음 할 일</div>
+                <div>${escapeHTML(nextAction.fav.title?.substring(0, 35) || nextAction.fav.bid_ntce_no)}${nextAction.fav.title?.length > 35 ? '...' : ''} <span style="color:var(--danger);font-weight:500">(D-${d})</span></div>
                 <div style="color:var(--text-muted)">→ ${escapeHTML(nextAction.item.label)}</div>
             `;
             nextEl.onclick = () => openFavDetail(nextAction.fav.bid_ntce_no);
@@ -1178,7 +1233,7 @@ async function loadDashboard() {
         if (nextActions.length > 0) {
             pipelineUrgent.innerHTML = nextActions.map(f => {
                 const dBadge = f.daysLeft !== null && f.daysLeft <= 3
-                    ? `<span style="color:#ef4444;font-weight:600">D-${f.daysLeft}</span>`
+                    ? `<span style="color:var(--danger);font-weight:600">D-${f.daysLeft}</span>`
                     : f.daysLeft !== null ? `D-${f.daysLeft}` : '';
                 return `<div class="pipeline-action-item" onclick="openFavDetail('${escapeHTML(f.bid_ntce_no)}')">
                     <span class="pipeline-action-title">${escapeHTML((f.title || '').substring(0, 30))}${(f.title||'').length > 30 ? '...' : ''}</span>
@@ -1290,10 +1345,7 @@ function renderBids(bids) {
         tbody.innerHTML = `
             <tr class="empty-row">
                 <td colspan="7">
-                    <div class="empty-state-inline">
-                        <span>📝</span>
-                        <p>키워드와 매칭되는 공고가 없습니다. 공고를 수집해주세요.</p>
-                    </div>
+                    ${renderEmptyState('📝', '매칭 공고 없음', '키워드와 매칭되는 공고가 없습니다. 공고를 수집해주세요.')}
                 </td>
             </tr>`;
         const paginationEl = document.getElementById('bids-pagination');
@@ -1328,12 +1380,12 @@ function renderBids(bids) {
         <tr data-bid-no="${escapeHTML(bid.bid_ntce_no)}" class="bid-row-toggle ${isFav ? 'bid-row-fav' : ''} ${badgeClass === 'closed' ? 'bid-row-expired' : ''}" style="cursor:pointer">
             <td class="td-title" title="${escapeHTML(bid.title || '')}">
                 ${isFav ? '<span style="color:#f59e0b">⭐</span> ' : ''}${escapeHTML(bid.title || '-')}
-                <div class="td-keywords">${kwChips}${bid.license_limit ? `<span class="kw-chip" style="background:rgba(239,68,68,0.1);color:#ef4444;border-color:rgba(239,68,68,0.3)">⚠ ${escapeHTML(bid.license_limit.substring(0, 20))}</span>` : ''}</div>
+                <div class="td-keywords">${kwChips}${bid.license_limit ? `<span class="kw-chip" style="background:rgba(239,68,68,0.1);color:var(--danger);border-color:rgba(239,68,68,0.3)">⚠ ${escapeHTML(bid.license_limit.substring(0, 20))}</span>` : ''}</div>
             </td>
             <td>${escapeHTML(bid.org_name || '-')}</td>
             <td class="td-budget">${displayBudget(bid.budget)}</td>
             <td><span class="bid-status-badge ${badgeClass}">${daysLeftText}</span></td>
-            <td><span class="relevance-badge ${parseInt(score) >= 80 ? 'score-high' : parseInt(score) >= 50 ? 'score-mid' : 'score-low'}">${score}점</span></td>
+            <td><span class="relevance-badge ${parseInt(score) >= 70 ? 'score-high' : parseInt(score) >= 40 ? 'score-mid' : 'score-low'}">${score}점</span></td>
             <td style="text-align:center">
                 <button class="btn-mini-fav ${isFav ? 'active' : ''}"
                     onclick="event.stopPropagation(); toggleFavFromBid('${escapeHTML(bid.bid_ntce_no)}', this.closest('tr').querySelector('.td-title').textContent.trim(), '${escapeHTML((bid.org_name||'').replace(/'/g,''))}', '${bid.budget||''}', '${escapeHTML(bid.bid_close_dt||'')}', this); this.textContent=this.classList.contains('active')?'⭐':'☆'; this.closest('tr').classList.toggle('bid-row-fav')"
@@ -1384,7 +1436,7 @@ function renderBids(bids) {
                         </div>` : ''}
                         ${bid.license_limit ? `<div class="bid-detail-item" style="grid-column:1/-1">
                             <span class="bid-detail-label">⚠️ 참가자격</span>
-                            <span class="bid-detail-value" style="color:#ef4444;font-weight:500">${escapeHTML(bid.license_limit)}</span>
+                            <span class="bid-detail-value" style="color:var(--danger);font-weight:500">${escapeHTML(bid.license_limit)}</span>
                         </div>` : ''}
                         ${kwChips ? `<div class="bid-detail-item" style="grid-column:1/-1"><span class="bid-detail-label">매칭 키워드</span><div class="bid-detail-value">${kwChips}</div></div>` : ''}
                     </div>
@@ -1461,6 +1513,12 @@ function sortBids(field) {
     const activeHeader = document.getElementById(`th-${field}`);
     if (activeHeader) {
         activeHeader.querySelector('.sort-arrow').textContent = _sortDir === 'asc' ? '↑' : '↓';
+    }
+
+    // 접근성: aria-sort 업데이트
+    document.querySelectorAll('.sortable[aria-sort]').forEach(el => el.setAttribute('aria-sort', 'none'));
+    if (activeHeader) {
+        activeHeader.setAttribute('aria-sort', _sortDir === 'asc' ? 'ascending' : 'descending');
     }
 
     // 정렬 실행
@@ -1561,7 +1619,7 @@ function filterBids() {
                 renderBids(filtered);
                 updateCount(filtered.length, serverBids.length);
             }
-        } catch (_) { /* 서버 검색 실패 시 로컬 결과 유지 */ }
+        } catch (e) { console.warn('서버 검색 실패, 로컬 결과 유지', e); }
     }, 300);
 }
 
@@ -1604,7 +1662,8 @@ async function collectByKeyword() {
             const bids = await api('GET', `/bids?keyword=${encodeURIComponent(keyword)}&limit=200`);
             state.bids = bids || [];
             renderBids(state.bids);
-        } catch (_) {
+        } catch (e) {
+            console.warn('수집 후 목록 갱신 실패', e);
             loadBids();
         }
 
@@ -1737,7 +1796,7 @@ function renderBusinesses(businesses) {
                     </span>
                 </div>` : ''}
                 ${(biz.employee_count || biz.annual_revenue) ? `
-                <div class="biz-meta" style="padding:8px 0;color:var(--text-muted);font-size:0.85rem;border-top:1px solid var(--border-color);margin-top:8px">
+                <div class="biz-meta" style="padding:8px 0;color:var(--text-muted);font-size:0.85rem;border-top:1px solid var(--border);margin-top:8px">
                     ${biz.employee_count ? `👥 직원 ${biz.employee_count}명` : ''}${biz.employee_count && biz.annual_revenue ? ' | ' : ''}${biz.annual_revenue ? `💰 연매출 ${formatBudget(biz.annual_revenue)}` : ''}
                 </div>` : ''}
             </div>
@@ -1920,9 +1979,9 @@ function renderAnalyses(analyses) {
     if (!analyses || analyses.length === 0) {
         list.innerHTML = `
             <div class="empty-state" id="analysis-empty">
-                <div class="empty-icon">🔬</div>
-                <h3>분석 결과가 없습니다</h3>
-                <p>추천 사업 TOP 10에서 🎯 버튼을 눌러 전략 분석을 실행하거나,<br>아래 버튼으로 전체 분석을 시작하세요.</p>
+                <div class="empty-icon empty-float-icon">🔬</div>
+                <h3 class="empty-title">분석 결과가 없습니다</h3>
+                <p class="empty-desc">추천 사업 TOP 10에서 🎯 버튼을 눌러 전략 분석을 실행하거나,<br>아래 버튼으로 전체 분석을 시작하세요</p>
                 <div style="display:flex;gap:12px;justify-content:center;margin-top:16px">
                     <button class="btn btn-gradient" onclick="runAnalysis()">
                         <span class="btn-icon">🚀</span> 전체 분석 시작
@@ -1966,6 +2025,7 @@ function renderAnalyses(analyses) {
         const bizName = a.company_name || a.biz_id || '-';
         const date = a.analyzed_at ? formatDate(a.analyzed_at) : '-';
         const isFallback = strategy?.metadata?.analysis_engine === 'fallback';
+        const engineName = isFallback ? '🔧 기본분석' : `🤖 ${strategy?.metadata?.llm_engine || 'AI'}`;
         const naraUrl = getNaraDetailUrl(a.bid_ntce_no);
 
         const bidSummary = strategy?.bid_summary || a.summary || '요약 정보가 없습니다.';
@@ -1993,6 +2053,7 @@ function renderAnalyses(analyses) {
                         🏢 ${escapeHTML(orgName)} · 💰 ${budget} · 📅 ${date}
                         ${bizName !== '-' ? ` · 🤝 ${escapeHTML(bizName)}` : ''}
                     </div>
+                    <span class="analysis-engine-badge">${engineName}</span>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center">
                     <button class="btn btn-sm ${isFavorite(a.bid_ntce_no) ? 'btn-fav active' : 'btn-fav'}"
@@ -2013,7 +2074,7 @@ function renderAnalyses(analyses) {
                     <div class="score-bar-item">
                         <div class="score-bar-label">
                             <span>관련도 점수</span>
-                            <span class="score-bar-value">${relevance.toFixed(1)}</span>
+                            <span class="score-bar-value">${relevance.toFixed(1)} <small style="color:var(--text-muted);font-size:0.7rem">${getScoreGrade(relevance)}</small></span>
                         </div>
                         <div class="score-bar-track">
                             <div class="score-bar-fill ${getScoreClass(relevance)}" style="width: ${Math.min(relevance, 100)}%"></div>
@@ -2022,7 +2083,7 @@ function renderAnalyses(analyses) {
                     <div class="score-bar-item">
                         <div class="score-bar-label">
                             <span>매칭 점수</span>
-                            <span class="score-bar-value">${matchScore.toFixed(1)}</span>
+                            <span class="score-bar-value">${matchScore.toFixed(1)} <small style="color:var(--text-muted);font-size:0.7rem">${getScoreGrade(matchScore)}</small></span>
                         </div>
                         <div class="score-bar-track">
                             <div class="score-bar-fill ${getScoreClass(matchScore)}" style="width: ${Math.min(matchScore, 100)}%"></div>
@@ -2288,7 +2349,8 @@ function formatDate(dateStr) {
             year: 'numeric', month: '2-digit', day: '2-digit',
             timeZone: 'Asia/Seoul'
         });
-    } catch {
+    } catch (e) {
+        console.warn('날짜 포맷 실패', e);
         return dateStr;
     }
 }
@@ -2315,7 +2377,8 @@ function tryParseJSON(str) {
     if (typeof str === 'object') return str;
     try {
         return JSON.parse(str);
-    } catch {
+    } catch (e) {
+        console.warn('JSON 파싱 실패', e);
         return null;
     }
 }
@@ -2327,7 +2390,8 @@ function parseJsonField(value) {
         try {
             const parsed = JSON.parse(value);
             return Array.isArray(parsed) ? parsed : [];
-        } catch {
+        } catch (e) {
+            console.warn('JSON 필드 파싱 실패', e);
             return [];
         }
     }
@@ -2349,7 +2413,12 @@ function animateCounter(elementId, target) {
         const eased = 1 - Math.pow(1 - progress, 3);
         const current = Math.round(start + (target - start) * eased);
         el.textContent = current.toLocaleString();
-        if (progress < 1) requestAnimationFrame(update);
+        if (progress < 1) {
+            requestAnimationFrame(update);
+        } else {
+            // 카운트 완료 시 그라디언트 효과 클래스 추가
+            el.classList.add('counter-done');
+        }
     }
 
     requestAnimationFrame(update);
@@ -2372,8 +2441,18 @@ function renderSkeletonRows(rows, cols) {
 // 14. 모바일 사이드바 토글
 // ──────────────────────────────────────────────
 function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('open');
-    document.getElementById('sidebar-overlay').classList.toggle('active');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('active');
+
+    // 접근성: aria-expanded 업데이트
+    const toggleBtn = document.getElementById('mobile-menu-btn');
+    const isOpen = sidebar.classList.contains('open');
+    if (toggleBtn) {
+        toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        toggleBtn.setAttribute('aria-label', isOpen ? '메뉴 닫기' : '메뉴 열기');
+    }
 }
 
 
@@ -2381,7 +2460,7 @@ function toggleSidebar() {
 // 15. 키보드 단축키
 // ──────────────────────────────────────────────
 document.addEventListener('keydown', (e) => {
-    // ESC로 모달 닫기
+    // ESC로 모달 닫기 (통합 핸들러)
     if (e.key === 'Escape') {
         // 관심공고 상세 모달
         const favDetail = document.getElementById('fav-detail-overlay');
@@ -2396,11 +2475,23 @@ document.addEventListener('keydown', (e) => {
         // 전략 모달
         const stratModal = document.getElementById('strategy-modal-overlay');
         if (stratModal && stratModal.classList.contains('active')) {
-            closeStrategyModal();
-        } else if (document.getElementById('confirm-overlay').classList.contains('active')) {
-            closeConfirm();
-        } else if (document.getElementById('modal-overlay').classList.contains('active')) {
-            closeModal();
+            closeStrategyModal(); return;
+        }
+        // 확인 모달
+        if (document.getElementById('confirm-overlay').classList.contains('active')) {
+            closeConfirm(); return;
+        }
+        // 사업자 등록/수정 모달
+        if (document.getElementById('modal-overlay').classList.contains('active')) {
+            closeModal(); return;
+        }
+    }
+    // Ctrl+S / Cmd+S: 관심공고 모달 저장
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        const favOverlay = document.getElementById('fav-detail-overlay');
+        if (favOverlay?.classList.contains('active')) {
+            e.preventDefault();
+            saveFavDetail();
         }
     }
 });
@@ -2415,6 +2506,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initTagInput('licenses', 'licenses');
     initTagInput('regions', 'regions');
     initTagInput('keywords', 'keywords');
+
+    // IntersectionObserver 기반 스크롤 등장 애니메이션 초기화
+    initScrollAnimations();
 
     // 설정 페이지 키워드 인풀 초기화
     initSettingsTagInput('settings-keyword-input', 'keywords');
@@ -2434,35 +2528,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── 키보드 단축키 ──
-    document.addEventListener('keydown', (e) => {
-        // ESC: 모달 닫기
-        if (e.key === 'Escape') {
-            const favOverlay = document.getElementById('fav-detail-overlay');
-            if (favOverlay?.classList.contains('active')) {
-                favOverlay.classList.remove('active');
-                return;
-            }
-            const bqvOverlay = document.getElementById('bid-quick-view');
-            if (bqvOverlay?.classList.contains('active')) {
-                bqvOverlay.classList.remove('active');
-                return;
-            }
-            const strategyModal = document.getElementById('strategy-modal');
-            if (strategyModal?.classList.contains('active')) {
-                strategyModal.classList.remove('active');
-                return;
-            }
-        }
-        // Ctrl+S / Cmd+S: 관심공고 모달 저장
-        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-            const favOverlay = document.getElementById('fav-detail-overlay');
-            if (favOverlay?.classList.contains('active')) {
-                e.preventDefault();
-                saveFavDetail();
-            }
-        }
-    });
+    // ── 키보드 단축키: 상단 통합 핸들러(L2383)로 이동됨 ──
 
     // ── 이벤트 위임: XSS 방지를 위해 inline onclick 대신 data 속성 + 이벤트 리스너 사용 ──
     document.body.addEventListener('click', (e) => {
@@ -2566,10 +2632,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // 사이드바 메뉴 키보드 접근성
+    document.querySelectorAll('#sidebar .sidebar-menu li[tabindex]').forEach(li => {
+        li.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                li.click();
+            }
+        });
+    });
+
     // 대시보드 로드
     navigate('dashboard');
 
     // 테이블 가로 스크롤 감지 (모바일 스크롤 힌트)
+    const _resizeObservers = [];
     document.querySelectorAll('.table-container').forEach(tc => {
         const checkScroll = () => {
             const table = tc.querySelector('table');
@@ -2580,7 +2657,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         checkScroll();
-        new ResizeObserver(checkScroll).observe(tc);
+        const ro = new ResizeObserver(checkScroll);
+        ro.observe(tc);
+        _resizeObservers.push(ro);
+    });
+
+    // ResizeObserver 정리: 페이지 언로드 시 해제
+    window.addEventListener('beforeunload', () => {
+        _resizeObservers.forEach(ro => ro.disconnect());
     });
 });
 
@@ -2800,7 +2884,7 @@ function renderDailyTrend(totalData, keywordTrends) {
     if (!container) return;
 
     if (!totalData.length) {
-        container.innerHTML = '<p style="color:#64748b;text-align:center;padding:60px 0">공고를 수집하면 차트가 표시됩니다</p>';
+        container.innerHTML = renderEmptyState('📈', '데이터 없음', '공고를 수집하면 차트가 표시됩니다');
         return;
     }
 
@@ -2910,14 +2994,14 @@ function renderDailyTrend(totalData, keywordTrends) {
         if (lastVal > 0) {
             const lx = toX(values.length - 1);
             const ly = toY(lastVal);
-            svgContent += `<circle cx="${lx}" cy="${ly}" r="3.5" fill="${color}" stroke="#0f172a" stroke-width="1.5"/>`;
+            svgContent += `<circle cx="${lx}" cy="${ly}" r="3.5" fill="${color}" stroke="var(--text-primary, #0f172a)" stroke-width="1.5"/>`;
         }
     });
 
     // 전체 공고 포인트 (각 날짜)
     totalValues.forEach((v, i) => {
         if (v > 0) {
-            svgContent += `<circle cx="${toX(i)}" cy="${toY(v)}" r="3" fill="#6366f1" stroke="#0f172a" stroke-width="1.5" opacity="0.8">
+            svgContent += `<circle cx="${toX(i)}" cy="${toY(v)}" r="3" fill="var(--accent-indigo, #6366f1)" stroke="var(--text-primary, #0f172a)" stroke-width="1.5" opacity="0.8">
                 <title>${allDates[i].slice(5)}: ${v}건</title>
             </circle>`;
         }
@@ -2927,7 +3011,7 @@ function renderDailyTrend(totalData, keywordTrends) {
 
     // 범례
     let legendHtml = `<div class="chart-legend">
-        <span class="legend-item"><span class="legend-dot" style="background:#6366f1"></span> 전체 공고</span>`;
+        <span class="legend-item"><span class="legend-dot" style="background:var(--accent-indigo, #6366f1)"></span> 전체 공고</span>`;
     kwNames.forEach((kw, idx) => {
         const hasData = kwDataSets[idx]?.some(v => v > 0);
         if (!hasData) return;
@@ -2944,7 +3028,7 @@ function renderOrgBudget(data) {
     const container = document.getElementById('org-budget-chart');
     if (!container) return;
     if (!data.length) {
-        container.innerHTML = '<p style="color:#64748b;text-align:center;padding:60px 0">공고를 수집하면 차트가 표시됩니다</p>';
+        container.innerHTML = renderEmptyState('🏢', '데이터 없음', '공고를 수집하면 차트가 표시됩니다');
         return;
     }
     const maxBudget = Math.max(...data.map(d => d.total_budget), 1);
@@ -2966,15 +3050,12 @@ function renderOrgBudget(data) {
 // 19. PDF 내보내기
 // ──────────────────────────────────────────────
 function exportPDF() {
-    // 분석 결과 뷰를 인쇄 모드로 출력
-    const analysisView = document.getElementById('view-analysis');
-    if (analysisView) {
-        analysisView.classList.add('print-active');
-    }
+    document.body.classList.add('print-active');
+    window.addEventListener('afterprint', function onAfterPrint() {
+        document.body.classList.remove('print-active');
+        window.removeEventListener('afterprint', onAfterPrint);
+    });
     window.print();
-    if (analysisView) {
-        analysisView.classList.remove('print-active');
-    }
 }
 
 
@@ -3466,8 +3547,11 @@ async function openStrategyModal(bidNo) {
 
     } catch (e) {
         title.textContent = '⚠️ 분석 실패';
-        const errorEl = document.getElementById('stab-summary-content');
-        if (errorEl) errorEl.innerHTML = `<p style="color:#f85149">${escapeHTML(e.message)}</p>`;
+        const errorMsg = `<p style="color:var(--danger);padding:20px;text-align:center">⚠️ ${escapeHTML(e.message || '분석에 실패했습니다')}<br><button class="btn btn-sm btn-primary" onclick="openStrategyModal('${bidNo}')" style="margin-top:12px">🔄 다시 시도</button></p>`;
+        ['stab-summary-content', 'stab-past-content', 'stab-competitor-content', 'stab-strategy-content', 'stab-proposal-content'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.innerHTML.includes('⏳')) el.innerHTML = errorMsg;
+        });
     } finally {
         // 로딩 플래그 해제
         overlay.dataset.loading = 'false';
@@ -3539,9 +3623,13 @@ async function loadRfpDiff(bidNo) {
 }
 
 function switchStrategyTab(tabEl, contentId) {
-    document.querySelectorAll('.strategy-modal-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.strategy-modal-tab').forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+    });
     document.querySelectorAll('.strategy-panel').forEach(p => p.classList.remove('active'));
     tabEl.classList.add('active');
+    tabEl.setAttribute('aria-selected', 'true');
     const content = document.getElementById(contentId);
     if (content) content.classList.add('active');
 }
@@ -3738,7 +3826,7 @@ async function loadKeywordSearchPanel() {
             container.innerHTML = `
                 <div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0">
                     ⚙️ 설정에서 관심 키워드를 등록하면 여기에 표시됩니다.
-                    <a onclick="navigate('settings')" style="color:#6366f1;cursor:pointer;font-weight:600">설정 바로가기 →</a>
+                    <a onclick="navigate('settings')" style="color:var(--accent-indigo, #6366f1);cursor:pointer;font-weight:600">설정 바로가기 →</a>
                 </div>`;
             return;
         }
@@ -4031,4 +4119,431 @@ function renderKeywordDist(keywordTrends) {
             </div>
         </div>`;
     }).join('');
+
+    // 차트 바 진입 애니메이션 적용
+    animateChartBars();
+}
+
+
+// ──────────────────────────────────────────────
+// 27. 제안서 고도화 전략 분석
+// ──────────────────────────────────────────────
+
+let _proposalProgressTimer = null;
+
+async function analyzeProposalStrategy() {
+    // 현재 열려 있는 전략 모달에서 공고번호 가져오기
+    const strategyOverlay = document.getElementById('strategy-modal-overlay');
+    const bidNo = strategyOverlay?.dataset?.bidNo;
+    if (!bidNo) {
+        showToast('분석할 공고를 먼저 선택해주세요.', 'warning');
+        return;
+    }
+
+    // 제안서 전략 모달 열기
+    const overlay = document.getElementById('proposal-strategy-overlay');
+    const loading = document.getElementById('proposal-loading');
+    const content = document.getElementById('proposal-strategy-content');
+    const subtitle = document.getElementById('proposal-strategy-subtitle');
+
+    overlay.classList.add('active');
+    loading.style.display = 'flex';
+    content.innerHTML = '';
+    subtitle.textContent = `공고번호: ${bidNo} — 데이터 기반 심층 분석 중...`;
+
+    // 프로그레스바 애니메이션
+    _startProposalProgress();
+
+    try {
+        const requestBody = { bid_ntce_no: bidNo };
+        // 사업자 ID 자동 포함 (다중 사업자 환경 지원)
+        if (state.businesses && state.businesses.length > 0) {
+            requestBody.biz_id = state.businesses[0].biz_id;
+        }
+        const response = await fetch('/api/analyze-proposal-strategy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || '분석에 실패했습니다.');
+        }
+
+        const data = await response.json();
+        content.innerHTML = renderProposalStrategy(data);
+        subtitle.textContent = `${escapeHTML(data.bid_title || '')} — 분석 완료`;
+        showToast('📊 제안서 고도화 전략 분석 완료!', 'success');
+    } catch (error) {
+        content.innerHTML = `
+            <div class="proposal-error">
+                <div class="pe-icon">⚠️</div>
+                <h3>분석 중 오류가 발생했습니다</h3>
+                <p>${escapeHTML(error.message)}</p>
+                <button class="btn btn-primary btn-sm" onclick="analyzeProposalStrategy()">🔄 다시 시도</button>
+            </div>`;
+        showToast('제안서 전략 분석 실패: ' + error.message, 'error');
+    } finally {
+        loading.style.display = 'none';
+        _stopProposalProgress();
+    }
+}
+
+function _startProposalProgress() {
+    const bar = document.getElementById('pl-progress-bar');
+    if (!bar) return;
+    let progress = 0;
+    bar.style.width = '0%';
+    _proposalProgressTimer = setInterval(() => {
+        progress += Math.random() * 3 + 0.5;
+        if (progress > 92) progress = 92;
+        bar.style.width = `${progress}%`;
+    }, 1000);
+}
+
+function _stopProposalProgress() {
+    if (_proposalProgressTimer) {
+        clearInterval(_proposalProgressTimer);
+        _proposalProgressTimer = null;
+    }
+    const bar = document.getElementById('pl-progress-bar');
+    if (bar) bar.style.width = '100%';
+}
+
+function renderProposalStrategy(data) {
+    const s = data.strategy || data;
+    let html = '<div class="ps-report">';
+
+    // ─── 헤더 ───
+    html += `
+        <div class="ps-header">
+            <div class="ps-header-main">
+                <h3>${escapeHTML(data.bid_title || '')}</h3>
+                <div class="ps-header-meta">
+                    <span class="ps-meta-tag">🏛️ ${escapeHTML(data.org_name || '')}</span>
+                    <span class="ps-meta-tag">🏢 ${escapeHTML(data.matched_business || '자동 선택')}</span>
+                    ${data.match_score ? `<span class="ps-meta-tag ps-score">🎯 매칭 ${data.match_score}점</span>` : ''}
+                </div>
+            </div>
+        </div>`;
+
+    // ─── 1. 경쟁사 분석 ───
+    if (s.competitor_intelligence) {
+        const ci = s.competitor_intelligence;
+        html += `
+            <div class="ps-section ps-competitor">
+                <div class="ps-section-header">
+                    <span class="ps-section-icon">🏢</span>
+                    <h4>경쟁사 수주 패턴 분석</h4>
+                </div>
+                <div class="ps-section-body">`;
+
+        if (ci.top_competitors && ci.top_competitors.length > 0) {
+            html += '<div class="ps-competitor-grid">';
+            ci.top_competitors.slice(0, 6).forEach((c, i) => {
+                const rankClass = i < 3 ? 'top' : '';
+                html += `
+                    <div class="ps-competitor-card ${rankClass}">
+                        <div class="ps-cc-rank">#${i + 1}</div>
+                        <div class="ps-cc-name">${escapeHTML(c.company_name || c.name || '')}</div>
+                        <div class="ps-cc-stats">
+                            <div class="ps-cc-stat">
+                                <span class="ps-cc-num">${c.win_count || 0}</span>
+                                <span class="ps-cc-label">수주</span>
+                            </div>
+                            <div class="ps-cc-stat">
+                                <span class="ps-cc-num">${c.avg_bid_rate ? c.avg_bid_rate.toFixed(1) : '-'}%</span>
+                                <span class="ps-cc-label">투찰률</span>
+                            </div>
+                            ${c.total_amount ? `
+                            <div class="ps-cc-stat">
+                                <span class="ps-cc-num">${displayBudget(c.total_amount)}</span>
+                                <span class="ps-cc-label">총액</span>
+                            </div>` : ''}
+                        </div>
+                    </div>`;
+            });
+            html += '</div>';
+        }
+
+        if (ci.market_concentration) {
+            html += `<div class="ps-insight-box">
+                <strong>📊 시장 집중도:</strong> ${formatStrategyText(
+                    typeof ci.market_concentration === 'string'
+                    ? ci.market_concentration
+                    : JSON.stringify(ci.market_concentration)
+                )}
+            </div>`;
+        }
+
+        if (ci.our_competitive_position) {
+            html += `<div class="ps-callout ps-callout-primary">
+                <strong>💡 우리 포지셔닝:</strong> ${formatStrategyText(ci.our_competitive_position)}
+            </div>`;
+        }
+        html += '</div></div>';
+    }
+
+    // ─── 2. 발주기관 정책 ───
+    if (s.org_policy_analysis) {
+        const op = s.org_policy_analysis;
+        html += `
+            <div class="ps-section ps-org">
+                <div class="ps-section-header">
+                    <span class="ps-section-icon">🏛️</span>
+                    <h4>발주기관 정책 방향</h4>
+                </div>
+                <div class="ps-section-body">`;
+
+        if (op.policy_direction) {
+            html += `<div class="ps-content">${formatStrategyText(op.policy_direction)}</div>`;
+        }
+
+        if (op.recurring_project_insight) {
+            html += `<div class="ps-callout ps-callout-success">
+                <strong>🔄 반복 사업 인사이트:</strong> ${formatStrategyText(op.recurring_project_insight)}
+            </div>`;
+        }
+
+        if (op.preferred_vendors_insight) {
+            html += `<div class="ps-callout ps-callout-warning">
+                <strong>⭐ 선호 업체 패턴:</strong> ${formatStrategyText(op.preferred_vendors_insight)}
+            </div>`;
+        }
+        html += '</div></div>';
+    }
+
+    // ─── 3. 지역 트렌드 ───
+    if (s.regional_analysis) {
+        const ra = s.regional_analysis;
+        html += `
+            <div class="ps-section ps-regional">
+                <div class="ps-section-header">
+                    <span class="ps-section-icon">🗺️</span>
+                    <h4>지역 트렌드 분석</h4>
+                </div>
+                <div class="ps-section-body">`;
+
+        if (ra.market_trend) html += `<div class="ps-content">${formatStrategyText(ra.market_trend)}</div>`;
+        if (ra.policy_alignment) {
+            html += `<div class="ps-callout ps-callout-primary">
+                <strong>📋 정책 부합도:</strong> ${formatStrategyText(ra.policy_alignment)}
+            </div>`;
+        }
+        if (ra.local_preference) html += `<div class="ps-content">${formatStrategyText(ra.local_preference)}</div>`;
+        html += '</div></div>';
+    }
+
+    // ─── 4. 투찰률 가이드 ───
+    if (s.bid_rate_recommendation) {
+        const br = s.bid_rate_recommendation;
+        html += `
+            <div class="ps-section ps-bidrate">
+                <div class="ps-section-header">
+                    <span class="ps-section-icon">💰</span>
+                    <h4>투찰률 최적화 가이드</h4>
+                </div>
+                <div class="ps-section-body">
+                    <div class="ps-bidrate-display">`;
+
+        if (br.optimal_rate) {
+            html += `
+                <div class="ps-bidrate-main">
+                    <div class="ps-bidrate-value">${br.optimal_rate}<span class="ps-bidrate-unit">%</span></div>
+                    <div class="ps-bidrate-label">최적 투찰률</div>
+                </div>`;
+        }
+        if (br.range) {
+            html += `
+                <div class="ps-bidrate-range">
+                    <div class="ps-bidrate-bar">
+                        <div class="ps-bidrate-fill" style="left:${Math.max(0, (br.range[0]-75)/25*100)}%;width:${(br.range[1]-br.range[0])/25*100}%"></div>
+                        <div class="ps-bidrate-marker" style="left:${(br.optimal_rate-75)/25*100}%"></div>
+                    </div>
+                    <div class="ps-bidrate-ticks">
+                        <span>75%</span>
+                        <span>${br.range[0]}%</span>
+                        <span style="font-weight:700;color:var(--success-color)">${br.optimal_rate}%</span>
+                        <span>${br.range[1]}%</span>
+                        <span>100%</span>
+                    </div>
+                </div>`;
+        }
+        html += '</div>';
+        if (br.rationale) html += `<div class="ps-content" style="margin-top:12px">${formatStrategyText(br.rationale)}</div>`;
+        if (br.confidence) html += `<div class="ps-meta-small">신뢰도: ${(br.confidence * 100).toFixed(0)}%</div>`;
+        html += '</div></div>';
+    }
+
+    // ─── 5. RFP 변화 분석 ───
+    if (s.rfp_change_analysis) {
+        const rfp = s.rfp_change_analysis;
+        html += `
+            <div class="ps-section ps-rfp">
+                <div class="ps-section-header">
+                    <span class="ps-section-icon">📋</span>
+                    <h4>RFP 전년 대비 변화점</h4>
+                </div>
+                <div class="ps-section-body">`;
+
+        if (rfp.vs_last_year) html += `<div class="ps-content">${formatStrategyText(rfp.vs_last_year)}</div>`;
+        if (rfp.new_requirements && rfp.new_requirements.length > 0) {
+            html += '<div class="ps-list-box"><strong>🆕 신규 요구사항:</strong><ul>';
+            rfp.new_requirements.forEach(r => { html += `<li>${escapeHTML(typeof r === 'string' ? r : JSON.stringify(r))}</li>`; });
+            html += '</ul></div>';
+        }
+        html += '</div></div>';
+    }
+
+    // ─── 6. 제안서 강화 포인트 ───
+    if (s.proposal_enhancement) {
+        const pe = s.proposal_enhancement;
+        html += `
+            <div class="ps-section ps-enhance">
+                <div class="ps-section-header">
+                    <span class="ps-section-icon">🚀</span>
+                    <h4>제안서 강화 포인트</h4>
+                </div>
+                <div class="ps-section-body">`;
+
+        if (pe.title_strategy) html += `<div class="ps-enhance-item"><strong>📌 제목 전략:</strong> ${formatStrategyText(pe.title_strategy)}</div>`;
+        if (pe.tech_differentiation) {
+            const tech = typeof pe.tech_differentiation === 'string' ? pe.tech_differentiation : (pe.tech_differentiation || []).join(', ');
+            html += `<div class="ps-enhance-item"><strong>⚙️ 기술 차별화:</strong> ${formatStrategyText(tech)}</div>`;
+        }
+        if (pe.team_composition_advice) html += `<div class="ps-enhance-item"><strong>👥 팀 구성:</strong> ${formatStrategyText(pe.team_composition_advice)}</div>`;
+        if (pe.pricing_strategy) html += `<div class="ps-enhance-item"><strong>💲 가격 전략:</strong> ${formatStrategyText(pe.pricing_strategy)}</div>`;
+        html += '</div></div>';
+    }
+
+    // ─── 7. AI 종합 전략 ───
+    if (s.llm_strategy_report) {
+        html += `
+            <div class="ps-section ps-llm">
+                <div class="ps-section-header">
+                    <span class="ps-section-icon">🤖</span>
+                    <h4>AI 종합 전략 보고서</h4>
+                </div>
+                <div class="ps-section-body">
+                    <div class="ps-llm-content">${formatStrategyText(
+                        typeof s.llm_strategy_report === 'string'
+                        ? s.llm_strategy_report
+                        : JSON.stringify(s.llm_strategy_report, null, 2)
+                    )}</div>
+                </div>
+            </div>`;
+    }
+
+    // ─── 8. 액션 플랜 ───
+    if (s.action_plan && s.action_plan.length > 0) {
+        html += `
+            <div class="ps-section ps-action">
+                <div class="ps-section-header">
+                    <span class="ps-section-icon">✅</span>
+                    <h4>액션 플랜</h4>
+                </div>
+                <div class="ps-section-body">
+                    <div class="ps-action-list">`;
+
+        s.action_plan.forEach((item, i) => {
+            const task = typeof item === 'string' ? item : (item.task || JSON.stringify(item));
+            const detail = typeof item === 'object' ? item.detail : '';
+            const deadline = typeof item === 'object' ? item.deadline : '';
+            const priority = typeof item === 'object' ? item.priority : '';
+            html += `
+                <div class="ps-action-item ${priority ? 'ps-priority-' + priority : ''}">
+                    <div class="ps-action-num">${i + 1}</div>
+                    <div class="ps-action-body">
+                        <div class="ps-action-task">${escapeHTML(task)}</div>
+                        ${detail ? `<div class="ps-action-detail">${escapeHTML(detail)}</div>` : ''}
+                        ${deadline ? `<div class="ps-action-deadline">⏰ ${escapeHTML(deadline)}</div>` : ''}
+                    </div>
+                </div>`;
+        });
+        html += '</div></div></div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function closeProposalStrategyModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    const overlay = document.getElementById('proposal-strategy-overlay');
+    if (overlay) overlay.classList.remove('active');
+    _stopProposalProgress();
+}
+
+
+// ──────────────────────────────────────────────
+// 29. 프리미엄 UI 인터랙션 애니메이션
+// ──────────────────────────────────────────────
+
+/**
+ * 뷰 전환 시 내부 카드/패널에 stagger 등장 애니메이션 적용
+ * navigate() 함수 끝에서 호출됨
+ */
+function animateViewCards(viewId) {
+    const view = document.getElementById('view-' + viewId);
+    if (!view) return;
+    const cards = view.querySelectorAll('.stat-card, .briefing-item, .card, .analysis-card, .fav-pipeline-card, .keyword-search-panel, .briefing-panel');
+    cards.forEach((card, i) => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(12px)';
+        setTimeout(() => {
+            card.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+        }, i * 60);
+    });
+}
+
+/**
+ * 차트 바(.kw-dist-bar, .hbar-fill)에 width:0 → 목표값 트랜지션 효과
+ * renderKeywordDist() 함수 끝에서 호출됨
+ */
+function animateChartBars() {
+    document.querySelectorAll('.kw-dist-bar, .hbar-fill').forEach(bar => {
+        const targetWidth = bar.style.width;
+        bar.style.width = '0';
+        bar.style.transition = 'width 0.8s cubic-bezier(0.4,0,0.2,1)';
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                bar.style.width = targetWidth;
+            });
+        });
+    });
+}
+
+/**
+ * IntersectionObserver 기반 — 카드가 뷰포트에 진입할 때 등장 애니메이션
+ * DOMContentLoaded에서 호출됨
+ */
+function initScrollAnimations() {
+    if (!('IntersectionObserver' in window)) return;
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('in-view');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.stat-card, .briefing-panel, .keyword-search-panel, .fav-pipeline-summary').forEach(el => {
+        el.classList.add('observe-reveal');
+        observer.observe(el);
+    });
+}
+
+
+// ──────────────────────────────────────────────
+// 점수 등급 헬퍼 함수
+// ──────────────────────────────────────────────
+function getScoreGrade(score) {
+    if (score >= 80) return '우수';
+    if (score >= 60) return '양호';
+    if (score >= 40) return '보통';
+    return '부족';
 }

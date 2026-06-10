@@ -24,7 +24,7 @@ def format_budget(budget: Any, unit: str = "만원") -> str:
     Returns:
         포맷된 예산 문자열 (예: "5.0억원", "3,000만원")
     """
-    if not budget and budget != 0:
+    if budget is None:
         return "미공개"
 
     if isinstance(budget, str):

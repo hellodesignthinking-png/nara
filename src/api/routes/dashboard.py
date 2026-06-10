@@ -265,6 +265,21 @@ async def get_daily_top10(db=Depends(get_db)):
         biz_dicts = [_biz_profile_to_matcher_dict(bp) for bp in biz_profiles] if biz_profiles else []
 
         results = []
+
+        # 기존 분석 결과 배치 조회
+        all_bid_nos = [sb.get("bid_ntce_no", "") for sb in scored_bids if sb.get("bid_ntce_no")]
+        analysis_cache = {}
+        if all_bid_nos:
+            placeholders = ",".join("?" for _ in all_bid_nos)
+            conn = db.get_connection()
+            cursor = conn.execute(
+                f"SELECT bid_ntce_no, summary FROM analysis_results WHERE bid_ntce_no IN ({placeholders}) ORDER BY analyzed_at DESC",
+                all_bid_nos,
+            )
+            for row in cursor.fetchall():
+                bno = row["bid_ntce_no"]
+                if bno not in analysis_cache:
+                    analysis_cache[bno] = row["summary"] or ""
         biz_matcher = BizMatcher() if biz_dicts else None
 
         for scored_bid in scored_bids:
@@ -311,19 +326,8 @@ async def get_daily_top10(db=Depends(get_db)):
             # 마감까지 남은 일수
             days_left = _calc_days_left(close_dt)
 
-            # 기존 분석 결과 확인
-            existing_analysis = None
-            try:
-                conn = db.get_connection()
-                cursor = conn.execute(
-                    "SELECT summary, strategy_report FROM analysis_results WHERE bid_ntce_no = ? ORDER BY analyzed_at DESC LIMIT 1",
-                    (bid_no,),
-                )
-                row = cursor.fetchone()
-                if row:
-                    existing_analysis = row["summary"] or ""
-            except Exception:
-                pass
+            # 기존 분석 결과 확인 (배치 캐시 사용)
+            existing_analysis = analysis_cache.get(bid_no, "")
 
             results.append({
                 "bid_ntce_no": bid_no,
@@ -400,25 +404,33 @@ async def get_curated_bids(
         bid_dicts = [_bid_to_matcher_dict(b) for b in recent_bids]
         scored_bids = keyword_filter.filter_bids(bid_dicts, min_score=0)
 
-        # ── 각 공고의 분석 상태 확인 ──
+        # ── 각 공고의 분석 상태 확인 (배치 쿼리) ──
         conn = db.get_connection()
-        curated_list = []
 
+        # 모든 대상 공고번호를 한 번에 조회
+        bid_nos = [sb.get("bid_ntce_no", "") for sb in scored_bids if sb.get("bid_ntce_no")]
+        analysis_status_map = {}
+        if bid_nos:
+            placeholders = ",".join("?" for _ in bid_nos)
+            cursor = conn.execute(
+                f"SELECT bid_ntce_no, strategy_report FROM analysis_results WHERE bid_ntce_no IN ({placeholders}) ORDER BY analyzed_at DESC",
+                bid_nos,
+            )
+            for row in cursor.fetchall():
+                bno = row["bid_ntce_no"]
+                if bno not in analysis_status_map:  # 최신 결과만
+                    analysis_status_map[bno] = row["strategy_report"]
+
+        curated_list = []
         for scored_bid in scored_bids:
             bid_no = scored_bid.get("bid_ntce_no", "")
             if not bid_no:
                 continue
 
-            # 분석 결과 존재 여부 확인
-            cursor = conn.execute(
-                "SELECT strategy_report FROM analysis_results WHERE bid_ntce_no = ? ORDER BY analyzed_at DESC LIMIT 1",
-                (bid_no,),
-            )
-            row = cursor.fetchone()
-
-            if row and row["strategy_report"]:
+            strategy_report = analysis_status_map.get(bid_no)
+            if strategy_report:
                 status = "strategy_ready"
-            elif row:
+            elif bid_no in analysis_status_map:
                 status = "analyzed"
             else:
                 status = "new"

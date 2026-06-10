@@ -10,6 +10,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# 최대 처리 페이지 수
+MAX_PAGES = 100
+
 
 def extract_text(file_path: str) -> str:
     """
@@ -41,11 +44,17 @@ def extract_text(file_path: str) -> str:
     try:
         pages_text = []
 
-        with pdfplumber.open(str(file_path)) as pdf:
+        with pdfplumber.open(file_path) as pdf:
             total_pages = len(pdf.pages)
-            logger.info("PDF 파일 열기 완료: %s (총 %d페이지)", file_path.name, total_pages)
+            pages_to_process = min(total_pages, MAX_PAGES)
+            if total_pages > MAX_PAGES:
+                logger.warning(
+                    "PDF 페이지 수(%d)가 최대 처리 수(%d)를 초과합니다. 앞부분만 처리합니다.",
+                    total_pages, MAX_PAGES,
+                )
+            logger.info("PDF 파일 열기 완료: %s (총 %d페이지, 처리: %d페이지)", file_path.name, total_pages, pages_to_process)
 
-            for i, page in enumerate(pdf.pages):
+            for i, page in enumerate(pdf.pages[:pages_to_process]):
                 try:
                     text = page.extract_text()
                     if text:

@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from src.api.utils import biz_profile_to_matcher_dict, bid_to_matcher_dict
+from src.utils.converters import biz_profile_to_matcher_dict, bid_to_matcher_dict
 from src.config import load_config
 from src.models.database import DatabaseManager
 from src.models.schemas import (
@@ -26,17 +26,6 @@ logger = logging.getLogger(__name__)
 # DB 헬퍼
 # ──────────────────────────────────────────────
 
-
-def _get_db() -> DatabaseManager:
-    """
-    DatabaseManager 인스턴스를 생성하고 연결합니다.
-
-    레거시 호출부 호환을 위해 유지됩니다.
-    새 엔드포인트에서는 get_db()를 Depends로 사용하세요.
-    """
-    db = DatabaseManager()
-    db.connect()
-    return db
 
 
 def get_db():

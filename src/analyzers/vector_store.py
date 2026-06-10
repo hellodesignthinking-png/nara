@@ -68,6 +68,13 @@ class VectorStore:
                          None이면 기본 경로(data/vectordb) 사용.
         """
         self._persist_dir = Path(persist_dir) if persist_dir else DEFAULT_PERSIST_DIR
+
+        # 경로 검증: '..' 포함 여부 확인 (디렉터리 트래버설 방지)
+        if '..' in str(self._persist_dir):
+            raise ValueError(
+                f"persist_dir에 '..' 경로가 포함될 수 없습니다: {self._persist_dir}"
+            )
+
         self._client = None
         self._collection = None
 
@@ -200,15 +207,27 @@ class VectorStore:
         metadatas: list[dict],
         ids: list[str],
     ) -> int:
-        """ChromaDB에 문서를 upsert합니다."""
+        """ChromaDB에 문서를 upsert합니다. 500건씩 배치 처리합니다."""
         try:
-            self._collection.upsert(
-                documents=texts,
-                metadatas=metadatas,
-                ids=ids,
-            )
-            logger.info("ChromaDB에 문서 %d건 추가(upsert) 완료", len(texts))
-            return len(texts)
+            batch_size = 500
+            total_added = 0
+            for i in range(0, len(texts), batch_size):
+                batch_texts = texts[i:i + batch_size]
+                batch_metas = metadatas[i:i + batch_size]
+                batch_ids = ids[i:i + batch_size]
+                self._collection.upsert(
+                    documents=batch_texts,
+                    metadatas=batch_metas,
+                    ids=batch_ids,
+                )
+                total_added += len(batch_texts)
+                if len(texts) > batch_size:
+                    logger.debug(
+                        "ChromaDB 배치 처리 중: %d/%d건 완료",
+                        min(i + batch_size, len(texts)), len(texts)
+                    )
+            logger.info("ChromaDB에 문서 %d건 추가(upsert) 완료", total_added)
+            return total_added
         except Exception as e:
             logger.error("ChromaDB 문서 추가 실패: %s", e)
             return 0
@@ -535,3 +554,70 @@ class VectorStore:
             count = len(self._fallback_docs)
             self._fallback_docs.clear()
             logger.info("폴백 저장소 초기화 완료: %d건 삭제", count)
+
+    def delete_by_ids(self, ids: list[str]) -> int:
+        """
+        ID 목록으로 문서를 삭제합니다.
+
+        Args:
+            ids: 삭제할 문서 ID 리스트
+
+        Returns:
+            삭제된 문서 수
+        """
+        if not ids:
+            return 0
+
+        if self.is_available:
+            try:
+                self._collection.delete(ids=ids)
+                logger.info("ChromaDB에서 문서 %d건 삭제 완료", len(ids))
+                return len(ids)
+            except Exception as e:
+                logger.error("ChromaDB 문서 삭제 실패: %s", e)
+                return 0
+        else:
+            ids_set = set(ids)
+            before_count = len(self._fallback_docs)
+            self._fallback_docs = [
+                doc for doc in self._fallback_docs
+                if doc["id"] not in ids_set
+            ]
+            deleted = before_count - len(self._fallback_docs)
+            logger.info("폴백 저장소에서 문서 %d건 삭제 완료", deleted)
+            return deleted
+
+    @staticmethod
+    def _chunk_text(text: str, max_chars: int = 2000, overlap: int = 200) -> list[str]:
+        """
+        긴 텍스트를 지정된 크기로 분할합니다.
+
+        각 청크는 max_chars 이하이며, overlap 문자만큼
+        이전 청크와 겹칩됩니다.
+
+        Args:
+            text: 분할할 텍스트
+            max_chars: 청크당 최대 문자 수 (기본 2000)
+            overlap: 청크 간 겹침 문자 수 (기본 200)
+
+        Returns:
+            텍스트 청크 리스트
+        """
+        if not text:
+            return []
+        if len(text) <= max_chars:
+            return [text]
+
+        chunks = []
+        start = 0
+        while start < len(text):
+            end = start + max_chars
+            chunk = text[start:end]
+            chunks.append(chunk)
+            # 다음 청크 시작점: 겹침을 고려하여 이동
+            start = end - overlap
+            # 마지막 청크가 너무 작으면 종료
+            if start + overlap >= len(text):
+                break
+
+        return chunks

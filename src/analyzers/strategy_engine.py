@@ -22,14 +22,16 @@ class StrategyEngine:
     실무에 바로 활용할 수 있는 전략 보고서를 생성합니다.
     """
 
-    def __init__(self, llm_analyzer: LLMAnalyzer):
+    def __init__(self, llm_analyzer: LLMAnalyzer, config=None):
         """
         전략 엔진을 초기화합니다.
 
         Args:
             llm_analyzer: LLM 분석기 인스턴스
+            config: 설정 객체 (api_delay 속성 지원, 선택)
         """
         self.llm = llm_analyzer
+        self.api_delay = getattr(config, 'api_delay', 1.0) if config else 1.0
 
     def generate_strategy(
         self,
@@ -72,7 +74,7 @@ class StrategyEngine:
         past_awards = past_awards or []
         news_articles = news_articles or []
 
-        logger.info(f"전략 분석 시작: {bid.get('title', bid.get('bidNtceNm', ''))}")
+        logger.info("전략 분석 시작: %s", bid.get('title', bid.get('bidNtceNm', '')))
 
         # ─── 1단계: LLM 컨텍스트 분석 ───
         llm_result = self.llm.analyze_with_context(
@@ -151,7 +153,7 @@ class StrategyEngine:
             bid_id = bid.get('id', bid.get('bidNtceNo', str(i)))
             rfp_text = rfp_texts.get(bid_id, '')
 
-            logger.info(f"[{i}/{len(bids)}] 전략 분석 중: {bid.get('title', bid.get('bidNtceNm', ''))}")
+            logger.info("[%d/%d] 전략 분석 중: %s", i, len(bids), bid.get('title', bid.get('bidNtceNm', '')))
 
             try:
                 strategy = self.generate_strategy(
@@ -163,12 +165,12 @@ class StrategyEngine:
                 )
                 results.append(strategy)
             except Exception as e:
-                logger.error(f"전략 분석 실패 (공고 {bid_id}): {e}")
+                logger.error("전략 분석 실패 (공고 %s): %s", bid_id, e, exc_info=True)
                 results.append(self._create_error_report(bid, str(e)))
 
             # API rate limit 방어
             if i < len(bids):
-                time.sleep(1)
+                time.sleep(self.api_delay)
 
         return results
 
@@ -228,6 +230,8 @@ class StrategyEngine:
     @staticmethod
     def _create_error_report(bid: dict, error_msg: str) -> dict:
         """분석 실패 시 에러 보고서를 생성합니다."""
+        # 내부 오류 메시지를 사용자에게 노출하지 않도록 필터링
+        user_facing_msg = '자동 분석 중 오류가 발생했습니다. 공고 원문을 직접 확인해 주세요.'
         return {
             'bid_info': {
                 'title': bid.get('title', bid.get('bidNtceNm', '')),
@@ -241,14 +245,14 @@ class StrategyEngine:
             'bid_summary': '분석 실패',
             'competitor_analysis': '',
             'differentiation_strategy': '',
-            'risk_factors': f'분석 중 오류 발생: {error_msg}',
+            'risk_factors': user_facing_msg,
             'budget_analysis': '',
             'action_items': ['공고 원문을 직접 확인하세요.'],
-            'overall_recommendation': f'자동 분석 실패. 오류: {error_msg}',
+            'overall_recommendation': user_facing_msg,
             'metadata': {
                 'analyzed_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 'data_sources': {},
                 'analysis_engine': 'error',
-                'error': error_msg,
+                'error': error_msg,  # 내부 로그용으로만 보존
             },
         }

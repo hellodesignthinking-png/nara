@@ -8,6 +8,7 @@ context manager를 통해 안전한 연결 관리를 지원합니다.
 import json
 import logging
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -49,6 +50,7 @@ class DatabaseManager:
         """
         self.db_path = db_path or DB_PATH
         self.conn: Optional[sqlite3.Connection] = None
+        self._local = threading.local()
         logger.debug("DatabaseManager 초기화: %s", self.db_path)
 
     def __enter__(self) -> "DatabaseManager":
@@ -92,32 +94,136 @@ class DatabaseManager:
                 self.conn = None
 
     def _ensure_connection(self) -> sqlite3.Connection:
-        """연결이 활성 상태인지 확인하고 반환합니다."""
-        if self.conn is None:
-            self.connect()
+        """연결이 활성 상태인지 확인하고 반환합니다. SELECT 1로 연결 상태를 검증합니다."""
+        if self.conn is not None:
+            try:
+                # 연결이 살아있는지 ping 확인
+                self.conn.execute("SELECT 1")
+                return self.conn
+            except sqlite3.Error:
+                logger.warning("데이터베이스 연결이 끊어져 있습니다. 재연결합니다.")
+                self.conn = None
+        self.connect()
         return self.conn
+
+    def _get_thread_connection(self) -> sqlite3.Connection:
+        """현재 쓰레드의 연결을 반환합니다. 쓰레드 안전한 연결 관리를 제공합니다."""
+        conn = getattr(self._local, 'conn', None)
+        if conn is not None:
+            try:
+                conn.execute("SELECT 1")
+                return conn
+            except sqlite3.Error:
+                self._local.conn = None
+
+        # 새 연결 생성
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        self._local.conn = conn
+        return conn
 
     def get_connection(self) -> sqlite3.Connection:
         """내부 SQLite 연결 객체를 반환합니다."""
         return self._ensure_connection()
 
     # ──────────────────────────────────────────
-    # 테이블 초기화
+    # 스키마 버전 관리 & 마이그레이션
     # ──────────────────────────────────────────
+
+    # 마이그레이션 레지스트리: 버전 → (설명, SQL 목록)
+    # 새 마이그레이션 추가 시 _MIGRATIONS에 항목을 추가하면 init_db()가 자동으로 적용합니다.
+    _MIGRATIONS: dict[int, tuple[str, list[str]]] = {
+        1: (
+            "초기 스키마 생성",
+            [CREATE_TABLES_SQL],
+        ),
+        # 향후 마이그레이션 예시:
+        # 2: (
+        #     "bid_announcements에 is_favorite 컬럼 추가",
+        #     ["ALTER TABLE bid_announcements ADD COLUMN is_favorite INTEGER DEFAULT 0;"],
+        # ),
+    }
+
+    CURRENT_SCHEMA_VERSION: int = max(_MIGRATIONS.keys())
+
+    def _get_schema_version(self, conn: sqlite3.Connection) -> int:
+        """현재 DB의 스키마 버전을 조회합니다. 테이블이 없으면 0을 반환합니다."""
+        try:
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+            )
+            if cursor.fetchone() is None:
+                return 0
+            cursor = conn.execute(
+                "SELECT MAX(version) FROM schema_version"
+            )
+            row = cursor.fetchone()
+            return row[0] if row and row[0] else 0
+        except sqlite3.Error:
+            return 0
+
+    def _set_schema_version(self, conn: sqlite3.Connection, version: int, description: str) -> None:
+        """스키마 버전을 기록합니다."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version     INTEGER PRIMARY KEY,
+                description TEXT,
+                applied_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_version (version, description) VALUES (?, ?)",
+            (version, description),
+        )
 
     def init_db(self) -> None:
         """
-        데이터베이스 테이블을 생성합니다.
+        데이터베이스를 초기화하고 필요한 마이그레이션을 순차 적용합니다.
 
-        이미 존재하는 테이블은 건너뜁니다 (CREATE TABLE IF NOT EXISTS).
+        버전 기반 마이그레이션 시스템:
+        - 최초 실행 시 v1 스키마를 생성합니다.
+        - 이미 v1이 적용된 DB에서는 스킵합니다.
+        - 향후 스키마 변경 시 _MIGRATIONS에 새 버전을 추가하면
+          자동으로 순차 적용됩니다.
         """
         conn = self._ensure_connection()
+        current_version = self._get_schema_version(conn)
+
+        if current_version >= self.CURRENT_SCHEMA_VERSION:
+            logger.debug(
+                "데이터베이스 스키마 최신 상태 (v%d)", current_version
+            )
+            return
+
         try:
-            conn.executescript(CREATE_TABLES_SQL)
-            conn.commit()
-            logger.info("데이터베이스 테이블 초기화 완료")
+            for version in sorted(self._MIGRATIONS.keys()):
+                if version <= current_version:
+                    continue
+
+                description, sql_list = self._MIGRATIONS[version]
+                logger.info(
+                    "마이그레이션 v%d 적용 중: %s", version, description
+                )
+
+                for sql in sql_list:
+                    conn.executescript(sql)
+
+                self._set_schema_version(conn, version, description)
+                conn.commit()
+                logger.info("마이그레이션 v%d 적용 완료", version)
+
+            logger.info(
+                "데이터베이스 스키마 업데이트 완료 (v%d → v%d)",
+                current_version, self.CURRENT_SCHEMA_VERSION,
+            )
         except sqlite3.Error as e:
-            logger.error("테이블 초기화 실패: %s", e)
+            conn.rollback()
+            logger.error("마이그레이션 실패 (v%d): %s", version, e)
             raise
 
     # ──────────────────────────────────────────
@@ -303,33 +409,42 @@ class DatabaseManager:
             새로 저장된 건수
         """
         conn = self._ensure_connection()
-        saved_count = 0
 
         try:
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            data_list = []
             for bid in bids:
                 data = bid.to_dict()
-                data["collected_at"] = data.get("collected_at") or datetime.now().strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-                cursor = conn.execute(
-                    """
-                    INSERT OR IGNORE INTO bid_announcements
-                        (bid_ntce_no, bid_ntce_ord, title, org_name, demand_org_name,
-                         budget, bid_begin_dt, bid_close_dt, category, bid_method,
-                         contract_method, region, license_limit, rfp_url, rfp_text,
-                         collected_at)
-                    VALUES
-                        (:bid_ntce_no, :bid_ntce_ord, :title, :org_name, :demand_org_name,
-                         :budget, :bid_begin_dt, :bid_close_dt, :category, :bid_method,
-                         :contract_method, :region, :license_limit, :rfp_url, :rfp_text,
-                         :collected_at)
-                    """,
-                    data,
-                )
-                if cursor.rowcount > 0:
-                    saved_count += 1
+                data["collected_at"] = data.get("collected_at") or now
+                data_list.append(data)
 
+            # 저장 전 건수를 기록하여 실제 저장 건수 계산
+            before_count = conn.execute(
+                "SELECT COUNT(*) FROM bid_announcements"
+            ).fetchone()[0]
+
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO bid_announcements
+                    (bid_ntce_no, bid_ntce_ord, title, org_name, demand_org_name,
+                     budget, bid_begin_dt, bid_close_dt, category, bid_method,
+                     contract_method, region, license_limit, rfp_url, rfp_text,
+                     collected_at)
+                VALUES
+                    (:bid_ntce_no, :bid_ntce_ord, :title, :org_name, :demand_org_name,
+                     :budget, :bid_begin_dt, :bid_close_dt, :category, :bid_method,
+                     :contract_method, :region, :license_limit, :rfp_url, :rfp_text,
+                     :collected_at)
+                """,
+                data_list,
+            )
             conn.commit()
+
+            after_count = conn.execute(
+                "SELECT COUNT(*) FROM bid_announcements"
+            ).fetchone()[0]
+            saved_count = after_count - before_count
+
             logger.info("입찰공고 저장 완료: %d건 (전체 %d건 중)", saved_count, len(bids))
             return saved_count
 
@@ -460,30 +575,39 @@ class DatabaseManager:
             새로 저장된 건수
         """
         conn = self._ensure_connection()
-        saved_count = 0
 
         try:
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            data_list = []
             for award in awards:
                 data = award.to_dict()
-                data["collected_at"] = data.get("collected_at") or datetime.now().strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-                # id 필드는 AUTOINCREMENT이므로 제외
-                cursor = conn.execute(
-                    """
-                    INSERT OR IGNORE INTO award_infos
-                        (bid_ntce_no, bid_title, winner_name, award_amount,
-                         bid_rate, award_date, budget, collected_at)
-                    VALUES
-                        (:bid_ntce_no, :bid_title, :winner_name, :award_amount,
-                         :bid_rate, :award_date, :budget, :collected_at)
-                    """,
-                    data,
-                )
-                if cursor.rowcount > 0:
-                    saved_count += 1
+                data["collected_at"] = data.get("collected_at") or now
+                data_list.append(data)
 
+            before_count = conn.execute(
+                "SELECT COUNT(*) FROM award_infos"
+            ).fetchone()[0]
+
+            # id 필드는 AUTOINCREMENT이므로 dict에서 제외하지 않아도
+            # INSERT 컬럼 목록에 포함되지 않으므로 안전
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO award_infos
+                    (bid_ntce_no, bid_title, winner_name, award_amount,
+                     bid_rate, award_date, budget, collected_at)
+                VALUES
+                    (:bid_ntce_no, :bid_title, :winner_name, :award_amount,
+                     :bid_rate, :award_date, :budget, :collected_at)
+                """,
+                data_list,
+            )
             conn.commit()
+
+            after_count = conn.execute(
+                "SELECT COUNT(*) FROM award_infos"
+            ).fetchone()[0]
+            saved_count = after_count - before_count
+
             logger.info("낙찰정보 저장 완료: %d건 (전체 %d건 중)", saved_count, len(awards))
             return saved_count
 
@@ -540,6 +664,246 @@ class DatabaseManager:
             logger.error("낙찰정보 검색 실패 (키워드: %s): %s", keyword, e)
             return []
 
+    def get_awards_by_winner(self, winner_name: str, limit: int = 50) -> list[AwardInfo]:
+        """
+        업체명으로 낙찰 이력을 조회합니다.
+
+        경쟁사 수주 패턴 분석에 사용됩니다.
+
+        Args:
+            winner_name: 낙찰 업체명 (부분 일치)
+            limit: 최대 반환 건수
+
+        Returns:
+            AwardInfo 리스트
+        """
+        conn = self._ensure_connection()
+        try:
+            cursor = conn.execute(
+                """
+                SELECT * FROM award_infos
+                WHERE winner_name LIKE ?
+                ORDER BY award_date DESC
+                LIMIT ?
+                """,
+                (f"%{winner_name}%", limit),
+            )
+            return [AwardInfo.from_dict(dict(row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error("업체별 낙찰정보 조회 실패 (업체: %s): %s", winner_name, e)
+            return []
+
+    def get_awards_by_org(self, org_name: str, limit: int = 100) -> list[AwardInfo]:
+        """
+        발주기관명으로 낙찰 이력을 조회합니다.
+
+        발주기관 정책 방향 분석에 사용됩니다.
+
+        Args:
+            org_name: 발주기관명 (부분 일치)
+            limit: 최대 반환 건수
+
+        Returns:
+            AwardInfo 리스트
+        """
+        conn = self._ensure_connection()
+        try:
+            cursor = conn.execute(
+                """
+                SELECT a.* FROM award_infos a
+                JOIN bid_announcements b ON a.bid_ntce_no = b.bid_ntce_no
+                WHERE b.org_name LIKE ?
+                ORDER BY a.award_date DESC
+                LIMIT ?
+                """,
+                (f"%{org_name}%", limit),
+            )
+            return [AwardInfo.from_dict(dict(row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error("기관별 낙찰정보 조회 실패 (기관: %s): %s", org_name, e)
+            return []
+
+    def get_bids_by_org(self, org_name: str, limit: int = 100) -> list[BidAnnouncement]:
+        """
+        발주기관명으로 공고 이력을 조회합니다.
+
+        기관의 발주 패턴, 카테고리 변화 추적에 사용됩니다.
+
+        Args:
+            org_name: 발주기관명 (부분 일치)
+            limit: 최대 반환 건수
+
+        Returns:
+            BidAnnouncement 리스트
+        """
+        conn = self._ensure_connection()
+        try:
+            cursor = conn.execute(
+                """
+                SELECT * FROM bid_announcements
+                WHERE org_name LIKE ?
+                ORDER BY collected_at DESC
+                LIMIT ?
+                """,
+                (f"%{org_name}%", limit),
+            )
+            return [BidAnnouncement.from_dict(dict(row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error("기관별 공고 조회 실패 (기관: %s): %s", org_name, e)
+            return []
+
+    def get_awards_by_region(self, region: str, limit: int = 200) -> list[AwardInfo]:
+        """
+        지역별 낙찰 현황을 조회합니다.
+
+        지역 트렌드 분석에 사용됩니다.
+
+        Args:
+            region: 지역명 (부분 일치)
+            limit: 최대 반환 건수
+
+        Returns:
+            AwardInfo 리스트
+        """
+        conn = self._ensure_connection()
+        try:
+            cursor = conn.execute(
+                """
+                SELECT a.* FROM award_infos a
+                JOIN bid_announcements b ON a.bid_ntce_no = b.bid_ntce_no
+                WHERE b.region LIKE ?
+                ORDER BY a.award_date DESC
+                LIMIT ?
+                """,
+                (f"%{region}%", limit),
+            )
+            return [AwardInfo.from_dict(dict(row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error("지역별 낙찰정보 조회 실패 (지역: %s): %s", region, e)
+            return []
+
+    def get_award_stats(self, keyword: str = None, org_name: str = None) -> dict:
+        """
+        투찰률 및 낙찰금액 통계를 조회합니다.
+
+        적정 투찰률 분석에 사용됩니다.
+
+        Args:
+            keyword: 공고명 키워드 (선택)
+            org_name: 발주기관명 (선택)
+
+        Returns:
+            통계 딕셔너리 (avg_bid_rate, median_bid_rate, min/max, count 등)
+        """
+        conn = self._ensure_connection()
+        try:
+            conditions = ["a.bid_rate IS NOT NULL", "a.bid_rate > 0"]
+            params = []
+
+            if keyword:
+                conditions.append("a.bid_title LIKE ?")
+                params.append(f"%{keyword}%")
+            if org_name:
+                conditions.append("b.org_name LIKE ?")
+                params.append(f"%{org_name}%")
+
+            where_clause = " AND ".join(conditions)
+            join_clause = "JOIN bid_announcements b ON a.bid_ntce_no = b.bid_ntce_no" if org_name else ""
+
+            cursor = conn.execute(
+                f"""
+                SELECT
+                    COUNT(*) as total_count,
+                    AVG(a.bid_rate) as avg_bid_rate,
+                    MIN(a.bid_rate) as min_bid_rate,
+                    MAX(a.bid_rate) as max_bid_rate,
+                    AVG(a.award_amount) as avg_award_amount,
+                    MIN(a.award_amount) as min_award_amount,
+                    MAX(a.award_amount) as max_award_amount,
+                    SUM(a.award_amount) as total_award_amount
+                FROM award_infos a
+                {join_clause}
+                WHERE {where_clause}
+                """,
+                params,
+            )
+            row = cursor.fetchone()
+            if not row or row["total_count"] == 0:
+                return {"total_count": 0}
+
+            # 중앙값 계산
+            median_cursor = conn.execute(
+                f"""
+                SELECT a.bid_rate FROM award_infos a
+                {join_clause}
+                WHERE {where_clause}
+                ORDER BY a.bid_rate
+                LIMIT 1 OFFSET ?
+                """,
+                params + [row["total_count"] // 2],
+            )
+            median_row = median_cursor.fetchone()
+
+            return {
+                "total_count": row["total_count"],
+                "avg_bid_rate": round(row["avg_bid_rate"], 2) if row["avg_bid_rate"] else 0,
+                "median_bid_rate": round(median_row["bid_rate"], 2) if median_row else 0,
+                "min_bid_rate": round(row["min_bid_rate"], 2) if row["min_bid_rate"] else 0,
+                "max_bid_rate": round(row["max_bid_rate"], 2) if row["max_bid_rate"] else 0,
+                "avg_award_amount": int(row["avg_award_amount"]) if row["avg_award_amount"] else 0,
+                "min_award_amount": int(row["min_award_amount"]) if row["min_award_amount"] else 0,
+                "max_award_amount": int(row["max_award_amount"]) if row["max_award_amount"] else 0,
+                "total_award_amount": int(row["total_award_amount"]) if row["total_award_amount"] else 0,
+            }
+        except sqlite3.Error as e:
+            logger.error("낙찰 통계 조회 실패: %s", e)
+            return {"total_count": 0}
+
+    def get_similar_bids_by_title(self, title: str, limit: int = 20) -> list[BidAnnouncement]:
+        """
+        제목으로 유사 공고를 검색합니다.
+
+        전년도 동일/유사 사업 자동 발견에 사용됩니다.
+
+        Args:
+            title: 현재 공고 제목 (핵심 키워드 추출 후 LIKE 검색)
+            limit: 최대 반환 건수
+
+        Returns:
+            BidAnnouncement 리스트
+        """
+        conn = self._ensure_connection()
+        try:
+            # 제목에서 핵심 키워드 추출 (2글자 이상 단어)
+            import re
+            words = re.findall(r'[가-힣]{2,}|[A-Za-z]{2,}', title)
+            if not words:
+                return []
+
+            # 상위 3개 키워드로 검색
+            conditions = []
+            params = []
+            for word in words[:3]:
+                conditions.append("title LIKE ?")
+                params.append(f"%{word}%")
+
+            where_clause = " OR ".join(conditions)
+            params.append(limit)
+
+            cursor = conn.execute(
+                f"""
+                SELECT * FROM bid_announcements
+                WHERE ({where_clause})
+                ORDER BY collected_at DESC
+                LIMIT ?
+                """,
+                params,
+            )
+            return [BidAnnouncement.from_dict(dict(row)) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error("유사 공고 검색 실패: %s", e)
+            return []
+
     # ──────────────────────────────────────────
     # 뉴스기사 CRUD
     # ──────────────────────────────────────────
@@ -557,29 +921,37 @@ class DatabaseManager:
             새로 저장된 건수
         """
         conn = self._ensure_connection()
-        saved_count = 0
 
         try:
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            data_list = []
             for article in articles:
                 data = article.to_dict()
-                data["collected_at"] = data.get("collected_at") or datetime.now().strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-                cursor = conn.execute(
-                    """
-                    INSERT OR IGNORE INTO news_articles
-                        (title, description, link, pub_date, search_query,
-                         related_bid_no, collected_at)
-                    VALUES
-                        (:title, :description, :link, :pub_date, :search_query,
-                         :related_bid_no, :collected_at)
-                    """,
-                    data,
-                )
-                if cursor.rowcount > 0:
-                    saved_count += 1
+                data["collected_at"] = data.get("collected_at") or now
+                data_list.append(data)
 
+            before_count = conn.execute(
+                "SELECT COUNT(*) FROM news_articles"
+            ).fetchone()[0]
+
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO news_articles
+                    (title, description, link, pub_date, search_query,
+                     related_bid_no, collected_at)
+                VALUES
+                    (:title, :description, :link, :pub_date, :search_query,
+                     :related_bid_no, :collected_at)
+                """,
+                data_list,
+            )
             conn.commit()
+
+            after_count = conn.execute(
+                "SELECT COUNT(*) FROM news_articles"
+            ).fetchone()[0]
+            saved_count = after_count - before_count
+
             logger.info("뉴스기사 저장 완료: %d건 (전체 %d건 중)", saved_count, len(articles))
             return saved_count
 
@@ -690,7 +1062,7 @@ class DatabaseManager:
         except sqlite3.Error as e:
             conn.rollback()
             logger.error("분석결과 삭제 실패: %s", e)
-            raise
+            return False
 
     def delete_all_analyses(self) -> int:
         """모든 분석결과를 삭제합니다."""

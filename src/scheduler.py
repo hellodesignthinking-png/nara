@@ -204,8 +204,10 @@ class DailyScheduler:
                     self._running = False
                     break
 
-                # 에러 발생 시 1분 후 재시도
-                await asyncio.sleep(60)
+                # 에러 발생 시 지수 백오프 재시도 (최대 1시간)
+                backoff = min(60 * (2 ** (self._consecutive_errors - 1)), 3600)
+                logger.info("⏳ %d초 후 재시도 (%d번째 에러)", backoff, self._consecutive_errors)
+                await asyncio.sleep(backoff)
 
     async def _execute_job(self) -> dict:
         """등록된 작업을 실행하고 결과를 기록합니다."""

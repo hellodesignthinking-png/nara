@@ -6,8 +6,11 @@
 5개 기준을 가중 평가하여 종합 매칭 점수를 산출합니다.
 """
 
+import logging
 import re
 from src.utils.formatters import safe_float
+
+logger = logging.getLogger(__name__)
 
 
 class BizMatcher:
@@ -17,9 +20,9 @@ class BizMatcher:
     5대 매칭 기준:
     - 업종 적합성 (30%): 공고 카테고리와 사업자 업종 매칭
     - 자격/면허 (25%): 공고 요구 자격과 보유 면허 비교
+    - 지역 (20%): 지역제한 공고의 사업자 소재지 확인
     - 예산 범위 (15%): 공고 예산이 사업자 참여 가능 범위 내
-    - 지역 (15%): 지역제한 공고의 사업자 소재지 확인
-    - 과거 실적 (15%): 유사 사업 수행 경험
+    - 과거 실적/키워드 (10%): 유사 사업 수행 경험
 
     사업자 프로필 구조 예시:
         {
@@ -48,13 +51,28 @@ class BizMatcher:
     # ──────────────────────────────────────────────
     # 가중치 설정
     # ──────────────────────────────────────────────
-    WEIGHTS = {
+    DEFAULT_WEIGHTS = {
         'business_type': 0.30,  # 업종 적합성
         'license': 0.25,        # 자격/면허
-        'budget': 0.15,         # 예산 범위
-        'region': 0.15,         # 지역
-        'experience': 0.15,     # 과거 실적
+        'region': 0.20,         # 지역
+        'budget_range': 0.15,   # 예산 범위
+        'keyword': 0.10,        # 키워드 (과거 실적 기반)
     }
+
+    # 내부 매핑: DEFAULT_WEIGHTS 키 → 코드 내부 사용 키
+    _WEIGHT_KEY_MAP = {
+        'business_type': 'business_type',
+        'license': 'license',
+        'budget': 'budget_range',
+        'region': 'region',
+        'experience': 'keyword',
+    }
+
+    @classmethod
+    def _weight(cls, internal_key: str) -> float:
+        """내부 키에 대한 가중치를 반환합니다."""
+        dw_key = cls._WEIGHT_KEY_MAP.get(internal_key, internal_key)
+        return cls.DEFAULT_WEIGHTS[dw_key]
 
     # ──────────────────────────────────────────────
     # 업종 유사어 사전
@@ -156,48 +174,60 @@ class BizMatcher:
                 'recommendation': '참여 적극 권장' | '참여 검토' | '참여 부적합'
             }
         """
-        breakdown = {}
+        if not business_profile or not bid:
+            logger.warning("빈 business_profile 또는 bid가 전달됨")
+            return 0.0
 
-        # 1. 업종 적합성 평가
-        breakdown['business_type'] = self._evaluate_business_type(
-            business_profile, bid
-        )
+        try:
+            breakdown = {}
 
-        # 2. 자격/면허 평가
-        breakdown['license'] = self._evaluate_license(
-            business_profile, bid
-        )
+            # 1. 업종 적합성 평가
+            breakdown['business_type'] = self._evaluate_business_type(
+                business_profile, bid
+            )
 
-        # 3. 예산 범위 평가
-        breakdown['budget'] = self._evaluate_budget(
-            business_profile, bid
-        )
+            # 2. 자격/면허 평가
+            breakdown['license'] = self._evaluate_license(
+                business_profile, bid
+            )
 
-        # 4. 지역 평가
-        breakdown['region'] = self._evaluate_region(
-            business_profile, bid
-        )
+            # 3. 예산 범위 평가
+            breakdown['budget'] = self._evaluate_budget(
+                business_profile, bid
+            )
 
-        # 5. 과거 실적 평가
-        breakdown['experience'] = self._evaluate_experience(
-            business_profile, bid
-        )
+            # 4. 지역 평가
+            breakdown['region'] = self._evaluate_region(
+                business_profile, bid
+            )
 
-        # 종합 점수 계산 (가중 평균)
-        total_score = sum(
-            breakdown[key]['score'] * breakdown[key]['weight']
-            for key in breakdown
-        )
-        total_score = round(total_score, 1)
+            # 5. 과거 실적 평가
+            breakdown['experience'] = self._evaluate_experience(
+                business_profile, bid
+            )
 
-        # 종합 권고 생성
-        recommendation = self._generate_recommendation(total_score, breakdown)
+            # 종합 점수 계산 (가중 평균)
+            total_score = sum(
+                breakdown[key]['score'] * breakdown[key]['weight']
+                for key in breakdown
+            )
+            total_score = round(total_score, 1)
 
-        return {
-            'total_score': total_score,
-            'breakdown': breakdown,
-            'recommendation': recommendation,
-        }
+            # 종합 권고 생성
+            recommendation = self._generate_recommendation(total_score, breakdown)
+
+            return {
+                'total_score': total_score,
+                'breakdown': breakdown,
+                'recommendation': recommendation,
+            }
+        except Exception as e:
+            logger.error("매칭 점수 계산 중 오류 발생: %s", e, exc_info=True)
+            return {
+                'total_score': 0.0,
+                'breakdown': {},
+                'recommendation': '매칭 점수 계산 실패',
+            }
 
     def find_best_match(self, businesses: list[dict], bid: dict) -> list[dict]:
         """
@@ -273,10 +303,11 @@ class BizMatcher:
         biz_types = biz.get('business_types', [])
         bid_category = bid.get('category', '')
         bid_title = bid.get('title', bid.get('bidNtceNm', ''))
+        bid_title_upper = bid_title.upper() if bid_title else ''
 
         if not biz_types:
             return {
-                'score': 10, 'weight': self.WEIGHTS['business_type'],
+                'score': 10, 'weight': self._weight('business_type'),
                 'detail': '사업자 업종 정보가 없습니다.'
             }
 
@@ -306,7 +337,7 @@ class BizMatcher:
                 ) if btype_group else {btype}
 
                 for synonym in btype_group_synonyms:
-                    if synonym.upper() in bid_title.upper():
+                    if synonym.upper() in bid_title_upper:
                         best_score = max(best_score, 50)
                         detail_parts.append(f"공고 제목에서 '{synonym}' 키워드 발견")
                         break
@@ -314,7 +345,7 @@ class BizMatcher:
         detail = '; '.join(detail_parts) if detail_parts else '관련 업종 매칭 없음'
         return {
             'score': best_score,
-            'weight': self.WEIGHTS['business_type'],
+            'weight': self._weight('business_type'),
             'detail': detail,
         }
 
@@ -333,13 +364,13 @@ class BizMatcher:
         # 요구 자격이 없는 공고
         if not required_licenses:
             return {
-                'score': 100, 'weight': self.WEIGHTS['license'],
+                'score': 100, 'weight': self._weight('license'),
                 'detail': '별도 자격/면허 요구사항 없음',
             }
 
         if not held_licenses:
             return {
-                'score': 0, 'weight': self.WEIGHTS['license'],
+                'score': 0, 'weight': self._weight('license'),
                 'detail': f"요구 자격 {required_licenses}을 보유하지 않음 (보유 면허 없음)",
             }
 
@@ -369,7 +400,7 @@ class BizMatcher:
 
         return {
             'score': score,
-            'weight': self.WEIGHTS['license'],
+            'weight': self._weight('license'),
             'detail': '; '.join(detail_parts),
         }
 
@@ -388,13 +419,13 @@ class BizMatcher:
         # 예산 정보가 없는 경우
         if not bid_budget:
             return {
-                'score': 70, 'weight': self.WEIGHTS['budget'],
+                'score': 70, 'weight': self._weight('budget'),
                 'detail': '공고 예산 정보 미공개',
             }
 
         if not budget_range:
             return {
-                'score': 70, 'weight': self.WEIGHTS['budget'],
+                'score': 70, 'weight': self._weight('budget'),
                 'detail': '사업자 참여 가능 예산 범위 미설정',
             }
 
@@ -429,7 +460,7 @@ class BizMatcher:
                 detail = f"공고 예산 {bid_budget:,.0f}만원이 최대 범위({max_str}만원)를 크게 초과"
 
         return {
-            'score': score, 'weight': self.WEIGHTS['budget'],
+            'score': score, 'weight': self._weight('budget'),
             'detail': detail,
         }
 
@@ -448,20 +479,20 @@ class BizMatcher:
         # 지역 제한이 없는 공고
         if not bid_region or bid_region in ('전국', '제한없음', '해당없음'):
             return {
-                'score': 100, 'weight': self.WEIGHTS['region'],
+                'score': 100, 'weight': self._weight('region'),
                 'detail': '지역 제한 없음',
             }
 
         if not biz_region:
             return {
-                'score': 50, 'weight': self.WEIGHTS['region'],
+                'score': 50, 'weight': self._weight('region'),
                 'detail': '사업자 소재지 정보 없음',
             }
 
         # 정확 일치
         if biz_region == bid_region:
             return {
-                'score': 100, 'weight': self.WEIGHTS['region'],
+                'score': 100, 'weight': self._weight('region'),
                 'detail': f"소재지 '{biz_region}'이 공고 지역과 일치",
             }
 
@@ -471,12 +502,12 @@ class BizMatcher:
 
         if biz_parent == bid_parent:
             return {
-                'score': 70, 'weight': self.WEIGHTS['region'],
+                'score': 70, 'weight': self._weight('region'),
                 'detail': f"소재지 '{biz_region}'이 동일 시/도({biz_parent}) 내",
             }
 
         return {
-            'score': 30, 'weight': self.WEIGHTS['region'],
+            'score': 30, 'weight': self._weight('region'),
             'detail': f"소재지 '{biz_region}'이 공고 지역 '{bid_region}'과 불일치",
         }
 
@@ -496,7 +527,7 @@ class BizMatcher:
 
         if not past_projects:
             return {
-                'score': 10, 'weight': self.WEIGHTS['experience'],
+                'score': 10, 'weight': self._weight('experience'),
                 'detail': '등록된 과거 수행 실적 없음',
             }
 
@@ -546,7 +577,7 @@ class BizMatcher:
 
         return {
             'score': best_score,
-            'weight': self.WEIGHTS['experience'],
+            'weight': self._weight('experience'),
             'detail': detail,
         }
 

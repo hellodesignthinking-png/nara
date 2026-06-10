@@ -32,3 +32,14 @@ typing_extensions==4.15.0
 urllib3==2.7.0
 yarl==1.24.2
 annotated-types==0.7.0
+
+# 문서 파싱
+rich==13.9.4
+olefile==0.47
+pdfplumber==0.11.6
+
+# 인코딩 감지
+chardet==5.2.0
+
+# 스케줄링
+schedule==1.2.2

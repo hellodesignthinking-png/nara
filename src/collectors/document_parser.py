@@ -277,13 +277,18 @@ class DocumentParser:
 
             # Content-Length 확인으로 대용량 파일 방지
             content_length = response.headers.get("Content-Length")
-            if content_length and int(content_length) > MAX_DOWNLOAD_SIZE:
-                logger.warning(
-                    "파일이 너무 큽니다: %s bytes (최대: %s bytes)",
-                    content_length,
-                    MAX_DOWNLOAD_SIZE,
-                )
-                return ""
+            if content_length:
+                try:
+                    content_length_int = int(content_length)
+                except (ValueError, TypeError):
+                    content_length_int = 0
+                if content_length_int > MAX_DOWNLOAD_SIZE:
+                    logger.warning(
+                        "파일이 너무 큽니다: %s bytes (최대: %s bytes)",
+                        content_length,
+                        MAX_DOWNLOAD_SIZE,
+                    )
+                    return ""
 
             # 파일 저장 (스트리밍)
             downloaded_size = 0
@@ -307,7 +312,15 @@ class DocumentParser:
             )
 
             # 다운로드된 파일 파싱
-            return self.parse_file(str(save_path))
+            try:
+                return self.parse_file(str(save_path))
+            finally:
+                # 임시 다운로드 파일 정리
+                try:
+                    save_path.unlink(missing_ok=True)
+                    logger.debug("다운로드 임시 파일 삭제: %s", save_path.name)
+                except OSError as cleanup_err:
+                    logger.debug("임시 파일 삭제 실패: %s", cleanup_err)
 
         except requests.exceptions.Timeout:
             logger.error("다운로드 타임아웃: %s (%d초)", url, DOWNLOAD_TIMEOUT)
@@ -376,6 +389,17 @@ class DocumentParser:
 
         while start < text_len:
             end = min(start + chunk_size, text_len)
+
+            # 단어 경계를 존중하여 자르기 (마지막 청크가 아닌 경우)
+            if end < text_len:
+                # 현재 위치에서 뒤로 탐색하여 공백/줄바꿈 위치 찾기
+                boundary = end
+                while boundary > start and text[boundary] not in (' ', '\n', '\t', '.', ','):
+                    boundary -= 1
+                # 단어 경계를 찾았으면 그 위치에서 자르기
+                if boundary > start:
+                    end = boundary + 1  # 구분자 포함
+
             chunk = text[start:end].strip()
 
             if chunk:
@@ -385,7 +409,7 @@ class DocumentParser:
             if end >= text_len:
                 break
 
-            start += step
+            start = end - overlap if end - overlap > start else start + step
 
         logger.debug(
             "텍스트 청킹 완료: %d자 → %d개 청크 (크기=%d, 겹침=%d)",

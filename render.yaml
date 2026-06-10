@@ -1,0 +1,33 @@
+# Render.com 배포 설정 (Blueprint)
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: nara-analyzer
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: SCHEDULER_ENABLED
+        value: "true"
+      - key: SCHEDULE_HOUR
+        value: "8"
+      - key: SCHEDULE_MINUTE
+        value: "0"
+      # 아래 환경변수는 Render 대시보드에서 직접 설정하세요
+      - key: DATA_GO_KR_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LLM_ENGINE
+        value: "gemini"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: NAVER_CLIENT_ID
+        sync: false
+      - key: NAVER_CLIENT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        value: "*"

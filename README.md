@@ -10,11 +10,11 @@
 
 | 기능 | 설명 |
 |------|------|
-| 📋 **공고 자동 수집** | 나라장터 API로 매일 새 용역 공고를 수집 |
+| 📝 **공고 자동 수집** | 나라장터 API로 매일 새 용역 공고를 수집 |
 | 🏢 **다중 사업자 관리** | 여러 사업자를 등록하고 공고별 최적 매칭 |
 | 🔍 **과거 데이터 분석** | 2~3년 낙찰 정보 + 발주처 관련 기사 수집 |
 | 🤖 **AI 전략 수립** | LLM 기반 입찰 전략 보고서 자동 생성 |
-| 📨 **알림 전송** | CLI / 이메일로 분석 결과 전송 |
+| 📨 **알림 전송** | CLI / 이메일 / Slack으로 분석 결과 전송 |
 
 ---
 
@@ -107,11 +107,63 @@ nara/
 │   ├── collectors/          # API 데이터 수집
 │   ├── parsers/             # HWP/PDF 파싱
 │   ├── analyzers/           # AI 분석 + 사업자 매칭
-│   └── reporters/           # CLI/이메일 보고서
+│   └── reporters/           # CLI/이메일/Slack 보고서
+├── tests/                   # 테스트 코드
+│   ├── conftest.py          # 공통 fixture
+│   ├── test_schemas.py
+│   ├── test_nlp.py
+│   └── ...
 ├── data/                    # 로컬 DB + 첨부파일
+├── Dockerfile               # 도커 빌드
+├── docker-compose.yml       # 도커 컴포즈 설정
 ├── pyproject.toml
 ├── .env.example
 └── README.md
+```
+
+---
+
+## 🐳 Docker 배포
+
+```bash
+# Docker Compose로 실행
+docker-compose up -d
+
+# 로그 확인
+docker-compose logs -f
+
+# 중지
+docker-compose down
+
+# 이미지 재빌드 후 실행
+docker-compose up -d --build
+```
+
+---
+
+## 🧪 테스트 실행
+
+```bash
+# 전체 테스트 실행
+pytest
+
+# 특정 테스트 파일 실행
+pytest tests/test_schemas.py -v
+
+# 커버리지 포함
+pytest --cov=src --cov-report=term-missing
+```
+
+---
+
+## 🌐 API 서버 실행
+
+```bash
+# 개발 서버 실행
+uvicorn src.api.app:app --reload --port 8000
+
+# 프로덕션 실행
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers 2
 ```
 
 ---

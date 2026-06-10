@@ -23,6 +23,9 @@ from typing import Optional
 
 from src.config import load_config
 
+# Base64 인코딩 전 최대 이미지 크기 (5MB)
+MAX_IMAGE_SIZE = 5 * 1024 * 1024
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,6 +72,7 @@ class BusinessDocParser:
         """
         self.engine = engine
         self.openai_api_key = openai_api_key
+        self._config = load_config()
         self._openai_client = None
         self._gemini_client = None
 
@@ -171,7 +175,7 @@ class BusinessDocParser:
         elif ext in ('.hwp', '.hwpx'):
             text = self._extract_hwp_text(file_content, filename)
         elif ext in ('.txt', '.csv'):
-            text = file_content.decode('utf-8', errors='ignore')
+            text = self._decode_text(file_content)
         elif is_image:
             # 이미지인데 API 없음 → 명확한 에러 반환
             raise ValueError(
@@ -180,7 +184,7 @@ class BusinessDocParser:
                 "PDF 또는 텍스트 형식의 사업자등록증을 업로드해주세요."
             )
         else:
-            text = file_content.decode('utf-8', errors='ignore')
+            text = self._decode_text(file_content)
 
         result['raw_text'] = text[:5000]  # 원문 제한
 
@@ -301,7 +305,7 @@ JSON만 출력하세요."""
 
 추출 대상 텍스트:
 ---
-{text[:3000]}
+{self._sanitize_for_prompt(text[:3000])}
 ---
 
 JSON만 출력하세요."""
@@ -343,6 +347,20 @@ JSON만 출력하세요."""
         mime_map = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
                     '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp'}
         mime_type = mime_map.get(ext, 'image/jpeg')
+
+        # 이미지 크기 제한 확인
+        if len(file_content) > MAX_IMAGE_SIZE:
+            logger.warning(
+                "이미지 파일이 너무 큽니다: %d bytes (최대: %d bytes)",
+                len(file_content), MAX_IMAGE_SIZE,
+            )
+            return {
+                'biz_id': '', 'company_name': '', 'ceo_name': '',
+                'business_types': [], 'licenses': [], 'regions': [],
+                'annual_revenue': 0, 'employee_count': 0, 'keywords': [],
+                'doc_type': doc_type, 'confidence': 'low',
+                'raw_text': f'이미지 크기 초과: {len(file_content)} bytes',
+            }
 
         b64_image = base64.b64encode(file_content).decode('utf-8')
 
@@ -438,15 +456,14 @@ JSON만 출력하세요."""
 
 추출 대상 텍스트:
 ---
-{text[:3000]}
+{self._sanitize_for_prompt(text[:3000])}
 ---
 
 JSON만 출력하세요."""
 
         try:
-            _cfg = load_config()
             response = self._openai_client.chat.completions.create(
-                model=_cfg.openai_model,
+                model=self._config.openai_model,
                 messages=[
                     {"role": "system", "content": "당신은 한국 사업자 문서에서 정보를 정확하게 추출하는 전문가입니다."},
                     {"role": "user", "content": prompt},
@@ -517,6 +534,64 @@ JSON만 출력하세요."""
             'confidence': confidence,
             'raw_text': '',
         }
+
+    # ══════════════════════════════════════════════
+    # 입력 정제 / 인코딩 감지 헬퍼
+    # ══════════════════════════════════════════════
+
+    @staticmethod
+    def _sanitize_for_prompt(text: str) -> str:
+        """
+        LLM 프롬프트에 삽입할 텍스트를 정제합니다.
+
+        잠재적 프롬프트 인젝션 패턴을 제거하여
+        LLM이 의도하지 않은 동작을 수행하는 것을 방지합니다.
+
+        Args:
+            text: 정제할 텍스트
+
+        Returns:
+            정제된 텍스트
+        """
+        if not text:
+            return ""
+        # 잠재적 인젝션 패턴 제거
+        injection_patterns = [
+            r'(?i)ignore\s+(previous|above|all)\s+instructions?',
+            r'(?i)disregard\s+(previous|above|all)',
+            r'(?i)you\s+are\s+now',
+            r'(?i)new\s+instructions?:',
+            r'(?i)system\s*:',
+            r'(?i)assistant\s*:',
+        ]
+        sanitized = text
+        for pattern in injection_patterns:
+            sanitized = re.sub(pattern, '[FILTERED]', sanitized)
+        return sanitized
+
+    @staticmethod
+    def _decode_text(file_content: bytes) -> str:
+        """
+        바이트 데이터를 텍스트로 디코딩합니다.
+
+        UTF-8을 우선 시도하고, 실패 시 chardet로 인코딩을 감지합니다.
+
+        Args:
+            file_content: 디코딩할 바이트 데이터
+
+        Returns:
+            디코딩된 텍스트 문자열
+        """
+        try:
+            return file_content.decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                import chardet
+                detected = chardet.detect(file_content)
+                encoding = detected.get('encoding') or 'utf-8'
+                return file_content.decode(encoding, errors='ignore')
+            except Exception:
+                return file_content.decode('utf-8', errors='ignore')
 
     # ══════════════════════════════════════════════
     # 정규식 기반 파싱 (폴백)

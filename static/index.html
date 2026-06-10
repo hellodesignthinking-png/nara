@@ -8,12 +8,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260602v">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260609v2">
 </head>
 <body>
+    <a href="#main-content" class="skip-nav">메인 콘텐츠로 건너뛰기</a>
 
     <!-- ─── 사이드바 ─── -->
-    <nav id="sidebar">
+    <nav id="sidebar" role="navigation" aria-label="메인 네비게이션">
         <div class="sidebar-header">
             <div class="logo">
                 <span class="logo-icon">🏛️</span>
@@ -24,36 +25,39 @@
             </div>
         </div>
 
-        <ul class="sidebar-menu">
-            <li class="menu-item active" data-view="dashboard" onclick="navigate('dashboard')">
-                <span class="menu-icon">📊</span>
+        <ul class="sidebar-menu" role="menu">
+            <li class="menu-item active" data-view="dashboard" tabindex="0" role="menuitem" onclick="navigate('dashboard')">
+                <span class="menu-icon" aria-hidden="true">📊</span>
                 <span class="menu-label">대시보드</span>
             </li>
-            <li class="menu-item" data-view="bids" onclick="navigate('bids')">
-                <span class="menu-icon">📝</span>
+            <li class="menu-item" data-view="bids" tabindex="0" role="menuitem" onclick="navigate('bids')">
+                <span class="menu-icon" aria-hidden="true">📝</span>
                 <span class="menu-label">공고 목록</span>
                 <span class="menu-badge" id="bid-menu-badge" style="display:none"></span>
             </li>
-            <li class="menu-item" data-view="favorites" onclick="navigate('favorites')">
-                <span class="menu-icon">⭐</span>
+            <li class="menu-item" data-view="favorites" tabindex="0" role="menuitem" onclick="navigate('favorites')">
+                <span class="menu-icon" aria-hidden="true">⭐</span>
                 <span class="menu-label">관심공고</span>
                 <span class="menu-badge" id="fav-menu-badge" style="display:none"></span>
             </li>
-            <li class="menu-item" data-view="businesses" onclick="navigate('businesses')">
-                <span class="menu-icon">🏢</span>
+            <li class="menu-item" data-view="businesses" tabindex="0" role="menuitem" onclick="navigate('businesses')">
+                <span class="menu-icon" aria-hidden="true">🏢</span>
                 <span class="menu-label">사업자 관리</span>
             </li>
-            <li class="menu-item" data-view="analysis" onclick="navigate('analysis')">
-                <span class="menu-icon">🔬</span>
+            <li class="menu-item" data-view="analysis" tabindex="0" role="menuitem" onclick="navigate('analysis')">
+                <span class="menu-icon" aria-hidden="true">🔬</span>
                 <span class="menu-label">분석 결과</span>
             </li>
-            <li class="menu-item" data-view="settings" onclick="navigate('settings')">
-                <span class="menu-icon">⚙️</span>
+            <li class="menu-item" data-view="settings" tabindex="0" role="menuitem" onclick="navigate('settings')">
+                <span class="menu-icon" aria-hidden="true">⚙️</span>
                 <span class="menu-label">설정</span>
             </li>
         </ul>
 
         <div class="sidebar-footer">
+            <div style="display:flex;justify-content:center;padding:0 16px 8px">
+                <button id="theme-toggle-btn" class="btn btn-ghost btn-sm" onclick="toggleTheme()" aria-label="테마 전환" style="width:100%;font-size:0.82rem">🌙 다크 모드</button>
+            </div>
             <div class="sidebar-footer-info">
                 <span class="footer-dot" id="footer-status-dot"></span>
                 <span class="footer-text" id="footer-status-text">연결 확인 중...</span>
@@ -62,13 +66,13 @@
     </nav>
 
     <!-- ─── 모바일 햄버거 ─── -->
-    <button id="mobile-menu-btn" class="mobile-menu-btn" onclick="toggleSidebar()">
+    <button id="mobile-menu-btn" class="mobile-menu-btn" onclick="toggleSidebar()" aria-label="메뉴 열기" aria-expanded="false">
         <span></span><span></span><span></span>
     </button>
     <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
 
     <!-- ─── 메인 콘텐츠 ─── -->
-    <main id="main-content">
+    <main id="main-content" role="main">
 
         <!-- ════════ 대시보드 뷰 ════════ -->
         <section id="view-dashboard" class="view active">
@@ -227,13 +231,13 @@
                     <div class="chart-card">
                         <h3>📈 최근 30일 공고 추이</h3>
                         <div class="bar-chart" id="daily-trend-chart">
-                            <p style="color:#64748b;text-align:center;padding:60px 0">공고를 수집하면 차트가 표시됩니다</p>
+                            <p style="color:var(--text-muted);text-align:center;padding:60px 0">공고를 수집하면 차트가 표시됩니다</p>
                         </div>
                     </div>
                     <div class="chart-card">
                         <h3>🏢 발주처별 예산 Top 10</h3>
                         <div class="horizontal-bar-chart" id="org-budget-chart">
-                            <p style="color:#64748b;text-align:center;padding:60px 0">공고를 수집하면 차트가 표시됩니다</p>
+                            <p style="color:var(--text-muted);text-align:center;padding:60px 0">공고를 수집하면 차트가 표시됩니다</p>
                         </div>
                     </div>
                 </div>
@@ -286,8 +290,10 @@
                             <tr class="empty-row">
                                 <td colspan="6">
                                     <div class="empty-state-inline">
-                                        <span>📊</span>
-                                        <p>분석 결과가 없습니다. 분석을 실행해보세요.</p>
+                                        <span class="empty-float-icon">📊</span>
+                                        <p class="empty-title">아직 분석 결과가 없습니다</p>
+                                        <p class="empty-desc">공고를 수집한 후 <strong>참여 가능 분석</strong>을 실행해보세요</p>
+                                        <button class="btn btn-gradient btn-sm" onclick="runAnalysis()" style="margin-top:8px">🎯 분석 시작</button>
                                     </div>
                                 </td>
                             </tr>
@@ -346,9 +352,9 @@
                         <tr>
                             <th>공고명</th>
                             <th>발주기관</th>
-                            <th class="sortable" onclick="sortBids('budget')" id="th-budget">추정가격 <span class="sort-arrow">↕</span></th>
-                            <th class="sortable" onclick="sortBids('bid_close_dt')" id="th-bid_close_dt">마감상태 <span class="sort-arrow">↕</span></th>
-                            <th class="sortable" onclick="sortBids('relevance_score')" id="th-relevance_score" title="사업자 프로필과의 적합도">적합도 <span class="sort-arrow">↕</span></th>
+                            <th class="sortable" onclick="sortBids('budget')" id="th-budget" aria-sort="none">추정가격 <span class="sort-arrow">↕</span></th>
+                            <th class="sortable" onclick="sortBids('bid_close_dt')" id="th-bid_close_dt" aria-sort="none">마감상태 <span class="sort-arrow">↕</span></th>
+                            <th class="sortable" onclick="sortBids('relevance_score')" id="th-relevance_score" title="사업자 프로필과의 적합도" aria-sort="none">적합도 <span class="sort-arrow">↕</span></th>
                             <th>관심</th>
                             <th>나라장터</th>
                         </tr>
@@ -357,9 +363,9 @@
                         <tr class="empty-row">
                             <td colspan="7">
                                 <div class="empty-state-inline">
-                                    <span style="font-size:2.5rem">📝</span>
-                                    <p style="margin:8px 0 4px;font-weight:600">수집된 공고가 없습니다</p>
-                                    <p style="font-size:0.82rem;color:var(--text-muted)">위의 <strong>🔄 공고 수집</strong> 버튼을 클릭하거나,<br>검색창에 키워드를 입력하고 <strong>Enter</strong>를 눌러 나라장터에서 직접 검색해보세요.</p>
+                                    <span class="empty-float-icon">📝</span>
+                                    <p class="empty-title">수집된 공고가 없습니다</p>
+                                    <p class="empty-desc">위의 <strong>🔄 공고 수집</strong> 버튼을 클릭하거나,<br>검색창에 키워드를 입력하고 <strong>Enter</strong>를 눌러 검색해보세요</p>
                                 </div>
                             </td>
                         </tr>
@@ -433,9 +439,9 @@
 
             <div class="business-grid" id="business-grid">
                 <div class="empty-state" id="business-empty">
-                    <div class="empty-icon">🏢</div>
-                    <h3>등록된 사업자가 없습니다</h3>
-                    <p>사업자를 등록하면 공고와 자동 매칭 분석이 가능합니다.</p>
+                    <div class="empty-icon empty-float-icon">🏢</div>
+                    <h3 class="empty-title">등록된 사업자가 없습니다</h3>
+                    <p class="empty-desc">사업자를 등록하면 공고와 자동 매칭 분석이 가능합니다</p>
                     <button class="btn btn-primary" onclick="showBusinessModal()">
                         <span class="btn-icon">➕</span> 첫 사업자 등록하기
                     </button>
@@ -462,9 +468,9 @@
 
             <div class="analysis-list" id="analysis-list">
                 <div class="empty-state" id="analysis-empty">
-                    <div class="empty-icon">🔬</div>
-                    <h3>분석 결과가 없습니다</h3>
-                    <p>대시보드에서 분석을 실행하면 AI가 자동으로 매칭 분석을 수행합니다.</p>
+                    <div class="empty-icon empty-float-icon">🔬</div>
+                    <h3 class="empty-title">분석 결과가 없습니다</h3>
+                    <p class="empty-desc">대시보드에서 분석을 실행하면 AI가 자동으로 매칭 분석을 수행합니다</p>
                     <button class="btn btn-gradient" onclick="runAnalysis()">
                         <span class="btn-icon">🚀</span> 분석 시작하기
                     </button>
@@ -630,7 +636,7 @@
                 </div>
                 <div style="display:flex;gap:12px;align-items:flex-end;margin-top:16px;flex-wrap:wrap">
                     <div>
-                        <label style="color:#f1f5f9;font-size:0.85rem;display:block;margin-bottom:4px">실행 시각</label>
+                        <label style="color:var(--text-primary);font-size:0.85rem;display:block;margin-bottom:4px">실행 시각</label>
                         <input type="time" id="scheduler-time-input" value="08:00"
                                style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:8px 12px;font-family:inherit;font-size:0.9rem">
                     </div>
@@ -639,7 +645,7 @@
                     <button class="btn btn-gradient btn-sm" onclick="runScheduleNow()">🚀 즉시 실행</button>
                 </div>
                 <div style="margin-top:12px">
-                    <span style="color:#64748b;font-size:0.8rem" id="scheduler-last-run">최근 실행: -</span>
+                    <span style="color:var(--text-muted);font-size:0.8rem" id="scheduler-last-run">최근 실행: -</span>
                 </div>
             </div>
 
@@ -649,7 +655,7 @@
                 <p class="section-desc">Slack Incoming Webhook URL을 등록하면 매일 분석 결과가 채널로 전송됩니다.</p>
                 <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
                     <div style="flex:1;min-width:300px">
-                        <label style="color:#f1f5f9;font-size:0.85rem;display:block;margin-bottom:4px">Webhook URL</label>
+                        <label style="color:var(--text-primary);font-size:0.85rem;display:block;margin-bottom:4px">Webhook URL</label>
                         <input type="url" id="slack-webhook-input" placeholder="https://hooks.slack.com/services/..."
                                style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:10px 14px;font-family:inherit;font-size:0.88rem">
                     </div>
@@ -662,7 +668,7 @@
     </main>
 
     <!-- ─── 사업자 등록/수정 모달 ─── -->
-    <div id="modal-overlay" class="modal-overlay" onclick="closeModal(event)">
+    <div id="modal-overlay" class="modal-overlay" onclick="closeModal(event)" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-card" onclick="event.stopPropagation()">
             <div class="modal-header">
                 <h2 id="modal-title">사업자 등록</h2>
@@ -783,7 +789,7 @@
     </div>
 
     <!-- ─── 확인 모달 ─── -->
-    <div id="confirm-overlay" class="modal-overlay" onclick="closeConfirm()">
+    <div id="confirm-overlay" class="modal-overlay" onclick="closeConfirm()" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
         <div class="modal-card modal-sm" onclick="event.stopPropagation()">
             <div class="modal-header modal-header-danger">
                 <h2 id="confirm-title">삭제 확인</h2>
@@ -800,7 +806,7 @@
     </div>
 
     <!-- ─── 로딩 오버레이 ─── -->
-    <div id="loading-overlay" class="loading-overlay">
+    <div id="loading-overlay" class="loading-overlay" role="alert" aria-live="assertive">
         <div class="loading-card">
             <div class="loading-spinner"></div>
             <p class="loading-text" id="loading-text">처리 중...</p>
@@ -809,10 +815,10 @@
     </div>
 
     <!-- ─── 토스트 컨테이너 ─── -->
-    <div id="toast-container" class="toast-container"></div>
+    <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
     <!-- ─── AI 전략 분석 모달 ─── -->
-    <div id="strategy-modal-overlay" class="strategy-modal-overlay" onclick="closeStrategyModal(event)">
+    <div id="strategy-modal-overlay" class="strategy-modal-overlay" onclick="closeStrategyModal(event)" role="dialog" aria-modal="true" aria-labelledby="strategy-modal-title">
         <div class="strategy-modal" onclick="event.stopPropagation()">
             <div class="strategy-modal-header">
                 <div>
@@ -824,12 +830,12 @@
             <div class="strategy-modal-body">
                 <!-- 5개 탭 -->
                 <div class="strategy-modal-tabs">
-                    <button class="strategy-modal-tab active" onclick="switchStrategyTab(this, 'stab-summary')">📋 사업요약</button>
-                    <button class="strategy-modal-tab" onclick="switchStrategyTab(this, 'stab-past')">📊 수행사·KPI</button>
-                    <button class="strategy-modal-tab" onclick="switchStrategyTab(this, 'stab-competitor')">🏢 경쟁사</button>
-                    <button class="strategy-modal-tab" onclick="switchStrategyTab(this, 'stab-strategy')">🎯 전략</button>
-                    <button class="strategy-modal-tab" onclick="switchStrategyTab(this, 'stab-proposal')">📝 제안서 기획</button>
-                    <button class="strategy-modal-tab" onclick="switchStrategyTab(this, 'stab-diff')">📊 변경점</button>
+                    <button class="strategy-modal-tab active" role="tab" aria-selected="true" onclick="switchStrategyTab(this, 'stab-summary')">📋 사업요약</button>
+                    <button class="strategy-modal-tab" role="tab" aria-selected="false" onclick="switchStrategyTab(this, 'stab-past')">📊 수행사·KPI</button>
+                    <button class="strategy-modal-tab" role="tab" aria-selected="false" onclick="switchStrategyTab(this, 'stab-competitor')">🏢 경쟁사</button>
+                    <button class="strategy-modal-tab" role="tab" aria-selected="false" onclick="switchStrategyTab(this, 'stab-strategy')">🎯 전략</button>
+                    <button class="strategy-modal-tab" role="tab" aria-selected="false" onclick="switchStrategyTab(this, 'stab-proposal')">📝 제안서 기획</button>
+                    <button class="strategy-modal-tab" role="tab" aria-selected="false" onclick="switchStrategyTab(this, 'stab-diff')">📊 변경점</button>
                 </div>
                 <!-- 탭 패널 -->
                 <div class="strategy-panel active" id="stab-summary">
@@ -855,14 +861,45 @@
             </div>
             <div style="display:flex;gap:8px;justify-content:center;padding:16px 0;border-top:1px solid var(--border);margin-top:16px;flex-wrap:wrap">
                 <button class="btn btn-sm btn-prepare" onclick="prepareBidFromStrategy()" style="flex:1;min-width:120px">📋 입찰 준비하기</button>
+                <button class="btn btn-sm btn-gradient" onclick="analyzeProposalStrategy()" style="flex:1;min-width:120px" id="btn-proposal-strategy" title="경쟁사·기관·지역·투찰률 심층 분석">📊 제안서 전략</button>
                 <button class="btn btn-sm btn-accent" onclick="shareStrategyResult()" style="flex:1;min-width:120px">📋 분석결과 복사</button>
                 <a id="strategy-nara-link" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline" style="flex:1;min-width:120px" onclick="event.stopPropagation()">🔗 나라장터 확인</a>
             </div>
         </div>
     </div>
 
+    <!-- ─── 제안서 고도화 전략 모달 ─── -->
+    <div id="proposal-strategy-overlay" class="strategy-modal-overlay" onclick="closeProposalStrategyModal(event)" role="dialog" aria-modal="true" aria-labelledby="proposal-strategy-title">
+        <div class="strategy-modal proposal-strategy-modal" onclick="event.stopPropagation()">
+            <div class="strategy-modal-header proposal-header">
+                <div>
+                    <h2 id="proposal-strategy-title">📊 제안서 고도화 전략</h2>
+                    <p style="color:rgba(255,255,255,0.7);font-size:0.85rem;margin-top:4px" id="proposal-strategy-subtitle">경쟁사·발주기관·지역·투찰률 데이터 기반 심층 분석</p>
+                </div>
+                <button class="close-btn" onclick="closeProposalStrategyModal()">&times;</button>
+            </div>
+            <div class="strategy-modal-body">
+                <!-- 로딩 상태 -->
+                <div id="proposal-loading" class="proposal-loading" style="display:none">
+                    <div class="proposal-loading-spinner">
+                        <div class="pl-ring"></div>
+                        <div class="pl-ring pl-ring-2"></div>
+                        <div class="pl-ring pl-ring-3"></div>
+                    </div>
+                    <p class="pl-text">제안서 전략을 분석 중입니다...</p>
+                    <p class="pl-sub">경쟁사·기관 정책·지역 트렌드·투찰률을 종합 분석합니다 (최대 3분)</p>
+                    <div class="pl-progress">
+                        <div class="pl-progress-bar" id="pl-progress-bar"></div>
+                    </div>
+                </div>
+                <!-- 결과 콘텐츠 -->
+                <div id="proposal-strategy-content"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- 공고 간단 정보 팝업 -->
-    <div id="bid-quick-view" class="bid-quick-overlay" onclick="closeBidQuickView(event)">
+    <div id="bid-quick-view" class="bid-quick-overlay" onclick="closeBidQuickView(event)" role="dialog" aria-modal="true" aria-labelledby="bqv-title">
         <div class="bid-quick-card">
             <div class="bid-quick-header">
                 <h3 id="bqv-title"></h3>
@@ -876,7 +913,7 @@
     </div>
 
     <!-- 관심공고 상세 모달 -->
-    <div id="fav-detail-overlay" class="bid-quick-overlay" onclick="closeFavDetail(event)">
+    <div id="fav-detail-overlay" class="bid-quick-overlay" onclick="closeFavDetail(event)" role="dialog" aria-modal="true" aria-labelledby="fav-detail-title">
         <div class="fav-detail-card">
             <div class="bid-quick-header">
                 <h3 id="fav-detail-title"></h3>
@@ -946,6 +983,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=20260602v"></script>
+    <script src="/static/js/app.js?v=20260608v"></script>
 </body>
 </html>

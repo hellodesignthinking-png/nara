@@ -7,10 +7,12 @@ Jinja2 HTML 템플릿 기반으로 분석 결과를 이메일로 전송합니다
 
 import logging
 import smtplib
+import ssl
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from src.utils.formatters import format_budget
 
@@ -408,7 +410,7 @@ class EmailReporter:
 
         # 이메일 제목 생성
         if not subject:
-            today = datetime.now().strftime('%Y-%m-%d')
+            today = datetime.now(tz=ZoneInfo("Asia/Seoul")).strftime('%Y-%m-%d')
             bid_count = len(results)
             subject = f"[NARA] {today} 나라장터 분석 보고서 ({bid_count}건)"
 
@@ -431,21 +433,21 @@ class EmailReporter:
         # SMTP 전송
         try:
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                server.starttls()
+                server.starttls(context=ssl.create_default_context())
                 server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)
 
-            logger.info(f"이메일 전송 완료: {len(recipients)}명에게 발송 ({subject})")
+            logger.info("이메일 전송 완료: %d명에게 발송 (%s)", len(recipients), subject)
             return True
 
         except smtplib.SMTPAuthenticationError:
-            logger.error("SMTP 인증 실패. 사용자명/비밀번호를 확인하세요.")
+            logger.error("SMTP 인증 실패. 사용자명/비밀번호를 확인하세요.", exc_info=True)
             return False
         except smtplib.SMTPException as e:
-            logger.error(f"이메일 전송 실패 (SMTP): {e}")
+            logger.error("이메일 전송 실패 (SMTP): %s", e, exc_info=True)
             return False
         except Exception as e:
-            logger.error(f"이메일 전송 실패: {e}")
+            logger.error("이메일 전송 실패: %s", e, exc_info=True)
             return False
 
     # ══════════════════════════════════════════════
@@ -462,7 +464,7 @@ class EmailReporter:
         Returns:
             렌더링된 HTML 문자열
         """
-        now = datetime.now()
+        now = datetime.now(tz=ZoneInfo("Asia/Seoul"))
         report_date = now.strftime('%Y년 %m월 %d일')
         generated_at = now.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -546,7 +548,7 @@ class EmailReporter:
         Returns:
             텍스트 형식의 이메일 본문
         """
-        now = datetime.now()
+        now = datetime.now(tz=ZoneInfo("Asia/Seoul"))
         lines = [
             '═' * 50,
             '  🏛️ NARA Analyzer - 일일 분석 보고서',

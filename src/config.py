@@ -3,10 +3,16 @@
 .env 파일에서 환경변수를 로드하고 전역 설정 객체를 제공합니다.
 """
 
+from __future__ import annotations
+
 import os
+import threading
 from pathlib import Path
 from dataclasses import dataclass, field
+from typing import Literal
 from dotenv import load_dotenv
+
+from src.utils.exceptions import ConfigError
 
 
 # 프로젝트 루트 디렉터리
@@ -36,7 +42,15 @@ class Config:
     gemini_model: str = "gemini-2.5-flash"
 
     # LLM 엔진 선택 (openai / gemini)
-    llm_engine: str = "gemini"
+    llm_engine: Literal["openai", "gemini"] = "gemini"
+
+    def __post_init__(self):
+        """설정값 검증"""
+        valid_engines = ("openai", "gemini")
+        if self.llm_engine not in valid_engines:
+            raise ConfigError(
+                f"LLM_ENGINE은 {valid_engines} 중 하나여야 합니다. 현재값: {self.llm_engine!r}"
+            )
 
     # 이메일 설정
     smtp_host: str = "smtp.gmail.com"
@@ -84,6 +98,14 @@ class Config:
         else:
             if not self.openai_api_key:
                 warnings.append("OPENAI_API_KEY가 설정되지 않았습니다. AI 분석이 비활성화됩니다.")
+
+        # 치명적 누락: API 키가 하나도 없으면 예외 발생
+        if not self.data_go_kr_api_key and not self.openai_api_key and not self.gemini_api_key:
+            raise ConfigError(
+                "API 키가 하나도 설정되지 않았습니다. "
+                ".env 파일에 DATA_GO_KR_API_KEY, OPENAI_API_KEY 또는 GEMINI_API_KEY를 설정하세요."
+            )
+
         return warnings
 
 
@@ -97,6 +119,7 @@ def _safe_int(value: str, default: int) -> int:
 
 # 싱글턴 인스턴스
 _config_instance: Config | None = None
+_config_lock = threading.Lock()
 
 
 def load_config(force_reload: bool = False) -> Config:
@@ -114,40 +137,50 @@ def load_config(force_reload: bool = False) -> Config:
     if _config_instance is not None and not force_reload:
         return _config_instance
 
-    # .env 파일 로드
-    env_path = PROJECT_ROOT / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
+    with _config_lock:
+        # Double-checked locking
+        if _config_instance is not None and not force_reload:
+            return _config_instance
 
-    # 디렉터리 생성
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
+        # .env 파일 로드
+        env_path = PROJECT_ROOT / ".env"
+        if env_path.exists():
+            load_dotenv(env_path, override=force_reload)
 
-    # 이메일 수신자 파싱
-    recipients_str = os.getenv("EMAIL_RECIPIENTS", "")
-    recipients = [r.strip() for r in recipients_str.split(",") if r.strip()]
+        # 디렉터리 생성
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 키워드 파싱
-    keywords_str = os.getenv("KEYWORDS", "AI,인공지능,데이터,마케팅,컨설팅,SW개발,플랫폼")
-    keywords = [k.strip() for k in keywords_str.split(",") if k.strip()]
+        # 이메일 수신자 파싱
+        recipients_str = os.getenv("EMAIL_RECIPIENTS", "")
+        recipients = [r.strip() for r in recipients_str.split(",") if r.strip()]
 
-    _config_instance = Config(
-        data_go_kr_api_key=os.getenv("DATA_GO_KR_API_KEY", ""),
-        naver_client_id=os.getenv("NAVER_CLIENT_ID", ""),
-        naver_client_secret=os.getenv("NAVER_CLIENT_SECRET", ""),
-        openai_api_key=os.getenv("OPENAI_API_KEY", ""),
-        openai_model=os.getenv("OPENAI_MODEL", "gpt-4o"),
-        gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
-        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
-        llm_engine=os.getenv("LLM_ENGINE", "gemini"),
-        smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
-        smtp_port=_safe_int(os.getenv("SMTP_PORT", "587"), 587),
-        smtp_user=os.getenv("SMTP_USER", ""),
-        smtp_password=os.getenv("SMTP_PASSWORD", ""),
-        email_recipients=recipients,
-        keywords=keywords,
-        min_relevance_score=_safe_int(os.getenv("MIN_RELEVANCE_SCORE", "40"), 40),
-        past_years=_safe_int(os.getenv("PAST_YEARS", "2"), 2),
-    )
+        # 키워드 파싱
+        keywords_str = os.getenv("KEYWORDS", "AI,인공지능,데이터,마케팅,컨설팅,SW개발,플랫폼")
+        keywords = [k.strip() for k in keywords_str.split(",") if k.strip()]
 
-    return _config_instance
+        _config_instance = Config(
+            data_go_kr_api_key=os.getenv("DATA_GO_KR_API_KEY", ""),
+            naver_client_id=os.getenv("NAVER_CLIENT_ID", ""),
+            naver_client_secret=os.getenv("NAVER_CLIENT_SECRET", ""),
+            openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+            openai_model=os.getenv("OPENAI_MODEL", "gpt-4o"),
+            gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+            gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+            llm_engine=os.getenv("LLM_ENGINE", "gemini"),
+            smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
+            smtp_port=_safe_int(os.getenv("SMTP_PORT", "587"), 587),
+            smtp_user=os.getenv("SMTP_USER", ""),
+            smtp_password=os.getenv("SMTP_PASSWORD", ""),
+            email_recipients=recipients,
+            keywords=keywords,
+            min_relevance_score=_safe_int(os.getenv("MIN_RELEVANCE_SCORE", "40"), 40),
+            past_years=_safe_int(os.getenv("PAST_YEARS", "2"), 2),
+        )
+
+        return _config_instance
+
+
+def reload_config() -> Config:
+    """설정을 강제로 다시 로드합니다. .env 파일 변경 후 호출하세요."""
+    return load_config(force_reload=True)

@@ -53,6 +53,15 @@ class RFPDiffer:
         old_text = old_text or ""
         new_text = new_text or ""
 
+        # 입력 크기 제한: 50,000자 초과 시 절단
+        max_chars = 50000
+        if len(old_text) > max_chars:
+            logger.warning("old_text가 %d자로 제한(%d)을 초과하여 절단합니다.", len(old_text), max_chars)
+            old_text = old_text[:max_chars]
+        if len(new_text) > max_chars:
+            logger.warning("new_text가 %d자로 제한(%d)을 초과하여 절단합니다.", len(new_text), max_chars)
+            new_text = new_text[:max_chars]
+
         old_lines = old_text.splitlines(keepends=True)
         new_lines = new_text.splitlines(keepends=True)
 
@@ -231,26 +240,30 @@ class RFPDiffer:
 
     def find_similar_past_bid(
         self,
-        db,
-        current_bid: dict,
+        db=None,
+        current_bid: dict = None,
+        *,
+        db_manager=None,
     ) -> Optional[dict]:
         """
         데이터베이스에서 현재 입찰공고와 유사한 과거 입찰을 검색합니다.
 
         입찰공고 제목에서 핵심 키워드를 추출하여
         과거 낙찰정보를 검색합니다.
+        최소 유사도 임계값(0.3) 이상인 결과만 반환합니다.
 
         Args:
-            db: DatabaseManager 인스턴스
+            db: DatabaseManager 인스턴스 (레거시 파라미터, db_manager와 동일)
             current_bid: 현재 입찰공고 딕셔너리
                         (title, bid_ntce_no 등의 키 포함)
+            db_manager: DatabaseManager 인스턴스 (선택, db보다 우선)
 
         Returns:
             가장 유사한 과거 입찰 딕셔너리 또는 None.
             반환 항목: bid_title, winner_name, award_amount,
                       award_date, similarity
         """
-        title = current_bid.get("title", "")
+        title = current_bid.get("title", "") if current_bid else ""
         if not title:
             logger.warning("입찰공고 제목이 비어있어 유사 입찰을 검색할 수 없습니다.")
             return None
@@ -261,21 +274,37 @@ class RFPDiffer:
             logger.debug("제목에서 키워드를 추출할 수 없습니다: %s", title)
             return None
 
+        # db_manager 파라미터 우선, db 레거시 파라미터 사용, 둘 다 없으면 내부 임포트
+        effective_db = db_manager or db
+        if effective_db is None:
+            try:
+                from src.models.database import DatabaseManager
+                effective_db = DatabaseManager()
+            except ImportError:
+                logger.error(
+                    "src.models.database 모듈을 임포트할 수 없습니다. "
+                    "유사 입찰 검색을 건너뜁니다."
+                )
+                return None
+
         try:
             # DatabaseManager 임포트 (순환 참조 방지를 위해 여기서 임포트)
             from src.models.database import DatabaseManager
 
             # db 인스턴스 타입 검증
-            if not isinstance(db, DatabaseManager):
+            if not isinstance(effective_db, DatabaseManager):
                 logger.warning("유효하지 않은 DatabaseManager 인스턴스입니다.")
                 return None
+
+            # 최소 유사도 임계값
+            min_similarity_threshold = 0.3
 
             # 각 키워드로 낙찰정보 검색
             best_match: Optional[dict] = None
             best_similarity = 0.0
 
             for keyword in keywords:
-                awards = db.get_awards_by_title(keyword, limit=10)
+                awards = effective_db.get_awards_by_title(keyword, limit=10)
 
                 for award in awards:
                     # 현재 공고와 동일한 번호는 제외
@@ -299,12 +328,20 @@ class RFPDiffer:
                             "similarity": round(similarity, 4),
                         }
 
-            if best_match:
+            if best_match and best_match["similarity"] >= min_similarity_threshold:
                 logger.info(
                     "유사 과거 입찰 발견: '%s' (유사도: %.2f%%)",
                     best_match["bid_title"],
                     best_match["similarity"] * 100,
                 )
+            elif best_match:
+                logger.debug(
+                    "유사도 %.2f%%가 임계값(%.0f%%) 미만이라 무시: '%s'",
+                    best_match["similarity"] * 100,
+                    min_similarity_threshold * 100,
+                    best_match["bid_title"],
+                )
+                best_match = None
             else:
                 logger.debug("유사한 과거 입찰을 찾지 못했습니다: %s", title)
 

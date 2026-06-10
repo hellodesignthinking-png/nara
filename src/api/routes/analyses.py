@@ -18,6 +18,7 @@ from src.models.schemas import AnalysisResult
 from src.analyzers.biz_matcher import BizMatcher
 from src.analyzers.llm_analyzer import LLMAnalyzer
 from src.analyzers.strategy_engine import StrategyEngine
+from src.analyzers.proposal_strategy import ProposalStrategyAnalyzer
 
 # 선택적 의존성: 설치되지 않았을 경우 None으로 대체
 try:
@@ -32,7 +33,7 @@ from ._helpers import (
     _biz_profile_to_matcher_dict,
     _load_settings,
 )
-from ._models import StrategyAnalysisRequest
+from ._models import StrategyAnalysisRequest, ProposalStrategyRequest
 
 logger = logging.getLogger(__name__)
 
@@ -147,11 +148,25 @@ async def run_full_analysis(db=Depends(get_db)):
             match_details = best_match.get("details", {})
 
             try:
-                strategy = strategy_engine.generate_strategy(
+                # 과거 낙찰 정보 조회
+                past_awards_for_bid = []
+                try:
+                    bid_title_kw = bid.get('title', '')[:20]
+                    if bid_title_kw:
+                        existing = db.get_awards_by_title(bid_title_kw)
+                        past_awards_for_bid = [
+                            aw.to_dict() if hasattr(aw, 'to_dict') else aw
+                            for aw in (existing or [])[:10]
+                        ]
+                except Exception:
+                    pass
+
+                strategy = await asyncio.to_thread(
+                    strategy_engine.generate_strategy,
                     bid=bid,
                     business_profile=business,
                     rfp_text=bid.get("rfp_text", ""),
-                    past_awards=[],
+                    past_awards=past_awards_for_bid,
                     news_articles=[],
                 )
 
@@ -159,7 +174,7 @@ async def run_full_analysis(db=Depends(get_db)):
                 analysis = AnalysisResult(
                     bid_ntce_no=bid.get("bid_ntce_no", ""),
                     biz_id=business.get("biz_id", ""),
-                    relevance_score=result.get("relevance_score", 0),
+                    relevance_score=match_details.get("license_score", 0) + match_details.get("keyword_score", 0) + match_details.get("region_score", 0),
                     match_score=match_score,
                     summary=strategy.get("bid_summary", ""),
                     strategy_report=json.dumps(strategy, ensure_ascii=False, default=str),
@@ -192,7 +207,7 @@ async def run_full_analysis(db=Depends(get_db)):
                     "match_score": match_score,
                     "matched_business": business.get("company_name", ""),
                     "participable": True,
-                    "error": str(e),
+                    "error": "전략 분석에 실패했습니다. 다시 시도해주세요.",
                 })
 
         # 매칭 점수 높은 순으로 정렬
@@ -252,33 +267,46 @@ async def get_analyses(
                 seen.add(r.bid_ntce_no)
                 unique.append(r)
 
-        # 공고 정보 JOIN
+        # 배치 쿼리: 공고 정보
+        bid_nos = [r.bid_ntce_no for r in unique]
+        bid_map = {}
+        if bid_nos:
+            conn = db.get_connection()
+            placeholders = ",".join("?" for _ in bid_nos)
+            cursor = conn.execute(
+                f"SELECT * FROM bid_announcements WHERE bid_ntce_no IN ({placeholders})",
+                bid_nos,
+            )
+            for row in cursor.fetchall():
+                bid_map[row["bid_ntce_no"]] = dict(row)
+
+        # 배치 쿼리: 사업자 정보
+        biz_ids = list({r.biz_id for r in unique if r.biz_id})
+        biz_map = {}
+        if biz_ids:
+            placeholders = ",".join("?" for _ in biz_ids)
+            cursor = conn.execute(
+                f"SELECT biz_id, company_name FROM business_profiles WHERE biz_id IN ({placeholders})",
+                biz_ids,
+            )
+            for row in cursor.fetchall():
+                biz_map[row["biz_id"]] = row["company_name"]
+
         enriched = []
         for r in unique:
             d = _analysis_to_api_dict(r)
-            try:
-                bid = db.get_bid_by_no(r.bid_ntce_no)
-                if bid:
-                    d["bid_title"] = bid.title or r.bid_ntce_no
-                    d["org_name"] = bid.org_name or ""
-                    d["budget"] = bid.budget or 0
-                    d["bid_close_dt"] = bid.bid_close_dt or ""
-                else:
-                    d["bid_title"] = r.bid_ntce_no
-                    d["org_name"] = ""
-                    d["budget"] = 0
-            except Exception:
+            bid_row = bid_map.get(r.bid_ntce_no)
+            if bid_row:
+                d["bid_title"] = bid_row.get("title") or r.bid_ntce_no
+                d["org_name"] = bid_row.get("org_name") or ""
+                d["budget"] = bid_row.get("budget") or 0
+                d["bid_close_dt"] = bid_row.get("bid_close_dt") or ""
+            else:
                 d["bid_title"] = r.bid_ntce_no
                 d["org_name"] = ""
                 d["budget"] = 0
-            # 사업자명 조회
             if r.biz_id:
-                try:
-                    biz = db.get_business(r.biz_id)
-                    if biz:
-                        d["company_name"] = biz.company_name
-                except Exception:
-                    pass
+                d["company_name"] = biz_map.get(r.biz_id, "")
             enriched.append(d)
 
         return enriched
@@ -540,10 +568,11 @@ async def analyze_strategy(request: StrategyAnalysisRequest, db=Depends(get_db))
         if VectorStore is not None:
             try:
                 vector_store = VectorStore()
-                vector_store.add_context(
-                    bid_ntce_no=request.bid_ntce_no,
-                    text=bid.rfp_text or bid_title,
-                    metadata={"strategy": strategy.get("bid_summary", "")},
+                vector_store.add_bid_context(
+                    bid_no=request.bid_ntce_no,
+                    rfp_text=bid.rfp_text or bid_title,
+                    news_articles=news_dicts,
+                    past_awards=past_award_dicts,
                 )
             except Exception as e:
                 logger.debug("VectorStore 컨텍스트 저장 스킵: %s", e)
@@ -578,3 +607,203 @@ async def analyze_strategy(request: StrategyAnalysisRequest, db=Depends(get_db))
     except Exception as e:
         logger.error("실시간 전략 분석 실패: %s", e)
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
+
+
+@router.post("/analyze-proposal-strategy", summary="제안서 고도화 전략 분석")
+async def analyze_proposal_strategy(request: ProposalStrategyRequest, db=Depends(get_db)):
+    """
+    제안서 고도화 전략 분석 API
+
+    기존 /analyze-strategy보다 심층적인 분석을 제공합니다:
+    - 경쟁사 수주 패턴 분석
+    - 발주기관 정책 방향 분석
+    - 지역 트렌드 분석
+    - 투찰률 최적화
+    - RFP 전년 대비 변화 분석
+    - LLM 기반 종합 전략 보고서
+    """
+    try:
+        config = load_config()
+
+        # 공고 존재 확인
+        bid = db.get_bid_by_no(request.bid_ntce_no)
+        if not bid:
+            raise HTTPException(
+                status_code=404,
+                detail=f"공고를 찾을 수 없습니다: {request.bid_ntce_no}",
+            )
+
+        # ProposalStrategyAnalyzer 실행 (타임아웃 180초)
+        def _run_analysis():
+            analyzer = ProposalStrategyAnalyzer(db=db, config=config)
+            return analyzer.generate_proposal_strategy(
+                bid_ntce_no=request.bid_ntce_no,
+                biz_id=request.biz_id,
+            )
+
+        loop = asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            result = await asyncio.wait_for(
+                loop.run_in_executor(pool, _run_analysis),
+                timeout=180.0,
+            )
+
+        # 프론트엔드 renderProposalStrategy()가 기대하는 형태로 변환
+        bid_info = result.get("bid_info", {})
+        business = result.get("business_profile", {})
+
+        # 경쟁사 분석 결과 → competitor_intelligence
+        competitor_raw = result.get("competitor_analysis", {})
+        competitor_intelligence = {
+            "top_competitors": [
+                {
+                    "company_name": c.get("name", ""),
+                    "win_count": c.get("win_count", 0),
+                    "avg_bid_rate": c.get("avg_bid_rate", 0),
+                    "total_amount": c.get("avg_award_amount", 0),
+                }
+                for c in competitor_raw.get("top_competitors", [])
+            ],
+            "market_concentration": competitor_raw.get("market_concentration", {}),
+            "our_competitive_position": (
+                f"{business.get('company_name', '귀사')}는 "
+                f"총 {competitor_raw.get('competitive_position', {}).get('total_competitors', 0)}개 경쟁사 중 "
+                f"차별화 전략이 필요합니다."
+            ),
+        }
+
+        # 발주기관 정책
+        org_raw = result.get("org_policy", {})
+        org_policy_analysis = {}
+        if not org_raw.get("error"):
+            policy_direction_parts = []
+            if org_raw.get("total_bids"):
+                policy_direction_parts.append(
+                    f"{org_raw.get('org_name', '')}은 총 {org_raw['total_bids']}건의 공고를 발주했습니다."
+                )
+            top_cats = org_raw.get("top_categories", [])
+            if top_cats:
+                cat_names = ", ".join(c["category"] for c in top_cats[:3])
+                policy_direction_parts.append(f"주력 분야: {cat_names}")
+            org_policy_analysis = {
+                "policy_direction": " ".join(policy_direction_parts) if policy_direction_parts else None,
+                "preferred_vendors_insight": (
+                    ", ".join(
+                        f"{v['name']}({v['win_count']}건)"
+                        for v in org_raw.get("preferred_vendors", [])[:5]
+                    )
+                    if org_raw.get("preferred_vendors")
+                    else None
+                ),
+                "recurring_project_insight": (
+                    f"이 기관은 연간 평균 투찰률 {org_raw.get('award_stats', {}).get('avg_bid_rate', 0):.1f}%로, "
+                    f"총 {org_raw.get('total_awards', 0)}건의 낙찰 이력이 있습니다."
+                    if org_raw.get("total_awards", 0) > 0
+                    else None
+                ),
+            }
+
+        # 지역 트렌드
+        region_raw = result.get("regional_trend", {})
+        regional_analysis = {}
+        if not region_raw.get("error"):
+            market_overview = region_raw.get("market_overview", {})
+            market_trend = None
+            if market_overview.get("total_awards"):
+                market_trend = (
+                    f"{region_raw.get('region', '')} 지역에서 총 {market_overview['total_awards']}건의 "
+                    f"낙찰이 있었으며, 평균 낙찰금액은 {market_overview.get('avg_award_amount', 0):,}원입니다."
+                )
+            pa = region_raw.get("policy_alignment", {})
+            regional_analysis = {
+                "market_trend": market_trend,
+                "policy_alignment": pa.get("recommendation"),
+                "local_preference": region_raw.get("local_preference", {}).get("recommendation"),
+            }
+
+        # 투찰률 최적화
+        rate_raw = result.get("bid_rate_optimization", {})
+        bid_rate_recommendation = {}
+        if not rate_raw.get("error"):
+            rec = rate_raw.get("recommended_rate", {})
+            bid_rate_recommendation = {
+                "optimal_rate": rec.get("optimal"),
+                "range": [rec.get("range_low", 85), rec.get("range_high", 91)],
+                "confidence": rec.get("confidence", 0),
+                "rationale": rate_raw.get("risk_assessment", {}).get("strategy", ""),
+            }
+
+        # RFP 변화
+        rfp_raw = result.get("rfp_changes", {})
+        rfp_change_analysis = {}
+        if rfp_raw.get("diff_summary"):
+            diff = rfp_raw["diff_summary"]
+            rfp_change_analysis = {
+                "vs_last_year": (
+                    f"전년 대비 유사도 {diff.get('similarity_ratio', 0) * 100:.1f}%, "
+                    f"변경 {diff.get('changed_count', 0)}건 "
+                    f"(추가 {diff.get('added_count', 0)}, 삭제 {diff.get('removed_count', 0)})"
+                ),
+                "new_requirements": [
+                    c.get("content", str(c))
+                    for c in rfp_raw.get("key_changes", [])
+                    if isinstance(c, dict) and c.get("type") == "added"
+                ][:10],
+            }
+        elif rfp_raw.get("note"):
+            rfp_change_analysis = {"vs_last_year": rfp_raw["note"]}
+
+        # LLM 전략 보고서
+        llm_raw = result.get("llm_strategy_report", {})
+
+        # 매칭 점수 계산 (분석 결과 풍부도 기반)
+        _score = 30  # 기본점
+        if competitor_intelligence.get("top_competitors"):
+            _score += min(len(competitor_intelligence["top_competitors"]) * 5, 15)
+        if org_policy_analysis.get("policy_direction"):
+            _score += 10
+        if regional_analysis.get("market_trend"):
+            _score += 10
+        if bid_rate_recommendation.get("optimal_rate"):
+            _score += 10
+            if bid_rate_recommendation.get("confidence", 0) > 0.5:
+                _score += 5
+        if rfp_change_analysis.get("vs_last_year"):
+            _score += 10
+        if llm_raw.get("proposal_outline"):
+            _score += 10
+        _match_score = min(_score, 100)
+
+        # 최종 응답
+        return {
+            "bid_title": bid_info.get("title", ""),
+            "org_name": bid_info.get("org_name", ""),
+            "matched_business": business.get("company_name", ""),
+            "match_score": _match_score,
+            "strategy": {
+                "competitor_intelligence": competitor_intelligence if competitor_intelligence.get("top_competitors") else None,
+                "org_policy_analysis": org_policy_analysis if org_policy_analysis.get("policy_direction") else None,
+                "regional_analysis": regional_analysis if regional_analysis.get("market_trend") or regional_analysis.get("policy_alignment") else None,
+                "bid_rate_recommendation": bid_rate_recommendation if bid_rate_recommendation.get("optimal_rate") else None,
+                "rfp_change_analysis": rfp_change_analysis if rfp_change_analysis.get("vs_last_year") else None,
+                "proposal_enhancement": llm_raw.get("proposal_outline") and {
+                    "title_strategy": llm_raw.get("bid_summary"),
+                    "tech_differentiation": llm_raw.get("differentiation_strategy"),
+                    "team_composition_advice": llm_raw.get("risk_factors"),
+                    "pricing_strategy": llm_raw.get("budget_analysis"),
+                },
+                "llm_strategy_report": llm_raw.get("overall_recommendation") or llm_raw.get("proposal_outline"),
+                "action_plan": llm_raw.get("action_items", []),
+            },
+            "metadata": result.get("metadata", {}),
+        }
+
+    except HTTPException:
+        raise
+    except asyncio.TimeoutError:
+        logger.error("제안서 전략 분석 타임아웃: %s", request.bid_ntce_no)
+        raise HTTPException(status_code=504, detail="분석 시간이 초과되었습니다. 다시 시도해주세요.")
+    except Exception as e:
+        logger.error("제안서 전략 분석 실패: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
+

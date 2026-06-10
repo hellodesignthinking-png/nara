@@ -8,6 +8,7 @@ Panel, Table, Markdown, 이모지, 그래디언트 색상 등을 활용하여
 
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from src.utils.formatters import format_budget
 
@@ -36,6 +37,11 @@ class CLIReporter:
         (0, 'red', '🔴'),
     ]
 
+    # 표시 상수
+    TITLE_MAX_LEN = 38
+    ORG_MAX_LEN = 35
+    MAX_DISPLAY_COUNT = 10
+
     def __init__(self):
         """CLI 보고서 출력기를 초기화합니다."""
         self.console = Console()
@@ -46,7 +52,7 @@ class CLIReporter:
 
     def print_header(self):
         """NARA Analyzer 메인 헤더를 출력합니다."""
-        now = datetime.now()
+        now = datetime.now(tz=ZoneInfo("Asia/Seoul"))
         date_str = now.strftime('%Y년 %m월 %d일 (%A)')
         time_str = now.strftime('%H:%M:%S')
 
@@ -136,7 +142,7 @@ class CLIReporter:
             # 관련도 점수
             relevance = result.get('relevance_score', 0)
             rel_color, rel_emoji = self._get_score_style(relevance)
-            relevance_text = f"{rel_emoji} {relevance:.0f}" if relevance else "-"
+            relevance_text = f"{rel_emoji} {relevance:.0f}" if relevance is not None else "-"
 
             # 매칭 정보
             best_match = result.get('best_match', {})
@@ -156,8 +162,8 @@ class CLIReporter:
 
             # 제목이 너무 길면 줄임
             display_title = title
-            if len(display_title) > 38:
-                display_title = display_title[:35] + '...'
+            if len(display_title) > self.TITLE_MAX_LEN:
+                display_title = display_title[:self.ORG_MAX_LEN] + '...'
 
             table.add_row(
                 str(rank),
@@ -384,7 +390,7 @@ class CLIReporter:
         self.console.print(Rule(style="bright_cyan"))
         end_text = Text()
         end_text.append("🏁 일일 분석 보고서 종료", style="bold bright_cyan")
-        end_text.append(f"  ({datetime.now().strftime('%H:%M:%S')})", style="dim")
+        end_text.append(f"  ({datetime.now(tz=ZoneInfo('Asia/Seoul')).strftime('%H:%M:%S')})", style="dim")
         self.console.print(end_text, justify="center")
         self.console.print()
 

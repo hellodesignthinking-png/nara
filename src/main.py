@@ -22,70 +22,25 @@ from src.models.schemas import BusinessProfile, AnalysisResult
 from src.collectors.bid_collector import BidCollector
 from src.collectors.award_collector import AwardCollector
 from src.collectors.news_collector import NewsCollector
-from src.parsers.hwp_parser import extract_text as extract_text_from_hwp
-from src.parsers.pdf_parser import extract_text as extract_text_from_pdf
 from src.analyzers.keyword_filter import KeywordFilter
 from src.analyzers.biz_matcher import BizMatcher
 from src.analyzers.llm_analyzer import LLMAnalyzer
 from src.analyzers.strategy_engine import StrategyEngine
 from src.reporters.cli_reporter import CLIReporter
+from src.utils.converters import biz_profile_to_matcher_dict as _biz_profile_to_matcher_dict
+from src.utils.converters import bid_to_matcher_dict as _bid_to_matcher_dict
 
-# 로깅 설정
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+# 로깅 설정 (구조화 로깅 모듈 사용)
+try:
+    from src.utils.logging_config import setup_logging
+    setup_logging()
+except Exception:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 logger = logging.getLogger("nara")
-
-
-def _biz_profile_to_matcher_dict(profile: BusinessProfile) -> dict:
-    """BusinessProfile dataclass를 BizMatcher가 기대하는 dict 형태로 변환합니다."""
-    return {
-        "biz_id": profile.biz_id,
-        "name": profile.company_name,
-        "company_name": profile.company_name,
-        "business_types": profile.business_types,
-        "licenses": profile.licenses,
-        "regions": profile.regions,
-        "region": profile.regions[0] if profile.regions else "",
-        "past_projects": [
-            {"name": p} if isinstance(p, str) else p
-            for p in profile.past_projects
-        ],
-        "budget_range": {
-            "min": profile.min_budget or 0,
-            "max": profile.max_budget or 999999999999,
-        },
-        "keywords": profile.keywords,
-        "annual_revenue": profile.annual_revenue,
-        "employee_count": profile.employee_count,
-    }
-
-
-def _bid_to_matcher_dict(bid) -> dict:
-    """BidAnnouncement dataclass를 BizMatcher/LLM이 기대하는 dict 형태로 변환합니다."""
-    if isinstance(bid, dict):
-        return bid
-    return {
-        "bid_ntce_no": bid.bid_ntce_no,
-        "title": bid.title,
-        "bidNtceNm": bid.title,
-        "org_name": bid.org_name,
-        "ntceInsttNm": bid.org_name,
-        "dminstt_nm": bid.demand_org_name,
-        "budget": bid.budget,
-        "presmptPrce": bid.budget,
-        "category": bid.category,
-        "region": bid.region,
-        "required_licenses": [bid.license_limit] if bid.license_limit else [],
-        "license_limit": bid.license_limit,
-        "bid_close_dt": bid.bid_close_dt,
-        "bidClseDt": bid.bid_close_dt,
-        "rfp_url": bid.rfp_url,
-        "rfp_text": bid.rfp_text or "",
-        "description": bid.rfp_text or "",
-    }
 
 
 def run_analysis(config, db, start_date=None, end_date=None):
@@ -101,182 +56,187 @@ def run_analysis(config, db, start_date=None, end_date=None):
     6. LLM 심층 분석 + 전략 보고서 생성
     7. CLI 출력
     """
-    reporter = CLIReporter()
-    reporter.print_header()
+    try:
+        reporter = CLIReporter()
+        reporter.print_header()
 
-    # ── 1단계: 공고 수집 ───────────────────────────────
-    logger.info("📋 1단계: 나라장터 용역 공고 수집 중...")
-    bid_collector = BidCollector(config)
+        # ── 1단계: 공고 수집 ─────────────────────────────
+        logger.info("📋 1단계: 나라장터 용역 공고 수집 중...")
+        bid_collector = BidCollector(config)
 
-    if start_date and end_date:
-        bids = bid_collector.collect_bids_by_date(start_date, end_date)
-    else:
-        bids = bid_collector.collect_today_bids()
+        if start_date and end_date:
+            bids = bid_collector.collect_bids_by_date(start_date, end_date)
+        else:
+            bids = bid_collector.collect_today_bids()
 
-    if not bids:
-        reporter.console.print("\n[yellow]⚠️ 수집된 공고가 없습니다.[/yellow]")
-        return
+        if not bids:
+            reporter.console.print("\n[yellow]⚠️ 수집된 공고가 없습니다.[/yellow]")
+            return
 
-    logger.info(f"  → 총 {len(bids)}건 공고 수집 완료")
+        logger.info(f"  → 총 {len(bids)}건 공고 수집 완료")
 
-    # DB에 저장
-    db.save_bids(bids)
+        # DB에 저장
+        db.save_bids(bids)
 
-    # ── 2단계: 키워드 필터링 ──────────────────────────
-    logger.info("🔍 2단계: 키워드 기반 1차 필터링 중...")
-    keyword_filter = KeywordFilter(config.keywords)
+        # ── 2단계: 키워드 필터링 ──────────────────────────
+        logger.info("🔍 2단계: 키워드 기반 1차 필터링 중...")
+        keyword_filter = KeywordFilter(config.keywords)
 
-    # BidAnnouncement 객체를 dict로 변환하여 필터링
-    bid_dicts = [_bid_to_matcher_dict(b) for b in bids]
-    filtered_bids = keyword_filter.filter_bids(bid_dicts, min_score=config.min_relevance_score)
-    logger.info(f"  → {len(filtered_bids)}건 관심 공고 필터링됨")
+        # BidAnnouncement 객체를 dict로 변환하여 필터링
+        bid_dicts = [_bid_to_matcher_dict(b) for b in bids]
+        filtered_bids = keyword_filter.filter_bids(bid_dicts, min_score=config.min_relevance_score)
+        logger.info(f"  → {len(filtered_bids)}건 관심 공고 필터링됨")
 
-    if not filtered_bids:
-        reporter.console.print("\n[yellow]⚠️ 키워드에 매칭되는 공고가 없습니다.[/yellow]")
-        reporter.console.print(f"[dim]현재 키워드: {', '.join(config.keywords)}[/dim]")
-        return
+        if not filtered_bids:
+            reporter.console.print("\n[yellow]⚠️ 키워드에 매칭되는 공고가 없습니다.[/yellow]")
+            reporter.console.print(f"[dim]현재 키워드: {', '.join(config.keywords)}[/dim]")
+            return
 
-    # ── 3단계: 사업자 매칭 ────────────────────────────
-    logger.info("🏢 3단계: 사업자-공고 매칭 분석 중...")
-    biz_profiles = db.get_businesses()
+        # ── 3단계: 사업자 매칭 ────────────────────────────
+        logger.info("🏢 3단계: 사업자-공고 매칭 분석 중...")
+        biz_profiles = db.get_businesses()
 
-    if not biz_profiles:
-        reporter.console.print("\n[yellow]⚠️ 등록된 사업자가 없습니다. 먼저 사업자를 등록해주세요.[/yellow]")
-        reporter.console.print("[dim]실행: python -m src.main register[/dim]")
-        return
+        if not biz_profiles:
+            reporter.console.print("\n[yellow]⚠️ 등록된 사업자가 없습니다. 먼저 사업자를 등록해주세요.[/yellow]")
+            reporter.console.print("[dim]실행: python -m src.main register[/dim]")
+            return
 
-    # BusinessProfile → matcher dict 변환
-    biz_dicts = [_biz_profile_to_matcher_dict(bp) for bp in biz_profiles]
+        # BusinessProfile → matcher dict 변환
+        biz_dicts = [_biz_profile_to_matcher_dict(bp) for bp in biz_profiles]
 
-    biz_matcher = BizMatcher()
-    match_results = biz_matcher.match_all_bids(biz_dicts, filtered_bids)
-    logger.info(f"  → {len(biz_profiles)}개 사업자와 매칭 완료")
+        biz_matcher = BizMatcher()
+        match_results = biz_matcher.match_all_bids(biz_dicts, filtered_bids)
+        logger.info(f"  → {len(biz_profiles)}개 사업자와 매칭 완료")
 
-    # ── 4단계: 과거 데이터 + 뉴스 수집 ───────────────
-    logger.info("📰 4단계: 과거 낙찰 데이터 및 뉴스 수집 중...")
-    award_collector = AwardCollector(config)
-    news_collector = NewsCollector(config)
+        # ── 4단계: 과거 데이터 + 뉴스 수집 ───────────────
+        logger.info("📰 4단계: 과거 낙찰 데이터 및 뉴스 수집 중...")
+        award_collector = AwardCollector(config)
+        news_collector = NewsCollector(config)
 
-    for result in match_results:
-        bid = result["bid"]
-        bid_title = bid.get("title", bid.get("bidNtceNm", ""))
+        for result in match_results:
+            bid = result["bid"]
+            bid_title = bid.get("title", bid.get("bidNtceNm", ""))
 
-        # 과거 낙찰 정보 수집
-        try:
-            past_awards = award_collector.collect_awards_by_keyword(
-                bid_title, years_back=config.past_years
-            )
-            result["past_awards"] = past_awards
-            if past_awards:
-                db.save_awards(past_awards)
-        except Exception as e:
-            logger.warning(f"  ⚠️ 낙찰 정보 수집 실패: {e}")
-            result["past_awards"] = []
-
-        # 관련 뉴스 수집
-        try:
-            org_name = bid.get("org_name", bid.get("ntceInsttNm", ""))
-            if org_name:
-                news = news_collector.collect_org_news(
-                    org_name, config.keywords, years_back=config.past_years
+            # 과거 낙찰 정보 수집
+            try:
+                past_awards = award_collector.collect_awards_by_keyword(
+                    bid_title, years_back=config.past_years
                 )
-                result["news_articles"] = news
-                if news:
-                    db.save_news(news)
-            else:
+                result["past_awards"] = past_awards
+                if past_awards:
+                    db.save_awards(past_awards)
+            except Exception as e:
+                logger.warning(f"  ⚠️ 낙찰 정보 수집 실패: {e}")
+                result["past_awards"] = []
+
+            # 관련 뉴스 수집
+            try:
+                org_name = bid.get("org_name", bid.get("ntceInsttNm", ""))
+                if org_name:
+                    news = news_collector.collect_org_news(
+                        org_name, config.keywords, years_back=config.past_years
+                    )
+                    result["news_articles"] = news
+                    if news:
+                        db.save_news(news)
+                else:
+                    result["news_articles"] = []
+            except Exception as e:
+                logger.warning(f"  ⚠️ 뉴스 수집 실패: {e}")
                 result["news_articles"] = []
-        except Exception as e:
-            logger.warning(f"  ⚠️ 뉴스 수집 실패: {e}")
-            result["news_articles"] = []
 
-    # ── 5단계: AI 전략 보고서 생성 ────────────────────
-    logger.info("🤖 5단계: AI 전략 보고서 생성 중...")
-    if config.llm_engine == "gemini":
-        llm_analyzer = LLMAnalyzer(
-            api_key=config.gemini_api_key,
-            model=config.gemini_model,
-            engine="gemini",
-        )
-    else:
-        llm_analyzer = LLMAnalyzer(
-            api_key=config.openai_api_key,
-            model=config.openai_model,
-            engine="openai",
-        )
-    strategy_engine = StrategyEngine(llm_analyzer)
-
-    final_results = []
-    for result in match_results:
-        bid = result["bid"]
-        best_match = result.get("best_match") or {}
-        business = best_match.get("business", {})
-
-        # 과거 낙찰 정보를 dict 리스트로 변환
-        past_award_dicts = []
-        for aw in result.get("past_awards", []):
-            if hasattr(aw, "to_dict"):
-                past_award_dicts.append(aw.to_dict())
-            elif isinstance(aw, dict):
-                past_award_dicts.append(aw)
-
-        # 뉴스를 dict 리스트로 변환
-        news_dicts = []
-        for ns in result.get("news_articles", []):
-            if hasattr(ns, "to_dict"):
-                news_dicts.append(ns.to_dict())
-            elif isinstance(ns, dict):
-                news_dicts.append(ns)
-
-        try:
-            strategy = strategy_engine.generate_strategy(
-                bid=bid,
-                business_profile=business,
-                rfp_text=bid.get("rfp_text", ""),
-                past_awards=past_award_dicts,
-                news_articles=news_dicts,
+        # ── 5단계: AI 전략 보고서 생성 ────────────────────
+        logger.info("🤖 5단계: AI 전략 보고서 생성 중...")
+        if config.llm_engine == "gemini":
+            llm_analyzer = LLMAnalyzer(
+                api_key=config.gemini_api_key,
+                model=config.gemini_model,
+                engine="gemini",
             )
-            result["strategy"] = strategy
-
-            # DB에 분석 결과 저장
-            analysis = AnalysisResult(
-                bid_ntce_no=bid.get("bid_ntce_no", ""),
-                biz_id=business.get("biz_id", ""),
-                relevance_score=result.get("relevance_score", 0),
-                match_score=best_match.get("score", 0),
-                summary=strategy.get("bid_summary", ""),
-                strategy_report=json.dumps(strategy, ensure_ascii=False),
-                competitors=strategy.get("competitor_analysis", ""),
+        else:
+            llm_analyzer = LLMAnalyzer(
+                api_key=config.openai_api_key,
+                model=config.openai_model,
+                engine="openai",
             )
-            db.save_analysis(analysis)
+        strategy_engine = StrategyEngine(llm_analyzer)
 
-        except Exception as e:
-            logger.warning(f"  ⚠️ 전략 보고서 생성 실패 ({bid.get('title', '')}): {e}")
-            result["strategy"] = {"error": str(e)}
+        final_results = []
+        for result in match_results:
+            bid = result["bid"]
+            best_match = result.get("best_match") or {}
+            business = best_match.get("business", {})
 
-        final_results.append(result)
+            # 과거 낙찰 정보를 dict 리스트로 변환
+            past_award_dicts = []
+            for aw in result.get("past_awards", []):
+                if hasattr(aw, "to_dict"):
+                    past_award_dicts.append(aw.to_dict())
+                elif isinstance(aw, dict):
+                    past_award_dicts.append(aw)
 
-    # ── 6단계: 보고서 출력 ────────────────────────────
-    logger.info("📊 6단계: 보고서 출력 중...")
-    reporter.print_daily_report(final_results)
+            # 뉴스를 dict 리스트로 변환
+            news_dicts = []
+            for ns in result.get("news_articles", []):
+                if hasattr(ns, "to_dict"):
+                    news_dicts.append(ns.to_dict())
+                elif isinstance(ns, dict):
+                    news_dicts.append(ns)
 
-    # 이메일 전송 (설정된 경우)
-    if config.smtp_user and config.email_recipients:
-        try:
-            from src.reporters.email_reporter import EmailReporter
+            try:
+                strategy = strategy_engine.generate_strategy(
+                    bid=bid,
+                    business_profile=business,
+                    rfp_text=bid.get("rfp_text", ""),
+                    past_awards=past_award_dicts,
+                    news_articles=news_dicts,
+                )
+                result["strategy"] = strategy
 
-            email_reporter = EmailReporter(
-                smtp_host=config.smtp_host,
-                smtp_port=config.smtp_port,
-                smtp_user=config.smtp_user,
-                smtp_password=config.smtp_password,
-            )
-            email_reporter.send_daily_report(final_results, config.email_recipients)
-            logger.info("  ✅ 이메일 전송 완료")
-        except Exception as e:
-            logger.warning(f"  ⚠️ 이메일 전송 실패: {e}")
+                # DB에 분석 결과 저장
+                analysis = AnalysisResult(
+                    bid_ntce_no=bid.get("bid_ntce_no", ""),
+                    biz_id=business.get("biz_id", ""),
+                    relevance_score=result.get("relevance_score", 0),
+                    match_score=best_match.get("score", 0),
+                    summary=strategy.get("bid_summary", ""),
+                    strategy_report=json.dumps(strategy, ensure_ascii=False),
+                    competitors=strategy.get("competitor_analysis", ""),
+                )
+                db.save_analysis(analysis)
 
-    logger.info("✅ 분석 완료!")
-    return final_results
+            except Exception as e:
+                logger.warning(f"  ⚠️ 전략 보고서 생성 실패 ({bid.get('title', '')}): {e}")
+                result["strategy"] = {"error": str(e)}
+
+            final_results.append(result)
+
+        # ── 6단계: 보고서 출력 ────────────────────────────
+        logger.info("📊 6단계: 보고서 출력 중...")
+        reporter.print_daily_report(final_results)
+
+        # 이메일 전송 (설정된 경우)
+        if config.smtp_user and config.email_recipients:
+            try:
+                from src.reporters.email_reporter import EmailReporter
+
+                email_reporter = EmailReporter(
+                    smtp_host=config.smtp_host,
+                    smtp_port=config.smtp_port,
+                    smtp_user=config.smtp_user,
+                    smtp_password=config.smtp_password,
+                )
+                email_reporter.send_daily_report(final_results, config.email_recipients)
+                logger.info("  ✅ 이메일 전송 완료")
+            except Exception as e:
+                logger.warning(f"  ⚠️ 이메일 전송 실패: {e}")
+
+        logger.info("✅ 분석 완료!")
+        return final_results
+
+    except Exception as e:
+        logger.error("분석 파이프라인 실행 중 예상치 못한 오류 발생: %s", e, exc_info=True)
+        raise
 
 
 def register_business(db):
@@ -438,11 +398,9 @@ def main():
         print()
 
     # DB 초기화 (context manager 사용)
-    db = DatabaseManager(config.db_path)
-    db.connect()
-    db.init_db()
+    with DatabaseManager(config.db_path) as db:
+        db.init_db()
 
-    try:
         # 커맨드 실행
         if args.command == "analyze":
             run_analysis(config, db, args.from_date, args.to_date)
@@ -452,8 +410,6 @@ def main():
             list_businesses(db)
         elif args.command == "schedule":
             run_schedule(config, db, args.time)
-    finally:
-        db.close()
 
 
 if __name__ == "__main__":

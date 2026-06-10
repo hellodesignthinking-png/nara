@@ -19,6 +19,10 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# 보안 상수
+MAX_FILE_SIZE = 100 * 1024 * 1024         # 100MB 파일 크기 제한
+MAX_DECOMPRESSED_SIZE = 50 * 1024 * 1024  # 50MB 압축 해제 크기 제한
+
 
 def extract_text(file_path: str) -> str:
     """
@@ -43,6 +47,15 @@ def extract_text(file_path: str) -> str:
     file_path = Path(file_path)
     if not file_path.exists():
         logger.warning("HWP 파일을 찾을 수 없습니다: %s", file_path)
+        return ""
+
+    # 파일 크기 제한 확인
+    file_size = file_path.stat().st_size
+    if file_size > MAX_FILE_SIZE:
+        logger.warning(
+            "HWP 파일이 너무 큽니다: %s (%d bytes, 최대: %d bytes)",
+            file_path, file_size, MAX_FILE_SIZE,
+        )
         return ""
 
     try:
@@ -158,6 +171,11 @@ def _extract_section_text(
                     logger.debug("섹션 압축 해제 실패: %s", section_path)
                     return None
 
+            # 압축 해제 크기 제한 (decompression bomb 방지)
+            if len(data) > MAX_DECOMPRESSED_SIZE:
+                logger.warning("압축 해제 크기 제한 초과: %d bytes", len(data))
+                return ""
+
         # 바이너리 레코드에서 텍스트 추출
         text = _parse_hwp_text_records(data)
         return text
@@ -195,10 +213,9 @@ def _parse_hwp_text_records(data: bytes) -> str:
                 size = struct.unpack_from("<I", data, offset)[0]
                 offset += 4
 
-            # size=0이면 무한 루프 방지를 위해 최소 1바이트 전진
+            # size=0이면 레코드 구조가 손상된 것으로 판단하고 중단
             if size == 0:
-                offset += 1
-                continue
+                break
 
             if offset + size > len(data):
                 break
