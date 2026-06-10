@@ -65,12 +65,20 @@ async def get_dashboard_stats(db=Depends(get_db)):
         urgent_row = cursor2.fetchone()
         urgent_count = urgent_row[0] if urgent_row else 0
 
+        # 마지막 수집 시간
+        cursor3 = conn.execute(
+            "SELECT MAX(collected_at) FROM bid_announcements"
+        )
+        last_row = cursor3.fetchone()
+        last_collected_at = last_row[0] if last_row and last_row[0] else None
+
         return {
             "businesses": stats.get("business_profiles", 0),
             "bids": stats.get("bid_announcements", 0),
             "analyses": stats.get("analysis_results", 0),
             "today_bids": today_bids,
             "urgent_count": urgent_count,
+            "last_collected_at": last_collected_at,
         }
     except HTTPException:
         raise

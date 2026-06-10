@@ -1052,6 +1052,122 @@ function navigate(view) {
 // ──────────────────────────────────────────────
 // 4. 대시보드
 // ──────────────────────────────────────────────
+// ──────────────────────────────────────────────
+// 자동 공고 수집 (DB 비어있거나 6시간 이상 지났을 때)
+// ──────────────────────────────────────────────
+let _autoCollectRunning = false;
+
+function _shouldAutoCollect(stats) {
+    // 이미 수집 중이면 스킵
+    if (_autoCollectRunning) return false;
+
+    // DB에 공고가 없으면 즉시 수집
+    if (!stats.bids || stats.bids === 0) return true;
+
+    // 마지막 수집이 6시간 이상 지났으면 수집
+    if (stats.last_collected_at) {
+        try {
+            const lastTime = new Date(stats.last_collected_at.replace(' ', 'T') + 'Z');
+            const now = new Date();
+            const hoursAgo = (now - lastTime) / (1000 * 60 * 60);
+            if (hoursAgo >= 6) return true;
+        } catch (e) {
+            console.warn('수집 시간 파싱 실패:', e);
+        }
+    }
+
+    return false;
+}
+
+async function _runAutoCollect() {
+    if (_autoCollectRunning) return;
+    _autoCollectRunning = true;
+
+    // 브리핑 패널과 TOP10에 수집중 표시
+    _showCollectingBanner(true);
+
+    try {
+        // 관심 키워드 기반 자동 수집 (body 없이 POST → 서버에서 settings 키워드 사용)
+        const result = await api('POST', '/bids/collect', {});
+        console.log(`✅ 자동 수집 완료: ${result.collected}건 수집, ${result.saved}건 신규 저장`);
+
+        _showCollectingBanner(false, result);
+
+        // 수집 후 대시보드 데이터 갱신 (통계, TOP10, 차트)
+        setTimeout(async () => {
+            try {
+                // 통계 갱신
+                const newStats = await api('GET', '/dashboard/stats');
+                if (newStats) {
+                    animateCounter('stat-bids', newStats.bids || 0);
+                    animateCounter('stat-urgent', newStats.urgent_count || 0);
+                    const bidsChangeEl = document.getElementById('stat-bids-change');
+                    if (bidsChangeEl && newStats.today_bids > 0) {
+                        bidsChangeEl.textContent = `오늘 +${newStats.today_bids}건`;
+                        bidsChangeEl.style.opacity = '1';
+                    }
+                }
+                // TOP10 + 브리핑 갱신
+                loadTop10();
+                // 차트 갱신
+                loadCharts();
+            } catch (e) {
+                console.warn('갱신 실패:', e.message);
+            }
+        }, 500);
+
+    } catch (err) {
+        console.error('자동 수집 실패:', err.message);
+        _showCollectingBanner(false, null, err.message);
+    } finally {
+        _autoCollectRunning = false;
+    }
+}
+
+function _showCollectingBanner(isLoading, result, errorMsg) {
+    // 브리핑 패널 상단에 수집 상태 배너 표시
+    const briefingBody = document.getElementById('briefing-body');
+    const briefingBadge = document.getElementById('briefing-badge');
+    const top10List = document.getElementById('top10-list');
+
+    if (isLoading) {
+        // 수집 중 표시
+        if (briefingBadge) briefingBadge.textContent = '수집중...';
+        const loadingHTML = `
+            <div class="auto-collect-banner collecting">
+                <div class="auto-collect-spinner"></div>
+                <div class="auto-collect-text">
+                    <strong>🔄 공고 수집 중입니다</strong>
+                    <span>관심 키워드 기반으로 나라장터에서 공고를 가져오고 있습니다...</span>
+                </div>
+            </div>`;
+        if (briefingBody) briefingBody.innerHTML = loadingHTML;
+        if (top10List) top10List.innerHTML = loadingHTML;
+    } else if (errorMsg) {
+        // 오류 표시
+        if (briefingBadge) briefingBadge.textContent = '수집 실패';
+        const errorHTML = `
+            <div class="auto-collect-banner error">
+                <div class="auto-collect-text">
+                    <strong>⚠️ 수집 중 오류가 발생했습니다</strong>
+                    <span>${escapeHTML(errorMsg)}</span>
+                </div>
+            </div>`;
+        if (briefingBody) briefingBody.innerHTML = errorHTML;
+    } else if (result) {
+        // 수집 완료 → 잠시 성공 메시지 후 실제 데이터로 교체 (setTimeout에서 갱신됨)
+        if (briefingBadge) briefingBadge.textContent = '갱신중...';
+        const doneHTML = `
+            <div class="auto-collect-banner done">
+                <div class="auto-collect-text">
+                    <strong>✅ 수집 완료!</strong>
+                    <span>${result.collected}건 수집, ${result.saved}건 신규 저장 — 추천 공고를 분석하고 있습니다...</span>
+                </div>
+            </div>`;
+        if (briefingBody) briefingBody.innerHTML = doneHTML;
+    }
+}
+
 async function loadDashboard() {
     // 대시보드 통계를 한 번만 호출하고 결과를 재사용
     let dashboardStats = null;
@@ -1075,6 +1191,12 @@ async function loadDashboard() {
             const footerDot = document.getElementById('footer-status-dot');
             if (footerText) footerText.textContent = '시스템 정상 가동';
             if (footerDot) footerDot.style.background = 'var(--success)';
+
+            // ── 자동 수집 판단 ──
+            const needsAutoCollect = _shouldAutoCollect(dashboardStats);
+            if (needsAutoCollect) {
+                _runAutoCollect();  // 비동기 - 백그라운드 실행
+            }
         }
     } catch (err) {
         console.warn('대시보드 통계 로드 실패:', err.message);

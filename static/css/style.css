@@ -5915,3 +5915,51 @@ textarea:focus-visible {
 [data-theme="light"] .briefing-qual.critical {
     background: rgba(239,68,68,0.06);
 }
+
+/* ─── 자동 수집 배너 ─── */
+.auto-collect-banner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    border-radius: 12px;
+    animation: fadeInUp 0.3s ease;
+}
+.auto-collect-banner.collecting {
+    background: linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(168,85,247,0.06) 100%);
+    border: 1px solid rgba(99,102,241,0.2);
+}
+.auto-collect-banner.done {
+    background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(52,211,153,0.06) 100%);
+    border: 1px solid rgba(16,185,129,0.2);
+}
+.auto-collect-banner.error {
+    background: linear-gradient(135deg, rgba(239,68,68,0.06) 0%, rgba(248,113,113,0.04) 100%);
+    border: 1px solid rgba(239,68,68,0.15);
+}
+.auto-collect-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(99,102,241,0.2);
+    border-top-color: var(--text-accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+.auto-collect-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.auto-collect-text strong {
+    font-size: 0.92rem;
+    color: var(--text-primary);
+}
+.auto-collect-text span {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
