@@ -314,7 +314,7 @@
             <div class="view-header">
                 <div>
                     <h1 class="view-title">공고 목록</h1>
-                    <p class="view-subtitle">수집된 나라장터 용역 공고</p>
+                    <p class="view-subtitle">수집된 국내외 용역 공고</p>
                 </div>
                 <div class="view-header-actions">
                     <button class="btn btn-primary" onclick="collectBids()">
@@ -328,10 +328,28 @@
                 <div class="search-input-wrap">
                     <span class="search-icon">🔍</span>
                     <input type="text" id="bid-search" class="search-input" placeholder="용역명, 발주기관으로 검색..." oninput="filterBids()" onkeydown="if(event.key==='Enter'){event.preventDefault();collectByKeyword()}">
-                    <button class="btn btn-gradient btn-sm search-collect-btn" id="btn-keyword-collect" onclick="collectByKeyword()" title="이 키워드로 나라장터에서 직접 수집">
-                        🌐 나라장터 검색
+                    <button class="btn btn-gradient btn-sm search-collect-btn" id="btn-keyword-collect" onclick="collectByKeyword()" title="이 키워드로 국내외 조달망에서 직접 수집">
+                        🌐 통합 검색
                     </button>
                 </div>
+                
+                <!-- 🌐 수집 플랫폼 체크박스 그룹 -->
+                <div class="collect-platform-filters" style="display:flex;gap:12px;margin:8px 0;padding:8px 12px;background:var(--bg-light);border-radius:8px;border:1px dashed var(--border);flex-wrap:wrap;align-items:center">
+                    <span style="font-size:0.78rem;font-weight:600;color:var(--text-muted)">🌐 수집 채널:</span>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;cursor:pointer;color:var(--text)">
+                        <input type="checkbox" id="plat-nara" checked> 🏛️ 나라장터
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;cursor:pointer;color:var(--text)">
+                        <input type="checkbox" id="plat-kstartup" checked> 🚀 K-Startup
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;cursor:pointer;color:var(--text)">
+                        <input type="checkbox" id="plat-samgov" checked> 🇺🇸 SAM.gov
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;cursor:pointer;color:var(--text)">
+                        <input type="checkbox" id="plat-ungm" checked> 🇺🇳 UNGM
+                    </label>
+                </div>
+
                 <div class="search-chips" id="search-chips">
                     <!-- 저장된 관심 키워드에서 동적 생성 -->
                 </div>
@@ -356,18 +374,19 @@
                 <table class="data-table" id="bids-table">
                     <thead>
                         <tr>
+                            <th>출처</th>
                             <th>공고명</th>
                             <th>발주기관</th>
                             <th class="sortable" onclick="sortBids('budget')" id="th-budget" aria-sort="none">추정가격 <span class="sort-arrow">↕</span></th>
                             <th class="sortable" onclick="sortBids('bid_close_dt')" id="th-bid_close_dt" aria-sort="none">마감상태 <span class="sort-arrow">↕</span></th>
                             <th class="sortable" onclick="sortBids('relevance_score')" id="th-relevance_score" title="사업자 프로필과의 적합도" aria-sort="none">적합도 <span class="sort-arrow">↕</span></th>
                             <th>관심</th>
-                            <th>나라장터</th>
+                            <th>링크</th>
                         </tr>
                     </thead>
                     <tbody id="bids-body">
                         <tr class="empty-row">
-                            <td colspan="7">
+                            <td colspan="8">
                                 <div class="empty-state-inline">
                                     <span class="empty-float-icon">📝</span>
                                     <p class="empty-title">수집된 공고가 없습니다</p>

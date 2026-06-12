@@ -11,7 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from src.config import load_config
-from src.collectors.bid_collector import BidCollector
+from src.collectors.universal_collector import UniversalBidCollector
 
 # 선택적 의존성: 설치되지 않았을 경우 None으로 대체
 try:
@@ -179,93 +179,81 @@ async def get_bid_detail(bid_ntce_no: str, db=Depends(get_db)):
 @router.post("/bids/collect", summary="관심 키워드 기반 공고 수집")
 async def collect_bids(request: Optional[BidCollectRequest] = Body(None), db=Depends(get_db)):
     """
-    나라장터 API를 호출하여 공고를 수집하고 DB에 저장합니다.
+    국내외 조달/용역 API 및 소스 채널을 호출하여 공고를 수집하고 DB에 저장합니다.
 
     start_date와 end_date를 지정하면 해당 기간의 공고를 수집하고,
     미지정 시 오늘자 공고를 수집합니다.
-    body 없이 POST해도 오늘자 공고를 수집합니다.
+    platforms에 수집할 플랫폼 리스트를 실어 보내면 선별 수집합니다.
 
     Returns:
         collected: 수집된 전체 공고 수
         saved: 새로 DB에 저장된 공고 수 (기존 중복 제외)
     """
     try:
-        kw_errors = []  # 모든 분기에서 안전하게 사용하기 위해 사전 초기화
+        kw_errors = []
         config = load_config()
-        collector = BidCollector(config)
+        collector = UniversalBidCollector(config)
         user_settings = _load_settings()
+        
+        platforms = request.platforms if request else []
 
         # 키워드, 날짜에 따라 수집 방법 선택 (to_thread로 블로킹 방지)
         if request and request.keyword:
-            # 1) 사용자가 직접 키워드 지정
-            bids = await asyncio.to_thread(collector.collect_bids_by_keyword, request.keyword, 30)
+            # 1) 사용자가 직접 키워드 지정 (전체 수집 후 파이썬 상에서 키워드 필터링)
+            raw_bids = await asyncio.to_thread(collector.collect_all_sources, "", "", platforms)
+            bids = [b for b in raw_bids if request.keyword.lower() in (b.title or '').lower()]
             used_keywords = [request.keyword]
 
         elif request and request.start_date and request.end_date:
             # 2) 날짜 범위 지정
-            bids = await asyncio.to_thread(collector.collect_bids_by_date, request.start_date, request.end_date)
+            bids = await asyncio.to_thread(collector.collect_all_sources, request.start_date, request.end_date, platforms)
             used_keywords = []
 
         else:
-            # 3) 기본: 저장된 관심 키워드로 수집
+            # 3) 기본: 저장된 관심 키워드 및 지정 플랫폼으로 수집
             saved_keywords = user_settings.get("keywords") or config.keywords or []
             exclude_keywords = user_settings.get("exclude_keywords") or []
 
             if saved_keywords:
-                # 각 키워드로 나라장터 검색 → 결과 병합
-                all_bids = []
+                # 지정 키워드로 통합 수집 및 필터링
+                raw_bids = await asyncio.to_thread(collector.collect_all_sources, "", "", platforms)
+                filtered_bids = []
                 seen_nos = set()
-                kw_errors = []
-                for kw in saved_keywords:
-                    try:
-                        kw_bids = await asyncio.to_thread(
-                            collector.collect_bids_by_keyword, kw, 7
-                        )
-                        for b in kw_bids:
-                            if b.bid_ntce_no not in seen_nos:
-                                seen_nos.add(b.bid_ntce_no)
-                                all_bids.append(b)
-                        logger.info("키워드 '%s' → %d건 수집", kw, len(kw_bids))
-                    except Exception as kw_err:
-                        logger.warning("키워드 '%s' 수집 실패: %s", kw, kw_err)
-                        kw_errors.append({"keyword": kw, "error": str(kw_err)})
-                        continue
-
-                # 제외 키워드 필터링
-                if exclude_keywords:
-                    before_count = len(all_bids)
-                    all_bids = [
-                        b for b in all_bids
-                        if not any(ek in (b.title or '') for ek in exclude_keywords)
-                    ]
-                    logger.info("제외 키워드 필터링: %d → %d건", before_count, len(all_bids))
-
-                bids = all_bids
+                
+                for b in raw_bids:
+                    # 저장된 관심 키워드가 하나라도 제목에 포함되는지 확인
+                    match_kw = any(kw.lower() in (b.title or '').lower() for kw in saved_keywords)
+                    # 제외 키워드가 포함 안 되는지 확인
+                    match_exclude = any(ek.lower() in (b.title or '').lower() for ek in exclude_keywords) if exclude_keywords else False
+                    
+                    if match_kw and not match_exclude and b.bid_ntce_no not in seen_nos:
+                        seen_nos.add(b.bid_ntce_no)
+                        filtered_bids.append(b)
+                
+                bids = filtered_bids
                 used_keywords = saved_keywords
             else:
-                # 키워드 미설정 시 오늘 전체 공고 수집
-                bids = await asyncio.to_thread(collector.collect_today_bids)
+                # 키워드 미설정 시 지정 플랫폼의 오늘 전체 공고 수집
+                bids = await asyncio.to_thread(collector.collect_all_sources, "", "", platforms)
                 used_keywords = []
 
         # DB에 저장
         saved_count = db.save_bids(bids) if bids else 0
 
         keyword_info = f" (키워드: {used_keywords})" if used_keywords else ""
-        logger.info("공고 수집 완료: %d건 수집, %d건 저장%s", len(bids), saved_count, keyword_info)
+        logger.info("통합 공고 수집 완료: %d건 수집, %d건 저장%s (플랫폼: %s)", 
+                    len(bids), saved_count, keyword_info, platforms)
 
         response = {
             "collected": len(bids),
             "saved": saved_count,
             "keywords_used": used_keywords,
+            "platforms_used": platforms,
         }
 
-        # 키워드별 에러 정보 추가
-        if kw_errors:
-            response["keyword_errors"] = kw_errors
-
-        # 수집 실패 시 힌트 제공 (민감 정보 미노출)
+        # 수집 실패 시 힌트 제공
         if len(bids) == 0 and used_keywords:
-            response["hint"] = "API 키가 올바른지, 나라장터 API 서버 접근이 가능한지 확인하세요."
+            response["hint"] = "API 키가 올바른지, 혹은 수집 채널 접근이 가능한지 확인하세요."
 
         return response
     except HTTPException:

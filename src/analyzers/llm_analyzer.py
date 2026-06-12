@@ -357,7 +357,15 @@ JSON 구조:
     "budget_analysis": "예산 분석 (전년 대비 변화, 적정 투찰률 제안)",
     "action_items": ["입찰 준비 체크리스트 항목 1", "항목 2", ...],
     "proposal_outline": "제안서 기획 뼈대 (배경/목적 → 차별화 포인트 → 기술 방법론 → 추진 체계)",
-    "overall_recommendation": "종합 권고 (참여 여부, 핵심 전략 3줄 요약)"
+    "overall_recommendation": "종합 권고 (참여 여부, 핵심 전략 3줄 요약)",
+    "scorecard_feedback": "적격심사 시뮬레이션 결과(정량 평가 점수 부족 요인 등)에 대한 구체적 AI 피드백 및 대응 전략",
+    "win_themes": [
+        {"theme": "핵심 가치 제안 테마 제목 1", "description": "해당 테마의 상세 설명 및 제안 논거"},
+        {"theme": "핵심 가치 제안 테마 제목 2", "description": "해당 테마의 상세 설명 및 제안 논거"}
+    ],
+    "compliance_matrix": [
+        {"requirement": "RFP 요구사항 항목 1", "importance": "필수/우선", "proposal_response": "해당 요구사항을 만족시키기 위한 구체적 제안 기술/방법론"}
+    ]
 }"""
 
     def _build_strategy_prompt(
@@ -700,6 +708,9 @@ JSON 구조:
                 'action_items': data.get('action_items', []),
                 'proposal_outline': data.get('proposal_outline', ''),
                 'overall_recommendation': data.get('overall_recommendation', ''),
+                'scorecard_feedback': data.get('scorecard_feedback', ''),
+                'win_themes': data.get('win_themes', []),
+                'compliance_matrix': data.get('compliance_matrix', []),
             }
         except json.JSONDecodeError:
             logger.warning("전략 분석 JSON 파싱 실패.")
@@ -765,6 +776,9 @@ JSON 구조:
                 '현장설명회 참석 여부 확인',
             ],
             'overall_recommendation': 'AI 분석이 비활성화되어 자동 전략 수립이 제한됩니다. GEMINI_API_KEY 또는 OPENAI_API_KEY를 설정하세요.',
+            'scorecard_feedback': '정량 평가 시뮬레이션 피드백은 AI 활성화 시 제공됩니다.',
+            'win_themes': [],
+            'compliance_matrix': [],
             'analysis_source': 'fallback',
         }
 
@@ -806,7 +820,7 @@ JSON 구조:
 
 ## 추가 분석 데이터 활용 지침
 
-이번 분석에는 아래 5가지 사전 분석 결과가 함께 제공됩니다.
+이번 분석에는 아래 6가지 사전 분석 결과가 함께 제공됩니다.
 반드시 이 데이터를 전략 수립에 반영하세요:
 
 1. **경쟁사 수주 패턴 데이터**: 과거 낙찰 이력에서 도출된 주요 경쟁사 목록,
@@ -823,7 +837,11 @@ JSON 구조:
 
 5. **RFP 전년 대비 변화점**: 전년도 동일/유사 사업 대비 올해 RFP에서
    추가/삭제/변경된 요구사항이 핵심 평가 포인트입니다.
-   이 변화점을 차별화 전략의 중심에 두세요."""
+   이 변화점을 차별화 전략의 중심에 두세요.
+
+6. **적격심사 및 정량평가 시뮬레이션**: 정량평가 예상 배점과 안정권 여부,
+   점수 부족 시 제안하는 공동수급(컨소시엄) 등의 극복 전략이 제공됩니다.
+   이 정량적 리스크 및 보완 방안을 분석에 명확히 반영하세요."""
 
         # ── 사용자 프롬프트 구성 ──
         user_prompt = self._build_enhanced_user_prompt(
@@ -1088,10 +1106,39 @@ JSON 구조:
                 if rate:
                     prompt += f"     - 투찰률: {rate}%\n"
 
+        # 적격심사 및 정량평가 시뮬레이션 결과 추가
+        bid_sim = structured_analysis.get('bid_simulator', {})
+        prompt += """
+═══════════════════════════════════════
+▶ 10. 적격심사 및 정량평가 시뮬레이션 데이터
+═══════════════════════════════════════
+"""
+        if bid_sim and not bid_sim.get('error'):
+            scorecard = bid_sim.get('scorecard', {})
+            prompt += f"  종합 정량평가 점수: {scorecard.get('total_score', 0)}점 (통과 안정 기준: {scorecard.get('pass_threshold', 0)}점)\n"
+            prompt += f"  진단 상태: {scorecard.get('status', '정보 없음')}\n"
+            
+            credit = scorecard.get('credit_evaluation', {})
+            prompt += f"  · 경영상태 평가: {credit.get('score', 0)}/{credit.get('max_score', 0)}점 (신용등급: {credit.get('rating', 'N/A')})\n"
+            
+            exp = scorecard.get('experience_evaluation', {})
+            prompt += f"  · 유사실적 평가: {exp.get('score', 0)}/{exp.get('max_score', 0)}점 (최근 3년 누적: {exp.get('similar_experience_total_krw', 0):,}원)\n"
+            
+            va = scorecard.get('value_added', {})
+            prompt += f"  · 신인도 가점: {va.get('score', 0)}점 (항목: {', '.join(va.get('reasons', []))})\n"
+            
+            strategies = bid_sim.get('strategies', [])
+            if strategies:
+                prompt += "  · 정량적 부족 점수 극복을 위한 추천 전략:\n"
+                for s in strategies:
+                    prompt += f"    - {s}\n"
+        else:
+            prompt += "  (적격심사 시뮬레이션 데이터 없음)\n"
+
         prompt += """
 ═══════════════════════════════════════
 
-위 모든 데이터(공고 정보 + 사전 분석 5종 + 과거 이력)를
+위 모든 데이터(공고 정보 + 사전 분석 6종 + 과거 이력 + 적격심사 시뮬레이션 결과)를
 종합하여 고도화된 입찰 전략을 JSON 형식으로 분석해 주세요.
 
 ## 특히 주의사항:
@@ -1100,6 +1147,8 @@ JSON 구조:
 3. RFP 변화점이 있다면, 이를 차별화 전략의 핵심으로 삼으세요.
 4. 발주기관 정책 방향을 제안서 기획의 배경/목적에 연계하세요.
 5. 지역 트렌드를 반영한 시의성 있는 전략을 수립하세요.
+6. 적격심사 시뮬레이션 결과(scorecard_feedback)를 검토하고, 정량점수가 부족할 경우 극복할 구체적 행동(컨소시엄 지분 배분, 가점 인증 확보 등)을 종합 권고와 기획에 반영하세요.
+7. 제안요청서(RFP)를 기준으로 핵심 가치 제안(win_themes)과 요구사항 대응 현황표(compliance_matrix)를 생성하세요.
 """
         return prompt
 

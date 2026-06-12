@@ -1553,8 +1553,19 @@ function renderBids(bids) {
         }
         const isFav = isFavorite(bid.bid_ntce_no);
 
+        // 출처 배지 구별
+        let sourceBadge = '<span class="platform-badge nara">🏛️ 나라장터</span>';
+        if (bid.bid_ntce_no.startsWith('SAM-')) {
+            sourceBadge = '<span class="platform-badge samgov">🇺🇸 SAM.gov</span>';
+        } else if (bid.bid_ntce_no.startsWith('UNGM-')) {
+            sourceBadge = '<span class="platform-badge ungm">🇺🇳 UNGM</span>';
+        } else if (bid.bid_ntce_no.startsWith('KS-')) {
+            sourceBadge = '<span class="platform-badge kstartup">🚀 K-Startup</span>';
+        }
+
         return `
         <tr data-bid-no="${escapeHTML(bid.bid_ntce_no)}" class="bid-row-toggle ${isFav ? 'bid-row-fav' : ''} ${badgeClass === 'closed' ? 'bid-row-expired' : ''}" style="cursor:pointer">
+            <td>${sourceBadge}</td>
             <td class="td-title" title="${escapeHTML(bid.title || '')}">
                 ${isFav ? '<span style="color:#f59e0b">⭐</span> ' : ''}${escapeHTML(bid.title || '-')}
                 <div class="td-keywords">${kwChips}${bid.license_limit ? `<span class="kw-chip" style="background:rgba(239,68,68,0.1);color:var(--danger);border-color:rgba(239,68,68,0.3)">⚠ ${escapeHTML(bid.license_limit.substring(0, 20))}</span>` : ''}</div>
@@ -1570,13 +1581,13 @@ function renderBids(bids) {
             </td>
             <td>
                 <a href="${escapeHTML(naraUrl)}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-nara"
-                   onclick="event.stopPropagation()" title="나라장터에서 상세 확인">
+                   onclick="event.stopPropagation()" title="공고 상세 페이지 확인">
                     🔗 상세
                 </a>
             </td>
         </tr>
         <tr class="bid-detail-row" id="detail-${escapeHTML(bid.bid_ntce_no)}">
-            <td colspan="7">
+            <td colspan="8">
                 <div class="bid-detail-content">
                     ${(bid.license_limit || bid.region || bid.contract_method) ? `
                     <div class="bid-qual-banner">
@@ -1840,6 +1851,15 @@ function clearActiveChips() {
     document.querySelectorAll('.search-chip').forEach(c => c.classList.remove('active'));
 }
 
+function getSelectedPlatforms() {
+    const platforms = [];
+    if (document.getElementById('plat-nara')?.checked) platforms.push('nara');
+    if (document.getElementById('plat-kstartup')?.checked) platforms.push('kstartup');
+    if (document.getElementById('plat-samgov')?.checked) platforms.push('samgov');
+    if (document.getElementById('plat-ungm')?.checked) platforms.push('ungm');
+    return platforms;
+}
+
 async function collectByKeyword() {
     // 중복 실행 방지
     if (state.isLoading) return;
@@ -1850,10 +1870,16 @@ async function collectByKeyword() {
         return;
     }
 
-    showLoading(`'${keyword}' 키워드로 나라장터 검색 중...`, '최근 30일 공고를 직접 수집합니다');
+    const platforms = getSelectedPlatforms();
+    if (platforms.length === 0) {
+        showToast('최소 하나 이상의 수집 채널을 선택해주세요.', 'warning');
+        return;
+    }
+
+    showLoading(`'${keyword}' 키워드로 공고 검색 및 수집 중...`, '최근 30일 공고를 직접 수집합니다');
     try {
-        updateLoadingText(`🔍 '${keyword}' 키워드로 공고 수집 중...`, '나라장터 API에 요청을 보내고 있습니다');
-        const result = await api('POST', '/bids/collect', { keyword });
+        updateLoadingText(`🔍 '${keyword}' 키워드로 공고 수집 중...`, '선택된 채널에서 공고 수집 중입니다');
+        const result = await api('POST', '/bids/collect', { keyword, platforms });
         const count = result?.collected || 0;
         const saved = result?.saved || 0;
 
@@ -1880,10 +1906,16 @@ async function collectBids() {
     // 중복 실행 방지
     if (state.isLoading) return;
 
-    showLoading('관심 키워드로 공고 수집 중...', '설정된 키워드로 나라장터를 검색합니다');
+    const platforms = getSelectedPlatforms();
+    if (platforms.length === 0) {
+        showToast('최소 하나 이상의 수집 채널을 선택해주세요.', 'warning');
+        return;
+    }
+
+    showLoading('관심 키워드로 공고 수집 중...', '설정된 키워드로 검색을 수행합니다');
     try {
-        updateLoadingText('🔍 나라장터 공고 수집 중...', '관심 키워드로 공고를 검색하고 있습니다');
-        const result = await api('POST', '/bids/collect');
+        updateLoadingText('🔍 공고 수집 채널 연결 중...', '선택한 플랫폼들에서 수집 중입니다');
+        const result = await api('POST', '/bids/collect', { platforms });
         const count = result?.collected || 0;
         const saved = result?.saved || 0;
         const keywords = result?.keywords_used || [];
@@ -4482,6 +4514,114 @@ function renderProposalStrategy(data) {
             </div>
         </div>`;
 
+    // ─── 0. 정량평가 및 적격심사 시뮬레이션 ───
+    if (s.bid_simulator && !s.bid_simulator.error) {
+        const bs = s.bid_simulator;
+        const sc = bs.scorecard || {};
+        const strategies = bs.strategies || [];
+        
+        if (sc.total_score !== undefined) {
+            const isStable = sc.total_score >= sc.pass_threshold;
+            const badgeClass = isStable ? 'stable' : 'warning';
+            const statusLabel = isStable ? '안정권' : '보완 필요';
+            
+            html += `
+                <div class="ps-scorecard-section">
+                    <div class="ps-scorecard-header">
+                        <h4 class="ps-scorecard-title">📊 정량평가 & 적격심사 시뮬레이션</h4>
+                    </div>
+                    
+                    <div class="ps-scorecard-summary">
+                        <div class="ps-scorecard-gauge-wrap">
+                            <span class="ps-scorecard-gauge-value">${sc.total_score}</span>
+                        </div>
+                        <div class="ps-scorecard-summary-info">
+                            <div><strong>종합 정량 점수:</strong> ${sc.total_score}점 / 65점 만점</div>
+                            <div><strong>통과 기준점:</strong> ${sc.pass_threshold}점</div>
+                            <span class="ps-scorecard-status-badge ${badgeClass}">${statusLabel} (${sc.status || ''})</span>
+                        </div>
+                    </div>
+                    
+                    <div class="ps-simulator-grid">
+            `;
+            
+            if (sc.credit_evaluation) {
+                html += `
+                    <div class="ps-sim-card">
+                        <div class="ps-sim-card-title">💳 경영상태 평가</div>
+                        <div class="ps-sim-card-score">${sc.credit_evaluation.score} <small>/ ${sc.credit_evaluation.max_score}</small></div>
+                        <div class="ps-sim-card-detail">${sc.credit_evaluation.detail || ''} (등급: ${sc.credit_evaluation.rating || ''})</div>
+                    </div>
+                `;
+            }
+            if (sc.experience_evaluation) {
+                const totalKrw = sc.experience_evaluation.similar_experience_total_krw || 0;
+                const displayKrw = (totalKrw / 100000000).toFixed(1) + '억';
+                html += `
+                    <div class="ps-sim-card">
+                        <div class="ps-sim-card-title">📈 수행실적 평가</div>
+                        <div class="ps-sim-card-score">${sc.experience_evaluation.score} <small>/ ${sc.experience_evaluation.max_score}</small></div>
+                        <div class="ps-sim-card-detail">${sc.experience_evaluation.detail || ''}<br>유사실적: ${displayKrw} (비율: ${(sc.experience_evaluation.ratio_to_budget * 100).toFixed(1)}%)</div>
+                    </div>
+                `;
+            }
+            if (sc.value_added) {
+                const reasons = (sc.value_added.reasons || []).join(', ') || '보유 우대사항 없음';
+                html += `
+                    <div class="ps-sim-card">
+                        <div class="ps-sim-card-title">➕ 신인도 가점</div>
+                        <div class="ps-sim-card-score">+${sc.value_added.score} <small>/ 5.0</small></div>
+                        <div class="ps-sim-card-detail">${reasons}</div>
+                    </div>
+                `;
+            }
+            
+            const profile = data.business_profile || {};
+            const sanctionsText = profile.has_sanctions ? '부정당업자 제재 이력 감점 적용 (-2.0)' : '감점 이력 없음 (0.0)';
+            const sanctionsScore = profile.has_sanctions ? '-2.0' : '0.0';
+            html += `
+                <div class="ps-sim-card">
+                    <div class="ps-sim-card-title">➖ 감점 요인</div>
+                    <div class="ps-sim-card-score">${sanctionsScore}</div>
+                    <div class="ps-sim-card-detail">${sanctionsText}</div>
+                </div>
+            `;
+            
+            html += `
+                    </div>
+            `;
+            
+            if (strategies && strategies.length > 0) {
+                html += `<div class="ps-scorecard-strategies">`;
+                strategies.forEach(strategy => {
+                    const isSuccess = strategy.includes('🟢');
+                    const calloutClass = isSuccess ? 'ps-callout-success' : 'ps-callout-warning';
+                    html += `
+                        <div class="ps-callout ${calloutClass}" style="margin-top: 8px;">
+                            ${formatStrategyText(strategy)}
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+            }
+            
+            html += `
+                </div>
+            `;
+        }
+    } else if (s.bid_simulator && s.bid_simulator.note) {
+        html += `
+            <div class="ps-scorecard-section">
+                <div class="ps-scorecard-header">
+                    <h4 class="ps-scorecard-title">📊 정량평가 & 적격심사 시뮬레이션</h4>
+                </div>
+                <div class="ps-callout ps-callout-primary">
+                    <strong>안내:</strong> ${escapeHTML(s.bid_simulator.note)}
+                </div>
+            </div>
+        `;
+    }
+
     // ─── 1. 경쟁사 분석 ───
     if (s.competitor_intelligence) {
         const ci = s.competitor_intelligence;
@@ -4671,8 +4811,9 @@ function renderProposalStrategy(data) {
         html += '</div></div>';
     }
 
-    // ─── 7. AI 종합 전략 ───
+    // ─── 7. AI 종합 전략 보고서 ───
     if (s.llm_strategy_report) {
+        const lr = s.llm_strategy_report;
         html += `
             <div class="ps-section ps-llm">
                 <div class="ps-section-header">
@@ -4680,13 +4821,133 @@ function renderProposalStrategy(data) {
                     <h4>AI 종합 전략 보고서</h4>
                 </div>
                 <div class="ps-section-body">
-                    <div class="ps-llm-content">${formatStrategyText(
-                        typeof s.llm_strategy_report === 'string'
-                        ? s.llm_strategy_report
-                        : JSON.stringify(s.llm_strategy_report, null, 2)
-                    )}</div>
+        `;
+
+        if (typeof lr === 'string') {
+            html += `<div class="ps-llm-content">${formatStrategyText(lr)}</div>`;
+        } else {
+            if (lr.bid_summary) {
+                html += `
+                    <div class="ps-llm-block">
+                        <h5 style="margin: 0 0 8px 0; font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">📋 입찰 요약 및 발주처 의도</h5>
+                        <div class="ps-llm-content" style="margin-bottom: 16px;">${formatStrategyText(lr.bid_summary)}</div>
+                    </div>
+                `;
+            }
+            
+            if (lr.scorecard_feedback) {
+                html += `
+                    <div class="ps-llm-block">
+                        <h5 style="margin: 0 0 8px 0; font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">📉 정량평가 진단 및 극복 전략 피드백</h5>
+                        <div class="ps-callout ps-callout-primary" style="margin-bottom: 16px;">
+                            ${formatStrategyText(lr.scorecard_feedback)}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (lr.win_themes && lr.win_themes.length > 0) {
+                html += `
+                    <div class="ps-llm-block">
+                        <h5 style="margin: 0 0 8px 0; font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">🏆 핵심 가치 제안 (Win Themes)</h5>
+                        <div class="ps-win-theme-grid">
+                `;
+                lr.win_themes.forEach((theme, i) => {
+                    const themeTitle = theme.theme || `테마 ${i + 1}`;
+                    const themeDesc = theme.description || '';
+                    html += `
+                        <div class="ps-win-theme-card">
+                            <div class="ps-win-theme-card-title">💡 ${escapeHTML(themeTitle)}</div>
+                            <div class="ps-win-theme-card-desc">${formatStrategyText(themeDesc)}</div>
+                        </div>
+                    `;
+                });
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (lr.compliance_matrix && lr.compliance_matrix.length > 0) {
+                html += `
+                    <div class="ps-llm-block" style="margin-top: 20px;">
+                        <h5 style="margin: 0 0 8px 0; font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">📋 요구사항 대응 현황표 (Compliance Matrix)</h5>
+                        <div class="ps-compliance-table-wrap">
+                            <table class="ps-compliance-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 35%">RFP 요구사항</th>
+                                        <th style="width: 15%">중요도</th>
+                                        <th style="width: 50%">제안사 대응방안</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                `;
+                lr.compliance_matrix.forEach(row => {
+                    const req = row.requirement || '';
+                    const imp = row.importance || '일반';
+                    const resp = row.proposal_response || '';
+                    
+                    const isRequired = imp.includes('필수') || imp.includes('우선');
+                    const badgeClass = isRequired ? 'required' : 'normal';
+                    
+                    html += `
+                                    <tr>
+                                        <td><strong>${escapeHTML(req)}</strong></td>
+                                        <td><span class="ps-compliance-importance-badge ${badgeClass}">${escapeHTML(imp)}</span></td>
+                                        <td>${formatStrategyText(resp)}</td>
+                                    </tr>
+                    `;
+                });
+                html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (lr.differentiation_strategy) {
+                html += `
+                    <div class="ps-llm-block" style="margin-top: 20px;">
+                        <h5 style="margin: 0 0 8px 0; font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">🚀 제안 차별화 전략</h5>
+                        <div class="ps-llm-content" style="margin-bottom: 16px;">${formatStrategyText(lr.differentiation_strategy)}</div>
+                    </div>
+                `;
+            }
+            
+            if (lr.risk_factors) {
+                html += `
+                    <div class="ps-llm-block" style="margin-top: 20px;">
+                        <h5 style="margin: 0 0 8px 0; font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">⚠️ 리스크 요인 및 헤징 방안</h5>
+                        <div class="ps-llm-content" style="margin-bottom: 16px;">${formatStrategyText(lr.risk_factors)}</div>
+                    </div>
+                `;
+            }
+            
+            if (lr.proposal_outline) {
+                html += `
+                    <div class="ps-llm-block" style="margin-top: 20px;">
+                        <h5 style="margin: 0 0 8px 0; font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">📁 제안서 구성 목차 기획 (Outline)</h5>
+                        <div class="ps-llm-content" style="white-space: pre-wrap; font-family: monospace; background: var(--bg-input); padding: 12px; border-radius: 8px; border: 1px solid var(--border);">${escapeHTML(lr.proposal_outline)}</div>
+                    </div>
+                `;
+            }
+            
+            if (lr.overall_recommendation) {
+                html += `
+                    <div class="ps-callout ps-callout-success" style="margin-top: 20px;">
+                        <strong>🎯 종합 권고 & 핵심 전략:</strong><br>
+                        ${formatStrategyText(lr.overall_recommendation)}
+                    </div>
+                `;
+            }
+        }
+        
+        html += `
                 </div>
-            </div>`;
+            </div>
+        `;
     }
 
     // ─── 8. 액션 플랜 ───

@@ -31,6 +31,7 @@ class BidCollectRequest(BaseModel):
     start_date: Optional[str] = Field(None, description="시작일 (YYYYMMDD)")
     end_date: Optional[str] = Field(None, description="종료일 (YYYYMMDD)")
     keyword: Optional[str] = Field(None, description="검색 키워드 (공고명 검색)")
+    platforms: list[str] = Field(default_factory=list, description="수집 대상 플랫폼 목록 (예: nara, kstartup, samgov, ungm)")
 
 
 class StrategyAnalysisRequest(BaseModel):

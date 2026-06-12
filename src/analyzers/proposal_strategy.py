@@ -28,6 +28,7 @@ from src.analyzers.bid_rate_optimizer import BidRateOptimizer
 from src.analyzers.rfp_differ import RFPDiffer
 from src.analyzers.llm_analyzer import LLMAnalyzer
 from src.analyzers.strategy_engine import StrategyEngine
+from src.analyzers.bid_simulator import BidSimulator
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ class ProposalStrategyAnalyzer:
         self.regional_analyzer = RegionalTrendAnalyzer()
         self.bid_rate_optimizer = BidRateOptimizer()
         self.rfp_differ = RFPDiffer()
+        self.bid_simulator = BidSimulator()
 
         # LLM 분석기 초기화 (엔진 설정에 따라 Gemini 또는 OpenAI)
         llm_api_key = (
@@ -264,6 +266,22 @@ class ProposalStrategyAnalyzer:
         except Exception as e:
             logger.warning("과거 낙찰 이력 수집 실패: %s", e)
 
+        # ── 6-2단계: 적격심사 및 정량평가 시뮬레이션 ──
+        bid_simulator_result = {}
+        try:
+            if business_profile:
+                bid_simulator_result = self.bid_simulator.simulate(
+                    business_profile=business_profile,
+                    bid=bid,
+                )
+                logger.info("적격심사 시뮬레이션 완료: 정량 점수 %s점",
+                             bid_simulator_result.get('scorecard', {}).get('total_score', 'N/A'))
+            else:
+                bid_simulator_result = {'note': '사업자 프로필 정보가 없어 시뮬레이션을 진행할 수 없습니다.'}
+        except Exception as e:
+            logger.warning("적격심사 시뮬레이션 실패 (계속 진행): %s", e)
+            bid_simulator_result = {'error': str(e)}
+
         # ── 7단계: 구조화된 분석 결과 통합 ──
         enhanced_analysis = {
             'competitor_data': competitor_data,
@@ -272,6 +290,7 @@ class ProposalStrategyAnalyzer:
             'bid_rate_optimization': bid_rate_result,
             'rfp_changes': rfp_changes,
             'past_awards': past_awards,
+            'bid_simulator': bid_simulator_result,
         }
 
         # ── 8단계: LLM 최종 전략 보고서 생성 ──
@@ -317,6 +336,7 @@ class ProposalStrategyAnalyzer:
             'regional_trend': regional_trend,
             'bid_rate_optimization': bid_rate_result,
             'rfp_changes': rfp_changes,
+            'bid_simulator': bid_simulator_result,
             'llm_strategy_report': llm_strategy_report,
             'metadata': {
                 'analyzed_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -330,6 +350,7 @@ class ProposalStrategyAnalyzer:
                     'competitor_count': len(competitor_data.get('top_competitors', competitor_data.get('competitors', []))),
                     'rfp_changes_available': bool(rfp_changes.get('key_changes')),
                     'business_profile_available': bool(business_profile),
+                    'bid_simulator_available': bool(bid_simulator_result and not bid_simulator_result.get('error')),
                 },
             },
         }
@@ -431,6 +452,52 @@ class ProposalStrategyAnalyzer:
                     f"🔍 전년도 수주업체({recent_winner}) 수행 결과 조사"
                 )
 
+        # 적격심사 시뮬레이션 기반 피드백 생성
+        bid_sim = enhanced_analysis.get('bid_simulator', {})
+        scorecard_feedback = "정량평가 시뮬레이션 피드백을 생성할 수 없습니다."
+        if bid_sim and not bid_sim.get('error') and 'scorecard' in bid_sim:
+            scorecard = bid_sim['scorecard']
+            strategies = bid_sim.get('strategies', [])
+            scorecard_feedback = (
+                f"정량 평가 예측 점수는 {scorecard.get('total_score', 0)}점입니다. "
+                f"진단 상태는 '{scorecard.get('status', '정보 없음')}'입니다.\n"
+            )
+            if strategies:
+                scorecard_feedback += "추천 보완 조치:\n" + "\n".join(f"- {s}" for s in strategies)
+
+        # Compliance Matrix 뼈대 모의 생성
+        compliance_matrix = []
+        if bid.get('license_limit'):
+            compliance_matrix.append({
+                'requirement': f"참가 자격 제한: {bid['license_limit']}",
+                'importance': '필수',
+                'proposal_response': '사업자 보유 면허 및 관련 자격 증빙 서류 제출을 통해 충족성 증명.'
+            })
+        if bid.get('region'):
+            compliance_matrix.append({
+                'requirement': f"지역 제한: {bid['region']}",
+                'importance': '필수',
+                'proposal_response': '법인 등기부상 본점 소재지 증명을 통해 충족성 증명.'
+            })
+        if not compliance_matrix:
+            compliance_matrix.append({
+                'requirement': 'RFP 핵심 요구사항 만족',
+                'importance': '필수',
+                'proposal_response': 'RFP에 기재된 기능 및 비기능 요구사항 분석 및 솔루션 제시.'
+            })
+
+        # Win Themes 뼈대 모의 생성
+        win_themes = [
+            {
+                'theme': '발주기관 목적 최적화 솔루션 제공',
+                'description': f"본사의 전문 분야 역량을 매핑하여 {org_name}의 정책 및 사업 성과 목표를 조기 달성합니다."
+            },
+            {
+                'theme': '검증된 방법론을 통한 프로젝트 리스크 최소화',
+                'description': '과거 유사 수행 실적과 정형화된 품질 관리 프로세스를 적용하여 무결점 납품을 보장합니다.'
+            }
+        ]
+
         return {
             'bid_summary': (
                 f"'{bid_title}' 사업은 {org_name}에서 발주한 공고입니다. "
@@ -460,5 +527,8 @@ class ProposalStrategyAnalyzer:
                 'GEMINI_API_KEY 또는 OPENAI_API_KEY를 설정하면 '
                 '경쟁사·정책·트렌드를 종합한 고도화된 전략 보고서가 생성됩니다.'
             ),
+            'scorecard_feedback': scorecard_feedback,
+            'win_themes': win_themes,
+            'compliance_matrix': compliance_matrix,
             'analysis_source': 'fallback',
         }

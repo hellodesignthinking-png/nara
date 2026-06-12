@@ -6101,3 +6101,233 @@ textarea:focus-visible {
 [data-theme="light"] .briefing-collab-tip {
     background: rgba(6,182,212,0.04);
 }
+
+/* ──────────────────────────────────────────────
+   정량평가 시뮬레이션 & 제안서 프레임워크 고도화 스타일
+   ────────────────────────────────────────────── */
+
+/* 출처(플랫폼) 라벨 배지 */
+.platform-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.platform-badge.nara {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--accent-indigo);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+}
+.platform-badge.kstartup {
+    background: rgba(236, 72, 153, 0.15);
+    color: #ec4899;
+    border: 1px solid rgba(236, 72, 153, 0.25);
+}
+.platform-badge.samgov {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.25);
+}
+.platform-badge.ungm {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+/* 적격심사 시뮬레이션 영역 */
+.ps-scorecard-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-sm);
+}
+.ps-scorecard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.ps-scorecard-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.ps-scorecard-summary {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: var(--bg-input);
+    border-radius: 12px;
+    margin-bottom: 16px;
+    border: 1px solid var(--border);
+}
+.ps-scorecard-gauge-wrap {
+    width: 64px;
+    height: 64px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(99, 102, 241, 0.1);
+    border: 3px solid var(--accent-indigo);
+    flex-shrink: 0;
+}
+.ps-scorecard-gauge-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+.ps-scorecard-summary-info {
+    flex: 1;
+}
+.ps-scorecard-status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    margin-top: 4px;
+}
+.ps-scorecard-status-badge.stable {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+.ps-scorecard-status-badge.warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+}
+
+/* 정량 4대 항목 그리드 */
+.ps-simulator-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.ps-sim-card {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    transition: transform 0.2s, border-color 0.2s;
+}
+.ps-sim-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(99, 102, 241, 0.25);
+}
+.ps-sim-card-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+.ps-sim-card-score {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+.ps-sim-card-score small {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+.ps-sim-card-detail {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+    line-height: 1.3;
+}
+
+/* Win Theme 카드 그리드 */
+.ps-win-theme-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 12px;
+}
+.ps-win-theme-card {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.03) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.12);
+    border-radius: 12px;
+    padding: 18px;
+    position: relative;
+    overflow: hidden;
+}
+.ps-win-theme-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; width: 4px; height: 100%;
+    background: var(--gradient-primary);
+}
+.ps-win-theme-card-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.ps-win-theme-card-desc {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* Compliance Matrix 테이블 */
+.ps-compliance-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-top: 12px;
+}
+.ps-compliance-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    text-align: left;
+}
+.ps-compliance-table th,
+.ps-compliance-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+}
+.ps-compliance-table th {
+    background: var(--bg-input);
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+.ps-compliance-table tr:last-child td {
+    border-bottom: none;
+}
+.ps-compliance-importance-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+.ps-compliance-importance-badge.required {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+}
+.ps-compliance-importance-badge.normal {
+    background: rgba(100, 116, 139, 0.15);
+    color: var(--text-muted);
+}
+
