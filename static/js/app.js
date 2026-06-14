@@ -17,6 +17,15 @@ const API_TIMEOUT_ANALYSIS = 180000;
 const PAGE_SIZE_DEFAULT = 50;
 const CHART_DAYS_DEFAULT = 30;
 
+// ===== 글로벌 상태 변수 =====
+let compareList = []; // 공고 비교 리스트
+let favViewMode = 'list'; // 관심공고 뷰 모드 ('list' | 'kanban')
+let qaChatHistory = []; // AI Q&A 대화 내역
+let currentProposalBidNo = ''; // 제안서 Q&A 대상 공고번호
+let currentProposalBizId = ''; // 제안서 Q&A 대상 사업자 ID
+
+
+
 // ──────────────────────────────────────────────
 // 0. 빈값 표시 유틸리티
 // ──────────────────────────────────────────────
@@ -1563,9 +1572,17 @@ function renderBids(bids) {
             sourceBadge = '<span class="platform-badge kstartup">🚀 K-Startup</span>';
         }
 
+        const isCompared = compareList.some(item => item.bidNo === bid.bid_ntce_no);
         return `
         <tr data-bid-no="${escapeHTML(bid.bid_ntce_no)}" class="bid-row-toggle ${isFav ? 'bid-row-fav' : ''} ${badgeClass === 'closed' ? 'bid-row-expired' : ''}" style="cursor:pointer">
-            <td>${sourceBadge}</td>
+            <td>
+                <div style="display:flex;align-items:center;gap:6px">
+                    <input type="checkbox" class="compare-cb" data-bid-no="${escapeHTML(bid.bid_ntce_no)}" 
+                           onclick="event.stopPropagation(); toggleCompareBid('${escapeHTML(bid.bid_ntce_no)}', '${escapeHTML((bid.title||'').replace(/'/g,''))}', '${escapeHTML((bid.org_name||'').replace(/'/g,''))}', '${bid.budget||''}', '${escapeHTML(bid.bid_close_dt||'')}', this)"
+                           ${isCompared ? 'checked' : ''}>
+                    ${sourceBadge}
+                </div>
+            </td>
             <td class="td-title" title="${escapeHTML(bid.title || '')}">
                 ${isFav ? '<span style="color:#f59e0b">⭐</span> ' : ''}${escapeHTML(bid.title || '-')}
                 <div class="td-keywords">${kwChips}${bid.license_limit ? `<span class="kw-chip" style="background:rgba(239,68,68,0.1);color:var(--danger);border-color:rgba(239,68,68,0.3)">⚠ ${escapeHTML(bid.license_limit.substring(0, 20))}</span>` : ''}</div>
@@ -1961,6 +1978,9 @@ async function loadBusinesses() {
 
 function renderBusinesses(businesses) {
     const grid = document.getElementById('business-grid');
+    
+    // 포트폴리오 요약 위젯 업데이트
+    updateBusinessPortfolioSummary(businesses);
 
     if (!businesses || businesses.length === 0) {
         grid.innerHTML = `
@@ -2070,6 +2090,9 @@ function showBusinessModal(business = null) {
         document.getElementById('form-annual-revenue').value = business.annual_revenue || '';
         document.getElementById('form-min-budget').value = business.min_budget || '';
         document.getElementById('form-max-budget').value = business.max_budget || '';
+        document.getElementById('form-credit-rating').value = business.credit_rating || 'BBB';
+        document.getElementById('form-company-type').value = business.company_type || '';
+        document.getElementById('form-has-sanctions').checked = !!business.has_sanctions;
 
         // 태그 채우기
         setTags('biz-types', parseJsonField(business.business_types));
@@ -2085,6 +2108,9 @@ function showBusinessModal(business = null) {
         document.getElementById('form-mode').value = 'create';
         document.getElementById('form-original-biz-id').value = '';
         document.getElementById('form-biz-id').readOnly = false;
+        document.getElementById('form-credit-rating').value = 'BBB';
+        document.getElementById('form-company-type').value = '';
+        document.getElementById('form-has-sanctions').checked = false;
         title.textContent = '사업자 등록';
         submitBtn.textContent = '등록';
     }
@@ -2112,6 +2138,9 @@ async function saveBusiness(event) {
         keywords: state.tagData['keywords'],
         past_projects: (document.getElementById('form-past-projects').value || '')
             .split('\n').map(s => s.trim()).filter(Boolean),
+        credit_rating: document.getElementById('form-credit-rating').value,
+        company_type: document.getElementById('form-company-type').value.trim() || null,
+        has_sanctions: document.getElementById('form-has-sanctions').checked,
     };
 
     if (!body.biz_id || !body.company_name) {
@@ -4459,6 +4488,15 @@ async function analyzeProposalStrategy() {
 
         const data = await response.json();
         content.innerHTML = renderProposalStrategy(data);
+
+        // Q&A 대화용 글로벌 변수 바인딩 및 챗봇 위젯 활성화
+        currentProposalBidNo = bidNo;
+        currentProposalBizId = requestBody.biz_id || '';
+        qaChatHistory = [];
+        const qaSection = document.getElementById('proposal-qa-section');
+        if (qaSection) qaSection.style.display = 'block';
+        renderQAChat();
+
         subtitle.textContent = `${escapeHTML(data.bid_title || '')} — 분석 완료`;
         showToast('📊 제안서 고도화 전략 분석 완료!', 'success');
     } catch (error) {
@@ -5061,4 +5099,439 @@ function getScoreGrade(score) {
     if (score >= 60) return '양호';
     if (score >= 40) return '보통';
     return '부족';
+}
+
+
+// ──────────────────────────────────────────────
+// 30. 공고 비교 분석 (Compare Shelf) 기능
+// ──────────────────────────────────────────────
+
+/**
+ * 비교할 공고 추가/제거 토글
+ */
+function toggleCompareBid(bidNo, title, orgName, budget, closeDt, checkboxEl) {
+    if (checkboxEl.checked) {
+        if (compareList.length >= 3) {
+            showToast('⚠️ 비교함은 최대 3개 공고까지만 담을 수 있습니다.', 'warning');
+            checkboxEl.checked = false;
+            return;
+        }
+        compareList.push({ bidNo, title, orgName, budget, closeDt });
+        showToast('⚖️ 비교함에 공고가 추가되었습니다.', 'success');
+    } else {
+        compareList = compareList.filter(item => item.bidNo !== bidNo);
+        showToast('⚖️ 비교함에서 공고가 제거되었습니다.', 'info');
+    }
+    renderCompareShelf();
+}
+
+/**
+ * 비교함 플로팅 바 렌더링
+ */
+function renderCompareShelf() {
+    const shelf = document.getElementById('compare-shelf');
+    const countEl = document.getElementById('compare-count');
+    const itemsEl = document.getElementById('compare-shelf-items');
+    
+    if (!shelf) return;
+    
+    if (compareList.length > 0) {
+        shelf.classList.add('active');
+        countEl.textContent = compareList.length;
+        
+        itemsEl.innerHTML = compareList.map(item => `
+            <div class="compare-item-chip">
+                <span>${escapeHTML(item.title)}</span>
+                <span class="compare-item-remove" onclick="removeCompareItem('${item.bidNo}')">✕</span>
+            </div>
+        `).join('');
+    } else {
+        shelf.classList.remove('active');
+    }
+}
+
+/**
+ * 비교함 개별 칩 삭제
+ */
+function removeCompareItem(bidNo) {
+    compareList = compareList.filter(item => item.bidNo !== bidNo);
+    renderCompareShelf();
+    
+    const cb = document.querySelector(`.compare-cb[data-bid-no="${bidNo}"]`);
+    if (cb) cb.checked = false;
+}
+
+/**
+ * 비교함 전체 비우기
+ */
+function clearCompareShelf() {
+    compareList = [];
+    renderCompareShelf();
+    document.querySelectorAll('.compare-cb').forEach(cb => cb.checked = false);
+}
+
+/**
+ * 비교 모달 열기 및 데이터 교차 렌더링
+ */
+function openCompareModal() {
+    if (compareList.length < 2) {
+        showToast('⚠️ 최소 2개 이상의 공고를 선택해야 비교 분석이 가능합니다.', 'warning');
+        return;
+    }
+    
+    const overlay = document.getElementById('compare-modal-overlay');
+    const body = document.getElementById('compare-modal-body');
+    
+    if (!overlay || !body) return;
+    
+    overlay.classList.add('active');
+    
+    let html = `
+        <table class="compare-table">
+            <thead>
+                <tr>
+                    <th>비교 항목</th>
+                    ${compareList.map(item => `<th>${escapeHTML(item.title)}</th>`).join('')}
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>공고번호</strong></td>
+                    ${compareList.map(item => `<td>${escapeHTML(item.bidNo)}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td><strong>발주기관</strong></td>
+                    ${compareList.map(item => `<td>🏛️ ${escapeHTML(item.orgName)}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td><strong>추정예산</strong></td>
+                    ${compareList.map(item => `<td class="diff-highlight">${displayBudget(item.budget)}</td>`).join('')}
+                </tr>
+                <tr>
+                    <td><strong>마감기한</strong></td>
+                    ${compareList.map(item => `<td>📅 ${escapeHTML(item.closeDt || '미정')} (${formatDaysLeft(item.closeDt)})</td>`).join('')}
+                </tr>
+            </tbody>
+        </table>
+    `;
+    
+    body.innerHTML = html;
+}
+
+function closeCompareModal() {
+    const overlay = document.getElementById('compare-modal-overlay');
+    if (overlay) overlay.classList.remove('active');
+}
+
+
+// ──────────────────────────────────────────────
+// 31. 관심공고 칸반 보드 (Kanban Board) 기능
+// ──────────────────────────────────────────────
+
+/**
+ * 관심공고 뷰 모드 토글
+ */
+function toggleFavViewMode(mode) {
+    favViewMode = mode;
+    
+    const listBtn = document.getElementById('fav-view-list-btn');
+    const kanbanBtn = document.getElementById('fav-view-kanban-btn');
+    const listBody = document.getElementById('favorites-body');
+    const kanbanBody = document.getElementById('favorites-kanban-body');
+    
+    if (mode === 'list') {
+        listBtn.classList.add('active');
+        kanbanBtn.classList.remove('active');
+        listBody.style.display = 'block';
+        kanbanBody.style.display = 'none';
+        loadFavorites();
+    } else {
+        listBtn.classList.remove('active');
+        kanbanBtn.classList.add('active');
+        listBody.style.display = 'none';
+        kanbanBody.style.display = 'grid';
+        renderKanbanBoard();
+    }
+}
+
+/**
+ * 칸반 보드 카드 렌더링
+ */
+function renderKanbanBoard() {
+    const kanbanBody = document.getElementById('favorites-kanban-body');
+    if (!kanbanBody) return;
+    
+    const favs = getFavorites();
+    
+    const stages = [
+        { id: 'reviewing', label: '⭐ 검토중', color: '#6366f1' },
+        { id: 'proceeding', label: '🚀 사업진행', color: '#06b6d4' },
+        { id: 'partnered', label: '🤝 협업진행', color: '#10b981' },
+        { id: 'completed', label: '✅ 완료', color: '#8b5cf6' },
+        { id: 'abandoned', label: '❌ 포기', color: '#ef4444' }
+    ];
+    
+    kanbanBody.innerHTML = stages.map(stage => {
+        const stageFavs = favs.filter(f => (f.status || 'reviewing') === stage.id);
+        
+        return `
+            <div class="kanban-column" data-stage="${stage.id}" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="dropFav(event)">
+                <div class="kanban-column-header">
+                    <span class="kanban-column-title" style="color:${stage.color}">${stage.label}</span>
+                    <span class="kanban-column-count">${stageFavs.length}</span>
+                </div>
+                <div class="kanban-cards">
+                    ${stageFavs.map(f => `
+                        <div class="kanban-card" draggable="true" ondragstart="dragFav(event, '${f.bidNo}')" onclick="openFavDetail('${f.bidNo}')">
+                            <div class="kanban-card-title">${escapeHTML(f.title)}</div>
+                            <div class="kanban-card-meta">🏛️ ${escapeHTML(f.orgName || '')}</div>
+                            <div class="kanban-card-meta">💰 ${displayBudget(f.budget)}</div>
+                            <div class="kanban-card-footer">
+                                <span style="font-size:0.72rem;color:var(--text-muted)">${formatDaysLeft(f.closeDt)}</span>
+                                <span style="font-size:0.7rem;font-weight:700;color:var(--accent-indigo)">상세 →</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function allowDrop(ev) {
+    ev.preventDefault();
+    const col = ev.currentTarget;
+    col.classList.add('drag-over');
+}
+
+function dragLeave(ev) {
+    const col = ev.currentTarget;
+    col.classList.remove('drag-over');
+}
+
+function dragFav(ev, bidNo) {
+    ev.dataTransfer.setData("text/plain", bidNo);
+}
+
+function dropFav(ev) {
+    ev.preventDefault();
+    const col = ev.currentTarget;
+    col.classList.remove('drag-over');
+    
+    const bidNo = ev.dataTransfer.getData("text/plain");
+    const targetStage = col.getAttribute('data-stage');
+    
+    if (bidNo && targetStage) {
+        updateFav(bidNo, { status: targetStage });
+        renderKanbanBoard();
+        showToast(`💼 상태가 변경되었습니다.`, 'success');
+        updateFavBadge();
+    }
+}
+
+
+// ──────────────────────────────────────────────
+// 32. AI 참여 전략 Q&A 위젯 (대화형 챗봇)
+// ──────────────────────────────────────────────
+
+/**
+ * 대화 내용 렌더링
+ */
+function renderQAChat() {
+    const chatbox = document.getElementById('proposal-qa-chatbox');
+    if (!chatbox) return;
+    
+    chatbox.innerHTML = `
+        <div class="qa-msg qa-ai">
+            <div class="qa-bubble">이 전략 보고서에 대해 궁금한 점이 있으신가요? 제안서 차별화 방안이나 리스크 대응책 등을 추가로 물어보세요!</div>
+        </div>
+    ` + qaChatHistory.map(msg => `
+        <div class="qa-msg qa-${msg.role === 'user' ? 'user' : 'ai'}">
+            <div class="qa-bubble">${formatStrategyText(msg.content)}</div>
+        </div>
+    `).join('');
+    
+    chatbox.scrollTop = chatbox.scrollHeight;
+}
+
+/**
+ * 메시지 전송 로직
+ */
+async function sendProposalQA() {
+    const input = document.getElementById('proposal-qa-input');
+    if (!input || !input.value.trim()) return;
+    
+    const query = input.value.trim();
+    input.value = '';
+    
+    qaChatHistory.push({ role: 'user', content: query });
+    renderQAChat();
+    
+    qaChatHistory.push({ role: 'ai', content: '💬 답변을 생각하고 있습니다...' });
+    renderQAChat();
+    
+    const bidNo = currentProposalBidNo || '';
+    const bizId = currentProposalBizId || '';
+    
+    try {
+        const res = await api('POST', '/analyses/chat', {
+            bid_ntce_no: bidNo,
+            biz_id: bizId,
+            message: query,
+            chat_history: qaChatHistory.slice(0, -2)
+        });
+        
+        qaChatHistory.pop();
+        qaChatHistory.push({ role: 'ai', content: res.answer || '답변을 불러오지 못했습니다.' });
+    } catch (err) {
+        qaChatHistory.pop();
+        qaChatHistory.push({ role: 'ai', content: `❌ 오류가 발생했습니다: ${err.message}` });
+    }
+    
+    renderQAChat();
+}
+
+
+// ──────────────────────────────────────────────
+// 33. API 키 연결성 실시간 테스트 (Ping Test)
+// ──────────────────────────────────────────────
+
+async function testApiKey(name) {
+    const inputMap = {
+        data_go_kr: 'api-key-data-go-kr',
+        naver: 'api-key-naver-id',
+        openai: 'api-key-openai',
+        gemini: 'api-key-gemini'
+    };
+    
+    const keyInput = document.getElementById(inputMap[name]);
+    let secret = '';
+    if (name === 'naver') {
+        const secretInput = document.getElementById('api-key-naver-secret');
+        if (secretInput) secret = secretInput.value.trim();
+    }
+    
+    const key = keyInput ? keyInput.value.trim() : '';
+    const statusEl = document.getElementById(`test-status-${name}`);
+    
+    if (!key) {
+        showToast('⚠️ 테스트할 API 키를 먼저 입력하세요.', 'warning');
+        return;
+    }
+    
+    if (statusEl) {
+        statusEl.className = 'api-test-status loading';
+        statusEl.textContent = '🔌 테스트 중...';
+    }
+    
+    try {
+        const res = await api('POST', '/settings/test-key', {
+            api_name: name,
+            api_key: key,
+            api_secret: secret
+        });
+        
+        if (statusEl) {
+            if (res.success) {
+                statusEl.className = 'api-test-status success';
+                statusEl.textContent = '🟢 연결 성공';
+                showToast(res.message, 'success');
+            } else {
+                statusEl.className = 'api-test-status error';
+                statusEl.textContent = '🔴 실패';
+                showToast(`❌ 연결 실패: ${res.message}`, 'error');
+            }
+        }
+    } catch (err) {
+        if (statusEl) {
+            statusEl.className = 'api-test-status error';
+            statusEl.textContent = '🔴 에러';
+            showToast(`❌ 테스트 에러: ${err.message}`, 'error');
+        }
+    }
+}
+
+
+// ──────────────────────────────────────────────
+// 34. 사업자 관리 대시보드 및 실적 구조화 입력기
+// ──────────────────────────────────────────────
+
+/**
+ * 등록 사업자 정보 요약 위젯 갱신
+ */
+function updateBusinessPortfolioSummary(businesses) {
+    const summaryWrap = document.getElementById('business-portfolio-summary');
+    if (!summaryWrap) return;
+    
+    if (businesses && businesses.length > 0) {
+        summaryWrap.style.display = 'block';
+        
+        const countEl = document.getElementById('biz-summary-total-count');
+        const revEl = document.getElementById('biz-summary-total-revenue');
+        const creditEl = document.getElementById('biz-summary-top-credit');
+        
+        countEl.textContent = businesses.length;
+        
+        let totalRev = 0;
+        let validRevCount = 0;
+        businesses.forEach(b => {
+            if (b.annual_revenue && b.annual_revenue > 0) {
+                totalRev += b.annual_revenue;
+                validRevCount++;
+            }
+        });
+        const avgRev = validRevCount > 0 ? totalRev / validRevCount : 0;
+        revEl.textContent = avgRev > 0 ? (avgRev / 100000000).toFixed(1) + '억' : '미등록';
+        
+        const creditOrder = ["AAA", "AA+", "AA", "AA-", "A+", "A", "A-", "BBB+", "BBB", "BBB-", "BB+", "BB", "BB-", "B+", "B", "B-", "CCC+"];
+        let bestCredit = '';
+        let bestIndex = 999;
+        businesses.forEach(b => {
+            const rating = (b.credit_rating || 'BBB').toUpperCase();
+            const idx = creditOrder.indexOf(rating);
+            if (idx !== -1 && idx < bestIndex) {
+                bestIndex = idx;
+                bestCredit = rating;
+            }
+        });
+        creditEl.textContent = bestCredit || '미등록';
+    } else {
+        summaryWrap.style.display = 'none';
+    }
+}
+
+/**
+ * 모달 내 구조화된 실적 동적 추가 기능
+ */
+function addStructuredPastProject() {
+    const nameInput = document.getElementById('form-past-proj-name');
+    const amountInput = document.getElementById('form-past-proj-amount');
+    const yearInput = document.getElementById('form-past-proj-year');
+    const textarea = document.getElementById('form-past-projects');
+    
+    if (!nameInput || !amountInput || !yearInput || !textarea) return;
+    
+    const name = nameInput.value.trim();
+    const amount = amountInput.value.trim();
+    const year = yearInput.value.trim();
+    
+    if (!name || !amount || !year) {
+        showToast('⚠️ 실적 정보를 모두 입력해 주세요.', 'warning');
+        return;
+    }
+    
+    const itemStr = `${name}|${amount}|${year}`;
+    
+    const currentVal = textarea.value.trim();
+    if (currentVal) {
+        textarea.value = currentVal + '\n' + itemStr;
+    } else {
+        textarea.value = itemStr;
+    }
+    
+    nameInput.value = '';
+    amountInput.value = '';
+    yearInput.value = '';
+    
+    showToast('📈 실적이 추가되었습니다.', 'success');
 }

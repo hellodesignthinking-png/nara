@@ -65,3 +65,19 @@ class ScheduleUpdateRequest(BaseModel):
 class SlackWebhookRequest(BaseModel):
     """Slack 웹훅 URL 설정 요청"""
     webhook_url: str = Field(..., description="Slack Incoming Webhook URL")
+
+
+class AnalysisChatRequest(BaseModel):
+    """AI 전략 Q&A 대화 요청 본문"""
+    bid_ntce_no: str = Field(..., description="공고번호")
+    biz_id: str = Field(..., description="사업자등록번호")
+    message: str = Field(..., description="사용자 질문 메시지")
+    chat_history: list[dict] = Field(default_factory=list, description="이전 대화 기록")
+
+
+class ApiKeyTestRequest(BaseModel):
+    """API 키 연결 테스트 요청"""
+    api_name: str = Field(..., description="API 종류 (data_go_kr, naver, openai, gemini)")
+    api_key: str = Field(..., description="API Key 값")
+    api_secret: Optional[str] = Field(None, description="API Secret 값 (네이버 등에 필요)")
+

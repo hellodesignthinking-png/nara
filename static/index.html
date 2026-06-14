@@ -397,6 +397,17 @@
                     </tbody>
                 </table>
             </div>
+            <!-- ⚖️ 공고 비교함 플로팅 바 -->
+            <div id="compare-shelf" class="compare-shelf">
+                <div class="compare-shelf-content">
+                    <span class="compare-shelf-title">⚖️ 공고 비교함 (<span id="compare-count">0</span>/3)</span>
+                    <div class="compare-shelf-items" id="compare-shelf-items"></div>
+                    <div class="compare-shelf-actions">
+                        <button class="btn btn-ghost btn-sm" onclick="clearCompareShelf()">✕ 비우기</button>
+                        <button class="btn btn-gradient btn-sm" onclick="openCompareModal()">⚖️ 비교 분석</button>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- ════════ 관심공고 뷰 ════════ -->
@@ -439,12 +450,20 @@
                 <button class="btn btn-outline btn-sm" onclick="exportFavorites()">📥 CSV</button>
                 <button class="btn btn-outline btn-sm" onclick="exportFavoritesJSON()">📦 JSON</button>
                 <button class="btn btn-outline btn-sm" onclick="shareFavSummary()">📤 공유</button>
+                <div class="view-toggle-btns" style="display:flex;background:var(--bg-light);border:1px solid var(--border);border-radius:8px;padding:2px;margin-left:12px">
+                    <button class="btn btn-ghost btn-sm active" id="fav-view-list-btn" onclick="toggleFavViewMode('list')" style="padding:4px 10px;font-size:0.78rem">📋 리스트</button>
+                    <button class="btn btn-ghost btn-sm" id="fav-view-kanban-btn" onclick="toggleFavViewMode('kanban')" style="padding:4px 10px;font-size:0.78rem">📊 칸반 보드</button>
+                </div>
                 <span style="flex:1"></span>
                 <button class="btn btn-ghost btn-sm" onclick="deleteFavsByStatus('completed')" title="완료된 공고 정리">🗂️ 완료건 정리</button>
             </div>
             <!-- 공고 리스트 -->
             <div class="card" id="favorites-body">
                 <!-- JS에서 렌더링 -->
+            </div>
+            <!-- 칸반 보드 뷰 (기본 숨김) -->
+            <div class="favorites-kanban-view" id="favorites-kanban-body" style="display:none">
+                <!-- JS에서 컬럼별 동적 렌더링 -->
             </div>
         </section>
 
@@ -459,6 +478,27 @@
                     <button class="btn btn-primary" onclick="showBusinessModal()">
                         <span class="btn-icon">➕</span> 사업자 등록
                     </button>
+                </div>
+            </div>
+
+            <!-- 🏢 등록 사업자 종합 역량 요약 -->
+            <div class="business-portfolio-summary" id="business-portfolio-summary" style="display:none;margin-bottom:20px">
+                <div class="stat-card" style="padding:16px;background:var(--bg-card);border:1px solid var(--border)">
+                    <div style="font-size:0.8rem;color:var(--text-muted);font-weight:600">🏛️ 등록 사업자 역량 풀 요약</div>
+                    <div style="display:flex;gap:24px;margin-top:10px;flex-wrap:wrap">
+                        <div>
+                            <span id="biz-summary-total-count" style="font-size:1.4rem;font-weight:800;color:var(--text-primary)">0</span>
+                            <span style="font-size:0.8rem;color:var(--text-muted)">개사</span>
+                        </div>
+                        <div style="border-left:1px solid var(--border);padding-left:20px">
+                            <span id="biz-summary-total-revenue" style="font-size:1.4rem;font-weight:800;color:var(--text-primary)">0</span>
+                            <span style="font-size:0.8rem;color:var(--text-muted)">평균 매출</span>
+                        </div>
+                        <div style="border-left:1px solid var(--border);padding-left:20px">
+                            <span id="biz-summary-top-credit" style="font-size:1.4rem;font-weight:800;color:var(--accent-indigo)">-</span>
+                            <span style="font-size:0.8rem;color:var(--text-muted)">최고 신용등급</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -532,6 +572,10 @@
                             <button class="btn-toggle-eye" onclick="toggleApiKeyVisibility('api-key-data-go-kr')" title="보기/숨기기">👁️</button>
                         </div>
                         <span class="api-key-masked" id="masked-data-go-kr"></span>
+                        <div class="api-key-test-wrap" style="margin-top:8px">
+                            <button type="button" class="btn btn-secondary btn-xs" onclick="testApiKey('data_go_kr')">🔌 연결 테스트</button>
+                            <span class="api-test-status" id="test-status-data_go_kr" style="margin-left:8px;font-size:0.75rem"></span>
+                        </div>
                     </div>
 
                     <!-- 네이버 검색 -->
@@ -551,6 +595,10 @@
                             <button class="btn-toggle-eye" onclick="toggleApiKeyVisibility('api-key-naver-secret')" title="보기/숨기기">👁️</button>
                         </div>
                         <span class="api-key-masked" id="masked-naver"></span>
+                        <div class="api-key-test-wrap" style="margin-top:8px">
+                            <button type="button" class="btn btn-secondary btn-xs" onclick="testApiKey('naver')">🔌 연결 테스트</button>
+                            <span class="api-test-status" id="test-status-naver" style="margin-left:8px;font-size:0.75rem"></span>
+                        </div>
                     </div>
 
                     <!-- OpenAI -->
@@ -567,6 +615,10 @@
                             <button class="btn-toggle-eye" onclick="toggleApiKeyVisibility('api-key-openai')" title="보기/숨기기">👁️</button>
                         </div>
                         <span class="api-key-masked" id="masked-openai"></span>
+                        <div class="api-key-test-wrap" style="margin-top:8px">
+                            <button type="button" class="btn btn-secondary btn-xs" onclick="testApiKey('openai')">🔌 연결 테스트</button>
+                            <span class="api-test-status" id="test-status-openai" style="margin-left:8px;font-size:0.75rem"></span>
+                        </div>
                     </div>
 
                     <!-- Google Gemini -->
@@ -583,6 +635,10 @@
                             <button class="btn-toggle-eye" onclick="toggleApiKeyVisibility('api-key-gemini')" title="보기/숨기기">👁️</button>
                         </div>
                         <span class="api-key-masked" id="masked-gemini"></span>
+                        <div class="api-key-test-wrap" style="margin-top:8px">
+                            <button type="button" class="btn btn-secondary btn-xs" onclick="testApiKey('gemini')">🔌 연결 테스트</button>
+                            <span class="api-test-status" id="test-status-gemini" style="margin-left:8px;font-size:0.75rem"></span>
+                        </div>
                     </div>
 
                     <!-- LLM 선택 -->
@@ -766,6 +822,40 @@
                         </div>
                     </div>
 
+                    <!-- 적격심사 전용 속성 필드 -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="form-credit-rating">신용평가등급</label>
+                            <select id="form-credit-rating" class="api-key-input" style="padding:8px 12px">
+                                <option value="AAA">AAA</option>
+                                <option value="AA+">AA+</option>
+                                <option value="AA">AA</option>
+                                <option value="AA-">AA-</option>
+                                <option value="A+">A+</option>
+                                <option value="A">A</option>
+                                <option value="A-">A-</option>
+                                <option value="BBB+">BBB+</option>
+                                <option value="BBB" selected>BBB</option>
+                                <option value="BBB-">BBB-</option>
+                                <option value="BB+">BB+</option>
+                                <option value="BB">BB</option>
+                                <option value="BB-">BB-</option>
+                                <option value="B+">B+</option>
+                                <option value="B">B</option>
+                                <option value="B-">B-</option>
+                                <option value="CCC+">CCC+</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-company-type">기업 구분 (우대 사항)</label>
+                            <input type="text" id="form-company-type" placeholder="예: 여성기업, 사회적기업 (쉼표 구분)">
+                        </div>
+                    </div>
+                    <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:8px;margin-bottom:16px">
+                        <input type="checkbox" id="form-has-sanctions" style="width:16px;height:16px;cursor:pointer">
+                        <label for="form-has-sanctions" style="cursor:pointer;font-weight:600;margin-bottom:0">최근 2년 내 부정당업자 제재 이력이 있음 (감점 요인)</label>
+                    </div>
+
                     <!-- 태그 인풋들 -->
                     <div class="form-group">
                         <label>업종</label>
@@ -800,8 +890,14 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="form-past-projects">과거 수행실적</label>
-                        <textarea id="form-past-projects" class="form-textarea" rows="3" placeholder="과거 수행 프로젝트를 한 줄에 하나씩 입력하세요"></textarea>
+                        <label for="form-past-projects">과거 수행실적 (목록)</label>
+                        <textarea id="form-past-projects" class="form-textarea" rows="2" placeholder="과거 수행 프로젝트를 한 줄에 하나씩 입력하거나 아래 추가 버튼을 사용하세요. (형식: 사업명|금액(만원)|연도)"></textarea>
+                        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+                            <input type="text" id="form-past-proj-name" class="fav-detail-input" placeholder="사업명 (예: AI 기반 행정 시스템)" style="flex:2;min-width:150px">
+                            <input type="number" id="form-past-proj-amount" class="fav-detail-input" placeholder="계약금액 (만원)" style="flex:1;min-width:80px">
+                            <input type="number" id="form-past-proj-year" class="fav-detail-input" placeholder="연도 (YYYY)" style="flex:0.8;min-width:70px">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="addStructuredPastProject()">➕ 실적 추가</button>
+                        </div>
                     </div>
 
                     <div class="modal-actions">
@@ -919,6 +1015,21 @@
                 </div>
                 <!-- 결과 콘텐츠 -->
                 <div id="proposal-strategy-content"></div>
+                <!-- 💬 AI 참여 전략 Q&A 위젯 -->
+                <div class="proposal-qa-section" id="proposal-qa-section" style="display:none;margin-top:24px;border-top:1px solid var(--border);padding-top:20px">
+                    <h4 style="margin:0 0 12px;font-size:0.95rem;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:6px">
+                        <span>💬 AI 입찰 컨설턴트 Q&A</span>
+                    </h4>
+                    <div class="proposal-qa-chatbox" id="proposal-qa-chatbox">
+                        <div class="qa-msg qa-ai">
+                            <div class="qa-bubble">이 전략 보고서에 대해 궁금한 점이 있으신가요? 제안서 차별화 방안이나 리스크 대응책 등을 추가로 물어보세요!</div>
+                        </div>
+                    </div>
+                    <div class="proposal-qa-input-wrap" style="display:flex;gap:8px;margin-top:10px">
+                        <input type="text" id="proposal-qa-input" class="search-input" placeholder="컨설턴트 AI에게 추가 질문을 입력하세요..." onkeydown="if(event.key==='Enter'){sendProposalQA()}">
+                        <button class="btn btn-gradient btn-sm" onclick="sendProposalQA()">보내기</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1004,6 +1115,22 @@
                 <button class="btn btn-outline" id="fav-detail-nara-btn">🔗 나라장터</button>
                 <button class="btn btn-outline" id="fav-detail-analyze-btn">🔍 AI 분석</button>
                 <button class="btn btn-ghost" onclick="removeFavFromDetail()">🗑️</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── ⚖️ 공고 비교 분석 모달 ─── -->
+    <div id="compare-modal-overlay" class="strategy-modal-overlay" onclick="closeCompareModal(event)" role="dialog" aria-modal="true" aria-labelledby="compare-modal-title">
+        <div class="strategy-modal compare-modal-card" onclick="event.stopPropagation()">
+            <div class="strategy-modal-header" style="background:var(--gradient-primary);color:#fff">
+                <div>
+                    <h2 id="compare-modal-title" style="color:#fff">⚖️ 공고 비교 분석 결과</h2>
+                    <p style="color:rgba(255,255,255,0.8);font-size:0.85rem;margin-top:4px">선택하신 용역 공고들의 핵심 스펙과 조건을 교차 분석합니다.</p>
+                </div>
+                <button class="close-btn" onclick="closeCompareModal()" style="color:#fff">&times;</button>
+            </div>
+            <div class="strategy-modal-body" id="compare-modal-body" style="padding:20px;overflow-x:auto">
+                <!-- 동적으로 비교 테이블 렌더링 -->
             </div>
         </div>
     </div>

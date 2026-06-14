@@ -8,6 +8,7 @@
 import logging
 import os
 import tempfile
+import httpx
 from pathlib import Path as _Path
 
 from fastapi import APIRouter, Body, HTTPException
@@ -20,6 +21,7 @@ from ._models import (
     RelevanceUpdateRequest,
     ScheduleUpdateRequest,
     SlackWebhookRequest,
+    ApiKeyTestRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -420,3 +422,95 @@ async def update_slack_webhook(request: SlackWebhookRequest):
     except Exception as e:
         logger.error("Slack 설정 실패: %s", e)
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
+
+
+@router.post("/settings/test-key", summary="API 키 연결 테스트 (Ping Test)")
+async def test_api_key(request: ApiKeyTestRequest):
+    """
+    입력된 API 키의 유효성을 실시간으로 확인합니다.
+    """
+    name = request.api_name
+    key = request.api_key
+    secret = request.api_secret
+
+    try:
+        if name == "data_go_kr":
+            url = f"https://apis.data.go.kr/1230000/BidPublicInfoService05/getBidPblancListInfoCnstcPPss?serviceKey={key}&numOfRows=1&pageNo=1&inqryDiv=1&type=json"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.get(url)
+                if res.status_code == 200:
+                    content = res.text
+                    if "SERVICE_KEY_IS_NOT_REGISTERED_ERROR" in content or "SERVICE KEY IS NOT REGISTERED" in content:
+                        return {"success": False, "message": "등록되지 않은 서비스 키입니다. (인증 대기시간 확인 필요)"}
+                    if "INVALID_REQUEST_PARAMETER_ERROR" in content:
+                        return {"success": False, "message": "요청 파라미터가 유효하지 않습니다."}
+                    return {"success": True, "message": "공공데이터포털 연결 성공!"}
+                else:
+                    return {"success": False, "message": f"연결 실패 (HTTP {res.status_code})"}
+
+        elif name == "naver":
+            if not secret:
+                return {"success": False, "message": "Client Secret이 입력되지 않았습니다."}
+            url = "https://openapi.naver.com/v1/search/news.json?query=테스트&display=1"
+            headers = {
+                "X-Naver-Client-Id": key,
+                "X-Naver-Client-Secret": secret
+            }
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.get(url, headers=headers)
+                if res.status_code == 200:
+                    return {"success": True, "message": "네이버 검색 API 연결 성공!"}
+                else:
+                    try:
+                        err_msg = res.json().get("errorMessage", f"HTTP {res.status_code}")
+                    except Exception:
+                        err_msg = f"HTTP {res.status_code}"
+                    return {"success": False, "message": f"네이버 연결 실패: {err_msg}"}
+
+        elif name == "openai":
+            url = "https://api.openai.com/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 1
+            }
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code == 200:
+                    return {"success": True, "message": "OpenAI API 연결 성공!"}
+                else:
+                    try:
+                        err_msg = res.json().get("error", {}).get("message", f"HTTP {res.status_code}")
+                    except Exception:
+                        err_msg = f"HTTP {res.status_code}"
+                    return {"success": False, "message": f"OpenAI 연결 실패: {err_msg}"}
+
+        elif name == "gemini":
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+            payload = {
+                "contents": [{"parts": [{"text": "ping"}]}]
+            }
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.post(url, json=payload)
+                if res.status_code == 200:
+                    return {"success": True, "message": "Google Gemini API 연결 성공!"}
+                else:
+                    try:
+                        err_msg = res.json().get("error", {}).get("message", f"HTTP {res.status_code}")
+                    except Exception:
+                        err_msg = f"HTTP {res.status_code}"
+                    return {"success": False, "message": f"Gemini 연결 실패: {err_msg}"}
+
+        else:
+            return {"success": False, "message": "알 수 없는 API 이름입니다."}
+
+    except httpx.ConnectTimeout:
+        return {"success": False, "message": "연결 타임아웃이 발생했습니다."}
+    except Exception as e:
+        logger.error("API 연결 테스트 실패: %s", e)
+        return {"success": False, "message": f"오류 발생: {str(e)}"}
+

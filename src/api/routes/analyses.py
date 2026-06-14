@@ -33,7 +33,7 @@ from ._helpers import (
     _biz_profile_to_matcher_dict,
     _load_settings,
 )
-from ._models import StrategyAnalysisRequest, ProposalStrategyRequest
+from ._models import StrategyAnalysisRequest, ProposalStrategyRequest, AnalysisChatRequest
 
 logger = logging.getLogger(__name__)
 
@@ -806,4 +806,80 @@ async def analyze_proposal_strategy(request: ProposalStrategyRequest, db=Depends
     except Exception as e:
         logger.error("제안서 전략 분석 실패: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
+
+
+@router.post("/analyses/chat", summary="AI 참여 전략 Q&A 대화")
+async def analysis_chat(request: AnalysisChatRequest, db=Depends(get_db)):
+    """
+    제안서 고도화 전략 분석 결과에 대한 후속 Q&A 대화 API
+    """
+    try:
+        config = load_config()
+
+        # 공고 정보 로드
+        bid = db.get_bid_by_no(request.bid_ntce_no)
+        if not bid:
+            raise HTTPException(
+                status_code=404,
+                detail=f"공고를 찾을 수 없습니다: {request.bid_ntce_no}"
+            )
+
+        # 사업자 정보 로드
+        business = db.get_business_by_id(request.biz_id)
+        if not business:
+            raise HTTPException(
+                status_code=404,
+                detail=f"사업자를 찾을 수 없습니다: {request.biz_id}"
+            )
+
+        # 챗봇을 위한 시스템 프롬프트 구성
+        system_prompt = f"""당신은 입찰 전략 컨설턴트 AI입니다.
+다음 공고와 사업자 정보를 바탕으로 사용자의 질문에 답하세요.
+
+[입찰 공고 정보]
+- 공고명: {bid.title}
+- 발주기관: {bid.org_name}
+- 추정가격: {bid.budget:,}원
+- 마감일: {bid.bid_close_dt}
+- 계약 방식: {bid.contract_method}
+- 자격 요건: {bid.qualifications}
+
+[사업자 정보 (귀사)]
+- 회사명: {business.company_name}
+- 보유 면허: {business.licenses}
+- 과거 유사 실적: {business.past_projects}
+- 연매출: {business.annual_revenue:,}원
+
+사용자가 해당 공고의 제안서 작성, 수주 전략, 경쟁사 대응, 리스크 극복 방안 등에 대해 묻고 있습니다.
+컨설턴트의 톤으로 전문적이고 구체적인 행동 전략(Action Plan) 위주로 답변을 제공하세요.
+모든 답변은 한글로 작성하세요.
+"""
+
+        analyzer = LLMAnalyzer(config=config)
+        
+        history_str = ""
+        if request.chat_history:
+            history_str = "\n\n[이전 대화 기록]\n"
+            for h in request.chat_history:
+                role = "사용자" if h.get("role") == "user" else "AI"
+                content = h.get("content", "")
+                history_str += f"{role}: {content}\n"
+        
+        user_prompt = f"{history_str}\n\n사용자 질문: {request.message}\n\n이에 대한 답변을 생성해주세요."
+
+        loop = asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            response = await loop.run_in_executor(
+                pool,
+                lambda: analyzer._call_api(system_prompt, user_prompt, max_tokens=1500, temperature=0.5)
+            )
+
+        return {"answer": response}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("AI Q&A 대화 중 오류 발생: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
+
 
