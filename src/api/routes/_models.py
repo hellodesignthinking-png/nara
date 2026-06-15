@@ -112,3 +112,9 @@ class AdminRoleUpdateRequest(BaseModel):
     is_admin: bool = Field(..., description="관리자 여부 플래그")
 
 
+class CafePostCreateRequest(BaseModel):
+    """사내 카페 게시글 작성 요청 본문"""
+    title: str = Field(..., description="게시글 제목")
+    content: str = Field(..., description="게시글 내용")
+
+

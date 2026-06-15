@@ -13,7 +13,7 @@ from src.models.schemas import BusinessProfile
 
 from src.models.database import DatabaseManager
 from ._helpers import get_db, get_current_user, get_active_company, _business_profile_to_api_dict, _load_settings
-from ._models import BusinessCreateRequest, MemberAddRequest, MemberRoleUpdateRequest
+from ._models import BusinessCreateRequest, MemberAddRequest, MemberRoleUpdateRequest, CafePostCreateRequest
 
 logger = logging.getLogger(__name__)
 
@@ -460,3 +460,72 @@ async def remove_member(
     except Exception as e:
         logger.error("직원 제외 실패: %s [회사: %s]", e, biz_id)
         raise HTTPException(status_code=500, detail="직원을 제외하는 도중 서버 오류가 발생했습니다.")
+
+
+# ──────────────────────────────────────────────
+# 사내 카페(커뮤니티) API
+# ──────────────────────────────────────────────
+
+@router.get("/companies/{biz_id}/cafe", summary="사내 카페 게시글 목록 조회")
+async def list_cafe_posts(
+    biz_id: str,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """소속 회사의 사내 카페 게시판 목록을 조회합니다."""
+    role = db.get_business_user_role(biz_id, username)
+    if not role:
+        raise HTTPException(status_code=403, detail="해당 회사 소속 멤버만 카페를 이용할 수 있습니다.")
+    
+    return db.get_cafe_posts(biz_id)
+
+
+@router.post("/companies/{biz_id}/cafe", summary="사내 카페 게시글 등록", status_code=201)
+async def write_cafe_post(
+    biz_id: str,
+    req: CafePostCreateRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """사내 카페에 새로운 게시글을 등록합니다."""
+    role = db.get_business_user_role(biz_id, username)
+    if not role:
+        raise HTTPException(status_code=403, detail="해당 회사 소속 멤버만 카페에 글을 쓸 수 있습니다.")
+    
+    post = db.create_cafe_post(biz_id, username, req.title, req.content)
+    if not post:
+        raise HTTPException(status_code=500, detail="게시글 등록에 실패했습니다.")
+        
+    return post
+
+
+@router.delete("/companies/{biz_id}/cafe/{post_id}", summary="사내 카페 게시글 삭제")
+async def remove_cafe_post(
+    biz_id: str,
+    post_id: int,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """작성자 본인 또는 회사 대표(owner)/관리자(admin)가 게시글을 삭제합니다."""
+    role = db.get_business_user_role(biz_id, username)
+    if not role:
+        raise HTTPException(status_code=403, detail="해당 회사 소속 멤버가 아닙니다.")
+    
+    # 게시글 조회하여 작성자 본인인지 확인
+    posts = db.get_cafe_posts(biz_id)
+    post = next((p for p in posts if p["id"] == post_id), None)
+    if not post:
+        raise HTTPException(status_code=404, detail="게시글이 존재하지 않습니다.")
+        
+    # 작성자 본인이거나 회사의 owner/admin인지 권한 체크
+    is_author = post["username"] == username
+    is_manager = role in ("owner", "admin")
+    
+    if not is_author and not is_manager:
+        raise HTTPException(status_code=403, detail="본인이 작성한 글이거나 관리자 권한이 있어야 삭제할 수 있습니다.")
+        
+    success = db.delete_cafe_post(post_id, biz_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="게시글 삭제에 실패했습니다.")
+        
+    return {"message": "게시글이 삭제되었습니다."}

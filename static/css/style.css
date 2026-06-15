@@ -7,18 +7,18 @@
    ────────────────────────────────────────────── */
 :root {
     /* Backgrounds */
-    --bg-main: #0a0a1a;
-    --bg-card: rgba(17, 24, 39, 0.8);
-    --bg-card-solid: #111827;
-    --bg-hover: #1e293b;
-    --bg-input: #0f172a;
-    --bg-sidebar: #070714;
+    --bg-main: #f8fafc;
+    --bg-card: rgba(255, 255, 255, 0.9);
+    --bg-card-solid: #ffffff;
+    --bg-hover: #f1f5f9;
+    --bg-input: #ffffff;
+    --bg-sidebar: #ffffff;
 
     /* Text */
-    --text-primary: #f1f5f9;
-    --text-secondary: #94a3b8;
-    --text-muted: #7c8ca3; /* WCAG AA 접근성 기준 충족 (대비율 4.5:1 이상) */
-    --text-accent: #a5b4fc;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --text-accent: #4f46e5;
 
     /* Accents */
     --accent-indigo: #6366f1;
@@ -27,22 +27,22 @@
     --accent-cyan: #06b6d4;
     --gradient-primary: linear-gradient(135deg, #6366f1, #8b5cf6);
     --gradient-accent: linear-gradient(135deg, #6366f1, #8b5cf6, #06b6d4);
-    --gradient-glow: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15));
+    --gradient-glow: linear-gradient(135deg, rgba(99, 102, 241, 0.04), rgba(139, 92, 246, 0.04));
 
     /* Status Colors */
     --success: #10b981;
-    --success-light: rgba(16, 185, 129, 0.15);
+    --success-light: rgba(16, 185, 129, 0.06);
     --warning: #f59e0b;
-    --warning-light: rgba(245, 158, 11, 0.15);
+    --warning-light: rgba(245, 158, 11, 0.06);
     --danger: #ef4444;
-    --danger-light: rgba(239, 68, 68, 0.15);
+    --danger-light: rgba(239, 68, 68, 0.06);
     --info: #3b82f6;
-    --info-light: rgba(59, 130, 246, 0.15);
+    --info-light: rgba(59, 130, 246, 0.06);
 
     /* Borders */
-    --border: rgba(99, 102, 241, 0.15);
-    --border-hover: rgba(99, 102, 241, 0.35);
-    --border-focus: rgba(99, 102, 241, 0.6);
+    --border: #e2e8f0;
+    --border-hover: #cbd5e1;
+    --border-focus: #6366f1;
 
     /* Spacing */
     --radius-sm: 8px;
@@ -51,9 +51,9 @@
     --radius-xl: 20px;
 
     /* Shadows */
-    --shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.5);
-    --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.15);
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.06);
+    --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.05);
 
     /* Sidebar */
     --sidebar-width: 260px;
@@ -7745,6 +7745,26 @@ body.logged-out #mobile-menu-btn {
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
+}
+
+/* ==========================================================================
+   ☕ 사내 카페(커뮤니티) 추가 스타일
+   ========================================================================== */
+.cafe-post-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: 1px solid var(--border) !important;
+}
+
+.cafe-post-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg) !important;
+    border-color: var(--border-hover) !important;
+}
+
+.cafe-write-card input:focus, .cafe-write-card textarea:focus {
+    outline: none;
+    border-color: var(--border-focus) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
 }
 
 

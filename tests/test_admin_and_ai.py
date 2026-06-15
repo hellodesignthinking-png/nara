@@ -84,6 +84,52 @@ class TestAdminAndAiUnit:
         assert settings["capacity_weight"] == 0.35
         assert settings["credit_weight"] == 0.30
 
+    def test_v6_migration_and_cafe_crud(self, db_manager):
+        """v6 마이그레이션 적용 상태와 카페 게시글 CRUD 데이터베이스 연산을 검증"""
+        # 1. company_cafe_posts 테이블 존재 검증
+        conn = db_manager._ensure_connection()
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='company_cafe_posts'"
+        )
+        assert cursor.fetchone() is not None
+
+        # 2. 테스트용 유저 및 회사 프로필 등록
+        username = "cafe_test_user"
+        db_manager.add_user(username, "hash", "cafe_test@example.com")
+        
+        biz_id = "123-45-67890"
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO business_profiles (biz_id, company_name, ceo_name)
+            VALUES (?, '카페테스트(주)', '홍길동')
+            """,
+            (biz_id,)
+        )
+        conn.commit()
+
+        # 3. 카페 게시글 등록 테스트
+        post = db_manager.create_cafe_post(biz_id, username, "입찰 공고 공유", "이 공고 같이 들어갈 회사 구합니다.")
+        assert post is not None
+        assert post["title"] == "입찰 공고 공유"
+        assert post["username"] == username
+        assert post["email"] == "cafe_test@example.com"
+        
+        post_id = post["id"]
+
+        # 4. 카페 게시글 조회 테스트
+        posts = db_manager.get_cafe_posts(biz_id)
+        assert len(posts) > 0
+        assert posts[0]["id"] == post_id
+        assert posts[0]["title"] == "입찰 공고 공유"
+
+        # 5. 카페 게시글 삭제 테스트
+        deleted = db_manager.delete_cafe_post(post_id, biz_id)
+        assert deleted is True
+
+        # 6. 삭제 후 조회 테스트
+        posts_after = db_manager.get_cafe_posts(biz_id)
+        assert not any(p["id"] == post_id for p in posts_after)
+
 
 class TestAdminApiSecurity:
     """어드민 API 권한 제어 통합 테스트"""

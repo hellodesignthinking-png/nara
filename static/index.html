@@ -44,6 +44,10 @@
                 <span class="menu-label">관심공고</span>
                 <span class="menu-badge" id="fav-menu-badge" style="display:none"></span>
             </li>
+            <li class="menu-item" data-view="cafe" tabindex="0" role="menuitem" onclick="navigate('cafe')">
+                <span class="menu-icon" aria-hidden="true">☕</span>
+                <span class="menu-label">사내 카페</span>
+            </li>
             <li class="menu-item" data-view="businesses" tabindex="0" role="menuitem" onclick="navigate('businesses')">
                 <span class="menu-icon" aria-hidden="true">🏢</span>
                 <span class="menu-label">사업자 관리</span>
@@ -631,6 +635,55 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════ 사내 카페(커뮤니티) 뷰 ════════ -->
+        <section id="view-cafe" class="view">
+            <div class="view-header">
+                <div>
+                    <h1 class="view-title">☕ 사내 카페</h1>
+                    <p class="view-subtitle">같은 회사 멤버들과 입찰 공고 정보를 공유하고 자유롭게 의견을 나누세요</p>
+                </div>
+            </div>
+
+            <div class="cafe-container" style="display: grid; grid-template-columns: 1fr 2fr; gap: 24px; align-items: start; width: 100%;">
+                <!-- 1. 좌측: 글쓰기 패널 -->
+                <div class="cafe-write-card" style="background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow);">
+                    <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                        📝 새로운 의견 공유
+                    </h3>
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label for="cafe-title-input" style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">제목</label>
+                        <input type="text" id="cafe-title-input" placeholder="공유할 주제나 공고명을 입력하세요" 
+                               style="width: 100%; padding: 10px 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-family: inherit; font-size: 0.9rem;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label for="cafe-content-input" style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">내용</label>
+                        <textarea id="cafe-content-input" rows="8" placeholder="상세 분석 요청, 협업 제안 등 동료들과 나누고 싶은 의견을 자유롭게 적어주세요." 
+                                  style="width: 100%; padding: 10px 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-family: inherit; font-size: 0.9rem; resize: vertical;"></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="writeCafePost()" style="width: 100%; padding: 12px; font-weight: 600; border-radius: var(--radius-sm); display: flex; justify-content: center; align-items: center; gap: 8px;">
+                        🚀 공유하기
+                    </button>
+                </div>
+
+                <!-- 2. 우측: 게시글 목록 패널 -->
+                <div class="cafe-list-panel" style="display: flex; flex-direction: column; gap: 16px;">
+                    <div style="background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 24px; box-shadow: var(--shadow); display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 700; font-size: 1rem; color: var(--text-primary);">💬 등록된 공유글</span>
+                        <button class="btn btn-ghost btn-sm" onclick="loadCafe()" style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem;">
+                            🔄 새로고침
+                        </button>
+                    </div>
+                    
+                    <div id="cafe-posts-container" style="display: flex; flex-direction: column; gap: 16px;">
+                        <!-- JS가 게시글을 여기에 동적으로 렌더링 -->
+                        <div style="text-align: center; padding: 40px; color: var(--text-muted); background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg);">
+                            🔄 카페 게시글을 불러오는 중...
+                        </div>
                     </div>
                 </div>
             </div>

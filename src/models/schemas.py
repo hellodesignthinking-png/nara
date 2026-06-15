@@ -573,11 +573,25 @@ CREATE TABLE IF NOT EXISTS user_ai_settings (
     FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
 );
 
+-- 사내 카페(커뮤니티) 게시판 테이블
+CREATE TABLE IF NOT EXISTS company_cafe_posts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    biz_id          TEXT NOT NULL,
+    username        TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (biz_id) REFERENCES business_profiles(biz_id) ON DELETE CASCADE,
+    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+);
+
 -- 인덱스: 자주 조회되는 컬럼에 대한 인덱스
 CREATE INDEX IF NOT EXISTS idx_bid_collected_at ON bid_announcements(collected_at);
 CREATE INDEX IF NOT EXISTS idx_bid_org_name ON bid_announcements(org_name);
 CREATE INDEX IF NOT EXISTS idx_award_bid_no ON award_infos(bid_ntce_no);
 CREATE INDEX IF NOT EXISTS idx_award_winner ON award_infos(winner_name);
+CREATE INDEX IF NOT EXISTS idx_cafe_biz_id ON company_cafe_posts(biz_id);
 CREATE INDEX IF NOT EXISTS idx_award_bid_title ON award_infos(bid_title);
 CREATE INDEX IF NOT EXISTS idx_news_query ON news_articles(search_query);
 CREATE INDEX IF NOT EXISTS idx_news_title ON news_articles(title);

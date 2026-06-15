@@ -182,9 +182,28 @@ class DatabaseManager:
                 "INSERT OR IGNORE INTO user_ai_settings (username) SELECT username FROM users;"
             ],
         ),
+        6: (
+            "같은 회사 소속 멤버들이 소통할 수 있는 사내 카페 게시판(company_cafe_posts) 테이블 추가",
+            [
+                """
+                CREATE TABLE IF NOT EXISTS company_cafe_posts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    biz_id TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (biz_id) REFERENCES business_profiles(biz_id) ON DELETE CASCADE,
+                    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                );
+                """,
+                "CREATE INDEX IF NOT EXISTS idx_cafe_biz_id ON company_cafe_posts(biz_id);"
+            ],
+        ),
     }
 
-    CURRENT_SCHEMA_VERSION: int = 5
+    CURRENT_SCHEMA_VERSION: int = 6
 
     def _get_schema_version(self, conn: sqlite3.Connection) -> int:
         """현재 DB의 스키마 버전을 조회합니다. 테이블이 없으면 0을 반환합니다."""
@@ -1882,3 +1901,72 @@ class DatabaseManager:
         except sqlite3.Error as e:
             logger.error("관리자용 전체 협업 목록 조회 실패: %s", e)
             return []
+
+    # ──────────────────────────────────────────
+    # 사내 카페(커뮤니티) 관리 기능
+    # ──────────────────────────────────────────
+
+    def get_cafe_posts(self, biz_id: str) -> list[dict]:
+        """특정 회사(biz_id) 소속 멤버들의 사내 카페 게시글 목록을 최신순으로 조회합니다."""
+        conn = self._ensure_connection()
+        try:
+            cursor = conn.execute(
+                """
+                SELECT p.id, p.biz_id, p.username, p.title, p.content, p.created_at, p.updated_at, u.email
+                FROM company_cafe_posts p
+                LEFT JOIN users u ON p.username = u.username
+                WHERE p.biz_id = ?
+                ORDER BY p.created_at DESC
+                """,
+                (biz_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            logger.error("사내 카페 게시글 목록 조회 실패 [회사 ID: %s]: %s", biz_id, e)
+            return []
+
+    def create_cafe_post(self, biz_id: str, username: str, title: str, content: str) -> Optional[dict]:
+        """사내 카페에 새로운 게시글을 등록합니다."""
+        conn = self._ensure_connection()
+        try:
+            cursor = conn.execute(
+                """
+                INSERT INTO company_cafe_posts (biz_id, username, title, content)
+                VALUES (?, ?, ?, ?)
+                """,
+                (biz_id, username, title, content),
+            )
+            new_id = cursor.lastrowid
+            conn.commit()
+            
+            # 새로 생성된 게시글 정보를 반환
+            cursor = conn.execute(
+                """
+                SELECT p.id, p.biz_id, p.username, p.title, p.content, p.created_at, p.updated_at, u.email
+                FROM company_cafe_posts p
+                LEFT JOIN users u ON p.username = u.username
+                WHERE p.id = ?
+                """,
+                (new_id,)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except sqlite3.Error as e:
+            conn.rollback()
+            logger.error("사내 카페 게시글 등록 실패 [회사 ID: %s, 유저: %s]: %s", biz_id, username, e)
+            return None
+
+    def delete_cafe_post(self, post_id: int, biz_id: str) -> bool:
+        """사내 카페 게시글을 삭제합니다."""
+        conn = self._ensure_connection()
+        try:
+            cursor = conn.execute(
+                "DELETE FROM company_cafe_posts WHERE id = ? AND biz_id = ?",
+                (post_id, biz_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            conn.rollback()
+            logger.error("사내 카페 게시글 삭제 실패 [ID: %s, 회사 ID: %s]: %s", post_id, biz_id, e)
+            return False

@@ -1226,6 +1226,7 @@ function navigate(view) {
         case 'dashboard': loadDashboard(); break;
         case 'bids': loadBids(); break;
         case 'favorites': loadFavorites(); break;
+        case 'cafe': loadCafe(); break;
         case 'businesses': loadBusinesses(); break;
         case 'analysis': loadAnalyses(); break;
         case 'settings': loadSettings(); break;
@@ -1427,9 +1428,26 @@ async function loadDashboard() {
     const banner = document.getElementById('no-company-banner');
     if (!activeBizId) {
         if (banner) banner.style.display = 'flex';
-    } else {
-        if (banner) banner.style.display = 'none';
+        ['stat-businesses', 'stat-bids', 'stat-analyses', 'stat-urgent'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '0';
+        });
+        renderRecentAnalyses([]);
+        const tbody = document.getElementById('curated-bids-tbody');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr class="empty-row">
+                    <td colspan="7">
+                        <div class="empty-state-inline">
+                            <span>🏢</span>
+                            <p>등록된 회사 정보가 없습니다. [사업자 관리]에서 회사를 먼저 등록해 주세요.</p>
+                        </div>
+                    </td>
+                </tr>`;
+        }
+        return;
     }
+    if (banner) banner.style.display = 'none';
 
     // 대시보드 통계를 한 번만 호출하고 결과를 재사용
     let dashboardStats = null;
@@ -2426,6 +2444,19 @@ async function runAnalysis() {
 // ──────────────────────────────────────────────
 async function loadAnalyses() {
     const list = document.getElementById('analysis-list');
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!activeBizId) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🏢</div>
+                <h3>등록된 회사 정보가 없습니다</h3>
+                <p>[사업자 관리] 탭에서 회사를 먼저 등록하거나 선택해 주세요.</p>
+                <button class="btn btn-primary" onclick="navigate('businesses')" style="margin-top: 16px;">
+                    🏢 회사 등록하러 가기
+                </button>
+            </div>`;
+        return;
+    }
     list.innerHTML = '<div class="skeleton skeleton-card" style="height:200px;margin-bottom:16px"></div>'.repeat(3);
 
     try {
@@ -6323,7 +6354,7 @@ function updateSidebarMenu() {
     }
     
     // 2. 다른 일반 메뉴들 (locked 상태 제어)
-    const lockedViews = ['dashboard', 'bids', 'favorites', 'businesses', 'analysis', 'settings', 'ai-settings'];
+    const lockedViews = ['dashboard', 'bids', 'favorites', 'cafe', 'businesses', 'analysis', 'settings', 'ai-settings'];
     
     lockedViews.forEach(viewName => {
         const item = document.querySelector(`.menu-item[data-view="${viewName}"]`);
@@ -7225,5 +7256,125 @@ async function loadLandingBids() {
     } catch (e) {
         console.error('랜딩 공고 로드 실패:', e);
         container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ef4444;font-size:0.9rem">❌ 최신 공고문을 불러오는 도중 오류가 발생했습니다.</div>`;
+    }
+}
+
+
+// ──────────────────────────────────────────────
+// ☕ 사내 카페(커뮤니티) 게시판 로직
+// ──────────────────────────────────────────────
+async function loadCafe() {
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    const container = document.getElementById('cafe-posts-container');
+    if (!container) return;
+
+    if (!activeBizId) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: var(--text-muted); background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg);">
+                🏢 소속 회사가 없습니다.<br>먼저 [사업자 관리] 탭에서 회사를 등록하거나 선택해 주세요.
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = '<div class="skeleton skeleton-card" style="height:120px;margin-bottom:12px"></div>'.repeat(3);
+
+    try {
+        const posts = await api('GET', `/companies/${activeBizId}/cafe`);
+        if (!posts || posts.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: var(--text-muted); background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg);">
+                    ☕ 아직 등록된 사내 의견이 없습니다.<br>좌측 폼을 이용해 첫 의견이나 공고를 공유해 보세요!
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = posts.map(p => {
+            const isMyPost = p.username === _currentUser;
+            const dateStr = p.created_at ? p.created_at.replace('T', ' ').substring(0, 16) : '-';
+            const deleteBtn = isMyPost ? `
+                <button class="btn btn-ghost btn-sm" onclick="deleteCafePost(${p.id})" style="color: var(--danger); padding: 4px 8px; font-size: 0.75rem;">
+                    🗑️ 삭제
+                </button>
+            ` : '';
+
+            return `
+                <div class="cafe-post-card" style="background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow); transition: var(--transition);">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                        <div>
+                            <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0 0 4px 0;">${escapeHTML(p.title)}</h4>
+                            <span style="font-size: 0.78rem; color: var(--text-muted);">
+                                👤 ${escapeHTML(p.username)} (${escapeHTML(p.email || '이메일 없음')})
+                            </span>
+                        </div>
+                        <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                            <span style="font-size: 0.72rem; color: var(--text-muted);">${dateStr}</span>
+                            ${deleteBtn}
+                        </div>
+                    </div>
+                    <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6; margin: 0; white-space: pre-wrap;">${escapeHTML(p.content)}</p>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        showToast(`카페 글을 로드하지 못했습니다: ${err.message}`, 'error');
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px; color: var(--danger); background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg);">
+                ⚠️ 데이터를 불러오는 중 오류가 발생했습니다. (${escapeHTML(err.message)})
+            </div>`;
+    }
+}
+
+async function writeCafePost() {
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!activeBizId) {
+        showToast('활성화된 회사가 없습니다. 회사를 먼저 등록해 주세요.', 'error');
+        return;
+    }
+
+    const titleInput = document.getElementById('cafe-title-input');
+    const contentInput = document.getElementById('cafe-content-input');
+    if (!titleInput || !contentInput) return;
+
+    const title = titleInput.value.trim();
+    const content = contentInput.value.trim();
+
+    if (!title) {
+        showToast('제목을 입력해 주세요.', 'warning');
+        titleInput.focus();
+        return;
+    }
+    if (!content) {
+        showToast('내용을 입력해 주세요.', 'warning');
+        contentInput.focus();
+        return;
+    }
+
+    try {
+        await api('POST', `/companies/${activeBizId}/cafe`, { title, content });
+        showToast('게시글이 성공적으로 공유되었습니다.', 'success');
+        
+        // 입력 폼 초기화
+        titleInput.value = '';
+        contentInput.value = '';
+        
+        // 목록 새로고침
+        await loadCafe();
+    } catch (err) {
+        showToast(`게시글 등록 실패: ${err.message}`, 'error');
+    }
+}
+
+async function deleteCafePost(postId) {
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!activeBizId || !postId) return;
+
+    if (!confirm('정말로 이 게시글을 삭제하시겠습니까?')) return;
+
+    try {
+        await api('DELETE', `/companies/${activeBizId}/cafe/${postId}`);
+        showToast('게시글이 삭제되었습니다.', 'success');
+        await loadCafe();
+    } catch (err) {
+        showToast(`게시글 삭제 실패: ${err.message}`, 'error');
     }
 }
