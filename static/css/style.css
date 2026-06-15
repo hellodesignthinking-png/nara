@@ -7369,4 +7369,382 @@ body.logged-out #mobile-menu-btn {
     to { opacity: 1; }
 }
 
+/* ==========================================================================
+   🏛️ NARA Analyzer - Behance-style Premium Light Theme for Landing Page
+   ========================================================================== */
+
+#view-landing {
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    transition: background-color 0.3s ease;
+    padding-bottom: 100px;
+}
+
+/* 🔮 밝은 모드용 백드롭 데코 */
+#view-landing .landing-backdrop {
+    background: radial-gradient(circle at 80% 20%, rgba(99, 102, 241, 0.04) 0%, transparent 50%),
+                radial-gradient(circle at 10% 80%, rgba(16, 185, 129, 0.03) 0%, transparent 50%) !important;
+}
+
+#view-landing .landing-backdrop::before {
+    background-image: 
+        linear-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.02) 1px, transparent 1px) !important;
+    mask-image: radial-gradient(ellipse at 50% 40%, black 60%, transparent 95%) !important;
+    -webkit-mask-image: radial-gradient(ellipse at 50% 40%, black 60%, transparent 95%) !important;
+    opacity: 0.6 !important;
+}
+
+#view-landing .glowing-blob {
+    opacity: 0.12 !important;
+    mix-blend-mode: multiply !important; /* 밝은 배경에 적합하도록 변경 */
+}
+
+#view-landing .blob-1 {
+    background: radial-gradient(circle, #818cf8 20%, #a78bfa 60%, transparent 100%) !important;
+}
+
+#view-landing .blob-2 {
+    background: radial-gradient(circle, #22d3ee 20%, #34d399 60%, transparent 100%) !important;
+}
+
+/* 🌐 GNB 탑바 화이트 테마 */
+#view-landing .landing-gnb {
+    border-bottom: 1px solid #f1f5f9 !important;
+    background: rgba(255, 255, 255, 0.8) !important;
+    backdrop-filter: blur(12px) !important;
+    position: sticky !important;
+    top: 0 !important;
+    margin-bottom: 20px !important;
+}
+
+#view-landing .gnb-logo-text {
+    color: #0f172a !important;
+}
+
+#view-landing .gnb-links a {
+    color: #64748b !important;
+    font-weight: 600 !important;
+}
+
+#view-landing .gnb-links a:hover {
+    color: #0f172a !important;
+}
+
+/* GNB 버튼 튜닝 */
+#view-landing .btn-ghost {
+    color: #475569 !important;
+}
+#view-landing .btn-ghost:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+}
+
+/* 🏢 히어로 레이아웃 화이트 테마 */
+#view-landing .tag-badge {
+    background: #f5f3ff !important;
+    color: #6366f1 !important;
+    border: 1px solid #e0e7ff !important;
+}
+
+#view-landing .landing-main-title {
+    color: #0f172a !important;
+}
+
+#view-landing .landing-main-title span {
+    background: linear-gradient(135deg, #4f46e5, #3b82f6, #059669) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+#view-landing .landing-main-desc {
+    color: #475569 !important;
+}
+
+/* 아웃라인 버튼 커스텀 */
+#view-landing .btn-outline {
+    border: 1.5px solid #cbd5e1 !important;
+    color: #334155 !important;
+    font-weight: 600 !important;
+}
+#view-landing .btn-outline:hover {
+    background: #f8fafc !important;
+    border-color: #94a3b8 !important;
+    color: #0f172a !important;
+}
+
+/* 📊 신뢰성 지표 */
+#view-landing .hero-metrics-grid {
+    border-top: 1px solid #e2e8f0 !important;
+}
+
+#view-landing .metric-num {
+    background: linear-gradient(135deg, #3b82f6, #4f46e5) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+#view-landing .metric-label {
+    color: #64748b !important;
+}
+
+/* 🔄 SVG 다이어그램 카드 화이트 테마 */
+#view-landing .landing-flowchart-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+}
+
+#view-landing .flowchart-title {
+    color: #1e293b !important;
+}
+
+#view-landing .flow-step-legend {
+    color: #64748b !important;
+}
+
+/* SVG 다이어그램 요소들 밝은배경 튜닝 */
+#view-landing .flow-path-bg {
+    stroke: #f1f5f9 !important;
+}
+
+#view-landing .node-bg {
+    fill: #ffffff !important;
+    stroke: #e2e8f0 !important;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.02)) !important;
+}
+
+#view-landing .flow-node:hover .node-bg {
+    fill: #f5f3ff !important;
+    stroke: #818cf8 !important;
+}
+
+#view-landing .node-bg.node-accent {
+    stroke: #cbd5e1 !important;
+}
+#view-landing .flow-node:hover .node-bg.node-accent {
+    fill: #faf5ff !important;
+    stroke: #c084fc !important;
+}
+
+#view-landing .node-bg.node-success {
+    stroke: #cbd5e1 !important;
+}
+#view-landing .flow-node:hover .node-bg.node-success {
+    fill: #ecfdf5 !important;
+    stroke: #34d399 !important;
+}
+
+#view-landing .node-bg.node-gold {
+    stroke: #fef08a !important;
+    fill: #fefce8 !important;
+}
+#view-landing .flow-node:hover .node-bg.node-gold {
+    fill: #fef9c3 !important;
+    stroke: #facc15 !important;
+}
+
+#view-landing .node-title {
+    fill: #1e293b !important;
+}
+
+#view-landing .node-desc {
+    fill: #64748b !important;
+}
+
+/* 🌟 프리미엄 기능 블록 섹션 화이트 테마 */
+#view-landing .landing-features-detail {
+    border-top: 1px solid #f1f5f9 !important;
+}
+
+#view-landing .section-title-premium {
+    color: #0f172a !important;
+}
+
+#view-landing .section-subtitle-premium {
+    color: #64748b !important;
+}
+
+#view-landing .feature-detail-info h3 {
+    color: #0f172a !important;
+}
+
+#view-landing .feature-detail-info p {
+    color: #475569 !important;
+}
+
+#view-landing .feat-bullet-list li {
+    color: #334155 !important;
+}
+
+/* 💻 목업 브라우저 UI 그래픽 화이트 테마 */
+#view-landing .mockup-ui {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+}
+
+#view-landing .mockup-header {
+    background: #f8fafc !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    color: #64748b !important;
+}
+
+#view-landing .mockup-header::before {
+    color: #cbd5e1 !important;
+}
+
+/* 목업 UI 내부 텍스트 및 카드 튜닝 */
+#view-landing .mock-score-row span {
+    color: #1e293b !important;
+}
+
+#view-landing .mock-score-progress {
+    background: #f1f5f9 !important;
+}
+
+#view-landing .mock-score-reasons {
+    color: #64748b !important;
+}
+
+#view-landing .mock-partner-card {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+#view-landing .mock-partner-card strong {
+    color: #1e293b !important;
+}
+
+#view-landing .mock-partner-card small {
+    color: #64748b !important;
+}
+
+/* ==========================================================================
+   🎨 Behance 스타일 진행 중인 공고문 갤러리 섹션 CSS
+   ========================================================================== */
+.landing-bids-section {
+    width: 100% !important;
+    max-width: 1200px !important;
+    margin-top: 80px !important;
+    border-top: 1px solid #f1f5f9 !important;
+    padding-top: 80px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+}
+
+.bids-gallery-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)) !important;
+    gap: 24px !important;
+    width: 100% !important;
+    margin-top: 40px !important;
+}
+
+/* 🖼️ Behance 포트폴리오 스타일 카드 */
+.gallery-card {
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
+    cursor: pointer !important;
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+                box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+                border-color 0.3s ease !important;
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02) !important;
+}
+
+.gallery-card:hover {
+    transform: translateY(-8px) !important;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+    border-color: #cbd5e1 !important;
+}
+
+/* 카드 커버 이미지/그라데이션 영역 */
+.gallery-card-cover {
+    height: 160px !important;
+    position: relative !important;
+    overflow: hidden !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.gallery-category-badge {
+    position: absolute !important;
+    top: 14px !important;
+    left: 14px !important;
+    background: rgba(255, 255, 255, 0.9) !important;
+    color: #1e293b !important;
+    padding: 4px 10px !important;
+    border-radius: 20px !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    backdrop-filter: blur(4px) !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+    z-index: 2 !important;
+}
+
+/* 호버 시 오버레이 효과 */
+.gallery-cover-overlay {
+    position: absolute !important;
+    inset: 0 !important;
+    background: rgba(15, 23, 42, 0.6) !important;
+    color: #ffffff !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    opacity: 0 !important;
+    transition: opacity 0.3s ease !important;
+    z-index: 1 !important;
+}
+
+.gallery-card:hover .gallery-cover-overlay {
+    opacity: 1 !important;
+}
+
+/* 카드 내용 영역 */
+.gallery-card-content {
+    padding: 18px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
+    background: #ffffff !important;
+}
+
+.gallery-card-title {
+    font-size: 0.92rem !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    line-height: 1.4 !important;
+    margin: 0 0 12px 0 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    height: 2.8em !important; /* 2줄 높이 고정으로 그리드 통일성 확보 */
+}
+
+.gallery-card-meta {
+    margin-top: auto !important;
+    border-top: 1px solid #f1f5f9 !important;
+    padding-top: 12px !important;
+}
+
+.gallery-org {
+    display: block !important;
+    font-size: 0.75rem !important;
+    color: #64748b !important;
+    font-weight: 600 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
 

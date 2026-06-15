@@ -1222,7 +1222,7 @@ function navigate(view) {
 
     // 데이터 로드
     switch (view) {
-        case 'landing': break;
+        case 'landing': loadLandingBids(); break;
         case 'dashboard': loadDashboard(); break;
         case 'bids': loadBids(); break;
         case 'favorites': loadFavorites(); break;
@@ -7166,5 +7166,64 @@ async function loadAdminCollaborations() {
     } catch (err) {
         console.error('협업 현황 로드 실패:', err);
         showToast('협업사 매칭 모니터 데이터를 불러오지 못했습니다.', 'error');
+    }
+}
+
+async function loadLandingBids() {
+    const container = document.getElementById('landing-bids-container');
+    if (!container) return;
+
+    try {
+        const response = await fetch('/api/bids?limit=8');
+        if (!response.ok) throw new Error('API 호출 실패');
+        const bids = await response.json();
+
+        if (!bids || bids.length === 0) {
+            container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#888;font-size:0.9rem">📅 진행 중인 공고문이 없습니다.</div>`;
+            return;
+        }
+
+        // 파스텔톤 그라데이션 배열 (Behance 썸네일 느낌 연출)
+        const gradients = [
+            'linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)',
+            'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)',
+            'linear-gradient(135deg, #ecfeff 0%, #cffafe 100%)',
+            'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+            'linear-gradient(135deg, #fae8ff 0%, #f5d0fe 100%)',
+            'linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%)',
+            'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)',
+            'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)'
+        ];
+
+        container.innerHTML = bids.map((b, index) => {
+            const grad = gradients[index % gradients.length];
+            const budgetText = b.budget ? `${(b.budget / 100000000).toFixed(2)}억 원` : '규격서 참조';
+            const closeDt = b.bid_close_dt ? b.bid_close_dt.substring(0, 10) : '-';
+            const org = b.org_name || b.demand_org_name || '조달기관';
+            
+            return `
+                <div class="gallery-card" onclick="openAuthModal('login'); showToast('로그인 후 AI 분석과 공동수급 파트너 추천 기능을 사용해보세요!', 'info')">
+                    <div class="gallery-card-cover" style="background:${grad}">
+                        <span class="gallery-category-badge">${escapeHTML(b.category || '용역')}</span>
+                        <div class="gallery-cover-overlay">
+                            <span style="font-size:0.8rem;font-weight:600">🎯 AI 분석 가능</span>
+                        </div>
+                    </div>
+                    <div class="gallery-card-content">
+                        <h4 class="gallery-card-title" title="${escapeHTML(b.title)}">${escapeHTML(b.title)}</h4>
+                        <div class="gallery-card-meta">
+                            <span class="gallery-org">🏢 ${escapeHTML(org)}</span>
+                            <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:0.72rem;color:#777">
+                                <span>💰 예산: <strong>${budgetText}</strong></span>
+                                <span style="color:#ef4444;font-weight:600">⏰ 마감: ${closeDt}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('랜딩 공고 로드 실패:', e);
+        container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#ef4444;font-size:0.9rem">❌ 최신 공고문을 불러오는 도중 오류가 발생했습니다.</div>`;
     }
 }
