@@ -6753,57 +6753,334 @@ body.logged-out #mobile-menu-btn {
     letter-spacing: -1px;
 }
 
-.landing-subtitle {
-    font-size: 1.4rem;
-    font-weight: 600;
-    color: var(--primary);
-    margin-bottom: 20px;
+/* 🌐 GNB 탑바 모의 스타일 */
+.landing-gnb {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    z-index: 10;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.gnb-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.gnb-logo-icon {
+    font-size: 1.6rem;
+}
+.gnb-logo-text {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.5px;
+}
+.gnb-links {
+    display: flex;
+    gap: 32px;
+}
+.gnb-links a {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: color 0.2s;
+}
+.gnb-links a:hover {
+    color: #fff;
+}
+.gnb-actions {
+    display: flex;
+    gap: 12px;
 }
 
-.landing-description {
+/* 🏢 히어로 레이아웃 (2열 구조) */
+.landing-hero-section {
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 60px;
+    align-items: center;
+    width: 100%;
+    max-width: 1200px;
+}
+@media (max-width: 992px) {
+    .landing-hero-section {
+        grid-template-columns: 1fr;
+        gap: 48px;
+    }
+}
+.hero-left-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+}
+.tag-badge {
+    background: rgba(99, 102, 241, 0.1);
+    color: #a5b4fc;
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    padding: 6px 14px;
+    border-radius: 30px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 24px;
+    letter-spacing: 0.5px;
+}
+.landing-main-title {
+    font-size: 3.4rem;
+    font-weight: 800;
+    line-height: 1.15;
+    color: #fff;
+    margin-bottom: 24px;
+    letter-spacing: -1.5px;
+}
+.landing-main-title span {
+    background: linear-gradient(135deg, #a5b4fc, #60a5fa, #34d399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.landing-main-desc {
     font-size: 1.05rem;
     color: var(--text-muted);
-    line-height: 1.6;
-    margin-bottom: 32px;
+    line-height: 1.7;
+    margin-bottom: 36px;
 }
-
-.landing-actions {
+.hero-cta-group {
     display: flex;
-    gap: 16px;
-    justify-content: center;
+    gap: 14px;
+    width: 100%;
+    flex-wrap: wrap;
 }
-
-.landing-actions .btn-lg {
-    padding: 14px 28px;
-    font-size: 1rem;
-    font-weight: 600;
-    border-radius: 30px;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.15);
+.hero-cta-group .btn-lg {
+    box-shadow: 0 10px 25px rgba(99, 102, 241, 0.2);
     transition: all 0.25s ease;
 }
+.hero-cta-group .btn-lg:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 15px 30px rgba(99, 102, 241, 0.35);
+}
 
-.landing-actions .btn-lg:hover {
-    transform: translateY(-2px);
+/* 📊 신뢰성 지표 */
+.hero-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-top: 48px;
+    width: 100%;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 32px;
+}
+.metric-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.metric-num {
+    font-size: 2.2rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #fff, #a5b4fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -1px;
+}
+.metric-label {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    font-weight: 500;
 }
 
 /* 🔄 SVG 다이어그램 카드 */
 .landing-flowchart-card {
     width: 100%;
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(15, 23, 42, 0.45);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 24px;
-    padding: 40px;
-    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-    backdrop-filter: blur(20px);
-    animation: fadeInUp 0.8s ease-out;
+    border-radius: 28px;
+    padding: 36px;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+    backdrop-filter: blur(25px);
+    position: relative;
+    overflow: hidden;
 }
-
+.landing-flowchart-card::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, rgba(99,102,241,0.05), transparent);
+    pointer-events: none;
+}
 .flowchart-title {
     text-align: center;
-    font-size: 1.3rem;
+    font-size: 1.1rem;
     font-weight: 700;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
+    color: #fff;
+    letter-spacing: -0.5px;
+}
+.flow-step-legend {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 18px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.legend-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+}
+
+/* 🌟 프리미엄 기능 블록 섹션 */
+.landing-features-detail {
+    width: 100%;
+    max-width: 1200px;
+    margin-top: 80px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding-top: 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.section-title-premium {
+    font-size: 2.2rem;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 12px;
+    letter-spacing: -1px;
+    text-align: center;
+}
+.section-subtitle-premium {
+    font-size: 0.96rem;
+    color: var(--text-muted);
+    text-align: center;
+    margin-bottom: 64px;
+}
+.feature-detail-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 80px;
+    width: 100%;
+}
+.feature-detail-block {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 64px;
+    align-items: center;
+    width: 100%;
+}
+.feature-detail-block:nth-child(even) {
+    grid-template-columns: 0.9fr 1.1fr;
+}
+.feature-detail-block:nth-child(even) .feature-detail-info {
+    grid-column: 2;
+}
+.feature-detail-block:nth-child(even) .feature-detail-preview {
+    grid-column: 1;
+    grid-row: 1;
+}
+@media (max-width: 868px) {
+    .feature-detail-block, .feature-detail-block:nth-child(even) {
+        grid-template-columns: 1fr;
+        gap: 32px;
+    }
+    .feature-detail-block:nth-child(even) .feature-detail-info {
+        grid-column: 1;
+    }
+    .feature-detail-block:nth-child(even) .feature-detail-preview {
+        grid-column: 1;
+        grid-row: 2;
+    }
+}
+.feature-detail-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+}
+.feat-num {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--accent-indigo, #6366f1);
+    margin-bottom: 12px;
+    opacity: 0.8;
+}
+.feature-detail-info h3 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #fff;
+    margin: 0 0 16px 0;
+    letter-spacing: -0.5px;
+}
+.feature-detail-info p {
+    font-size: 0.96rem;
+    color: var(--text-muted);
+    line-height: 1.65;
+    margin-bottom: 24px;
+}
+.feat-bullet-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.feat-bullet-list li {
+    font-size: 0.88rem;
     color: var(--text-primary);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 💻 목업 브라우저 UI 그래픽 */
+.feature-detail-preview {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+.mockup-ui {
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: 0 20px 45px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+    overflow: hidden;
+}
+.mockup-header {
+    background: #0b0f19;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 10px 16px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.mockup-header::before {
+    content: "•••";
+    font-size: 1.1rem;
+    color: rgba(255,255,255,0.25);
+    letter-spacing: -2px;
+    line-height: 1;
+    margin-right: 4px;
+}
+.mockup-body {
+    padding: 20px;
 }
 
 .svg-container {
