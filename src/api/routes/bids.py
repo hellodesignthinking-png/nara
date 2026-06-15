@@ -19,6 +19,7 @@ try:
 except ImportError:
     RFPDiffer = None
 
+from src.models.database import DatabaseManager
 from ._helpers import (
     get_db,
     _bid_to_api_dict,
@@ -141,7 +142,7 @@ async def get_bids(
     keyword: Optional[str] = Query(None, description="공고명 검색 키워드"),
     org_name: Optional[str] = Query(None, description="발주기관명 검색"),
     limit: int = Query(50, ge=1, le=500, description="최대 반환 건수"),
-    db=Depends(get_db),
+    db: DatabaseManager = Depends(get_db),
 ):
     """
     DB에 저장된 입찰공고 목록을 검색합니다.
@@ -159,7 +160,7 @@ async def get_bids(
 
 
 @router.get("/bids/{bid_ntce_no}", summary="공고 상세 조회")
-async def get_bid_detail(bid_ntce_no: str, db=Depends(get_db)):
+async def get_bid_detail(bid_ntce_no: str, db: DatabaseManager = Depends(get_db)):
     """공고번호로 입찰공고 상세 정보를 조회합니다."""
     try:
         bid = db.get_bid_by_no(bid_ntce_no)
@@ -177,7 +178,7 @@ async def get_bid_detail(bid_ntce_no: str, db=Depends(get_db)):
 
 
 @router.post("/bids/collect", summary="관심 키워드 기반 공고 수집")
-async def collect_bids(request: Optional[BidCollectRequest] = Body(None), db=Depends(get_db)):
+async def collect_bids(request: Optional[BidCollectRequest] = Body(None), db: DatabaseManager = Depends(get_db)):
     """
     국내외 조달/용역 API 및 소스 채널을 호출하여 공고를 수집하고 DB에 저장합니다.
 
@@ -199,8 +200,14 @@ async def collect_bids(request: Optional[BidCollectRequest] = Body(None), db=Dep
 
         # 키워드, 날짜에 따라 수집 방법 선택 (to_thread로 블로킹 방지)
         if request and request.keyword:
-            # 1) 사용자가 직접 키워드 지정 (전체 수집 후 파이썬 상에서 키워드 필터링)
-            raw_bids = await asyncio.to_thread(collector.collect_all_sources, "", "", platforms)
+            # 1) 사용자가 직접 키워드 지정 (최근 30일 수집 후 파이썬 상에서 키워드 필터링)
+            from datetime import datetime, timedelta
+            from zoneinfo import ZoneInfo
+            kst_now = datetime.now(tz=ZoneInfo("Asia/Seoul"))
+            start_dt = (kst_now - timedelta(days=30)).strftime("%Y%m%d")
+            end_dt = kst_now.strftime("%Y%m%d")
+            
+            raw_bids = await asyncio.to_thread(collector.collect_all_sources, start_dt, end_dt, platforms, request.keyword)
             bids = [b for b in raw_bids if request.keyword.lower() in (b.title or '').lower()]
             used_keywords = [request.keyword]
 
@@ -269,7 +276,7 @@ async def collect_bids(request: Optional[BidCollectRequest] = Body(None), db=Dep
 
 
 @router.get("/bids/{bid_ntce_no}/diff", summary="유사 과거 공고 비교")
-async def get_bid_diff(bid_ntce_no: str, db=Depends(get_db)):
+async def get_bid_diff(bid_ntce_no: str, db: DatabaseManager = Depends(get_db)):
     """
     현재 공고와 가장 유사한 과거 공고를 찾아 변경사항(diff)을 반환합니다.
 

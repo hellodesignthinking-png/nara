@@ -103,6 +103,7 @@ class BusinessProfile:
     """
     biz_id: str                              # 사업자등록번호 (PK)
     company_name: str                        # 회사명
+    username: Optional[str] = "admin"        # 소유 사용자 (FK)
     ceo_name: Optional[str] = None           # 대표자명
     business_types: list[str] = field(default_factory=list)   # 업종 목록
     licenses: list[str] = field(default_factory=list)         # 보유 면허/자격
@@ -113,8 +114,12 @@ class BusinessProfile:
     keywords: list[str] = field(default_factory=list)         # 관심 키워드
     min_budget: Optional[int] = None         # 최소 예산
     max_budget: Optional[int] = None         # 최대 예산
+    credit_rating: Optional[str] = "BBB"     # 신용평가등급
+    company_type: Optional[str] = None       # 기업 구분
+    has_sanctions: bool = False              # 부정당업자 제재 이력 여부
     created_at: Optional[datetime] = None    # 생성일시
     updated_at: Optional[datetime] = None    # 수정일시
+
 
     @classmethod
     def from_dict(cls, data: dict) -> "BusinessProfile":
@@ -128,6 +133,7 @@ class BusinessProfile:
         return cls(
             biz_id=biz_id,
             company_name=company_name,
+            username=data.get("username", "admin"),
             ceo_name=data.get("ceo_name"),
             business_types=_parse_json_field(data.get("business_types")),
             licenses=_parse_json_field(data.get("licenses")),
@@ -138,6 +144,9 @@ class BusinessProfile:
             keywords=_parse_json_field(data.get("keywords")),
             min_budget=data.get("min_budget"),
             max_budget=data.get("max_budget"),
+            credit_rating=data.get("credit_rating", "BBB"),
+            company_type=data.get("company_type"),
+            has_sanctions=bool(data.get("has_sanctions", False)),
             created_at=_parse_timestamp(data.get("created_at")),
             updated_at=_parse_timestamp(data.get("updated_at")),
         )
@@ -147,6 +156,7 @@ class BusinessProfile:
         return {
             "biz_id": self.biz_id,
             "company_name": self.company_name,
+            "username": self.username or "admin",
             "ceo_name": self.ceo_name,
             "business_types": _dump_json_field(self.business_types),
             "licenses": _dump_json_field(self.licenses),
@@ -157,6 +167,9 @@ class BusinessProfile:
             "keywords": _dump_json_field(self.keywords),
             "min_budget": self.min_budget,
             "max_budget": self.max_budget,
+            "credit_rating": self.credit_rating,
+            "company_type": self.company_type,
+            "has_sanctions": self.has_sanctions,
             "created_at": _format_timestamp(self.created_at),
             "updated_at": _format_timestamp(self.updated_at),
         }
@@ -428,6 +441,15 @@ class AnalysisResult:
 # ──────────────────────────────────────────────
 
 CREATE_TABLES_SQL = """
+-- 회원 관리 테이블
+CREATE TABLE IF NOT EXISTS users (
+    username        TEXT PRIMARY KEY,
+    password_hash   TEXT NOT NULL,
+    email           TEXT,
+    is_admin        INTEGER DEFAULT 0,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- 사업자 프로필 테이블
 CREATE TABLE IF NOT EXISTS business_profiles (
     biz_id          TEXT PRIMARY KEY,
@@ -442,8 +464,23 @@ CREATE TABLE IF NOT EXISTS business_profiles (
     keywords        TEXT,           -- JSON 배열
     min_budget      INTEGER,
     max_budget      INTEGER,
+    credit_rating   TEXT DEFAULT 'BBB',
+    company_type    TEXT,
+    has_sanctions   INTEGER DEFAULT 0,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 다중 회사 소속 멤버 테이블
+CREATE TABLE IF NOT EXISTS business_members (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    biz_id          TEXT NOT NULL,
+    username        TEXT NOT NULL,
+    role            TEXT NOT NULL DEFAULT 'member', -- owner, admin, member
+    joined_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(biz_id, username),
+    FOREIGN KEY (biz_id) REFERENCES business_profiles(biz_id) ON DELETE CASCADE,
+    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
 );
 
 -- 입찰공고 테이블
@@ -505,11 +542,38 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     competitors     TEXT,           -- JSON
     analyzed_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(bid_ntce_no, biz_id),
-    FOREIGN KEY (bid_ntce_no) REFERENCES bid_announcements(bid_ntce_no),
-    FOREIGN KEY (biz_id) REFERENCES business_profiles(biz_id)
+    FOREIGN KEY (bid_ntce_no) REFERENCES bid_announcements(bid_ntce_no)
 );
 
--- 인덱스: 자주 조회되는 컨럼에 대한 인덱스
+-- 사용자 관심공고 테이블 (LocalStorage 대체)
+CREATE TABLE IF NOT EXISTS user_favorites (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    username        TEXT NOT NULL,
+    bid_ntce_no     TEXT NOT NULL,
+    status          TEXT DEFAULT 'reviewing',
+    memo            TEXT,
+    partners        TEXT,           -- JSON array
+    checklist       TEXT,           -- JSON array
+    added_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(username, bid_ntce_no),
+    FOREIGN KEY (username) REFERENCES users(username),
+    FOREIGN KEY (bid_ntce_no) REFERENCES bid_announcements(bid_ntce_no)
+);
+
+-- 사용자 AI 에이전트 설정 테이블
+CREATE TABLE IF NOT EXISTS user_ai_settings (
+    username          TEXT PRIMARY KEY,
+    bid_target        TEXT DEFAULT 'stable', -- stable, revenue, expansion
+    relevance_weight  REAL DEFAULT 0.35,     -- 키워드/업종 가중치
+    capacity_weight   REAL DEFAULT 0.35,     -- 예산/실적 가중치
+    credit_weight     REAL DEFAULT 0.30,     -- 신용/가점 가중치
+    ai_persona        TEXT DEFAULT 'strategic', -- strategic, aggressive, conservative
+    custom_keywords   TEXT,                  -- JSON Array
+    updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+);
+
+-- 인덱스: 자주 조회되는 컬럼에 대한 인덱스
 CREATE INDEX IF NOT EXISTS idx_bid_collected_at ON bid_announcements(collected_at);
 CREATE INDEX IF NOT EXISTS idx_bid_org_name ON bid_announcements(org_name);
 CREATE INDEX IF NOT EXISTS idx_award_bid_no ON award_infos(bid_ntce_no);
@@ -519,4 +583,7 @@ CREATE INDEX IF NOT EXISTS idx_news_query ON news_articles(search_query);
 CREATE INDEX IF NOT EXISTS idx_news_title ON news_articles(title);
 CREATE INDEX IF NOT EXISTS idx_analysis_bid ON analysis_results(bid_ntce_no);
 CREATE INDEX IF NOT EXISTS idx_analysis_biz ON analysis_results(biz_id);
+CREATE INDEX IF NOT EXISTS idx_fav_username ON user_favorites(username);
+CREATE INDEX IF NOT EXISTS idx_biz_member_username ON business_members(username);
+CREATE INDEX IF NOT EXISTS idx_biz_member_biz ON business_members(biz_id);
 """

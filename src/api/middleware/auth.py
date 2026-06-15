@@ -30,6 +30,7 @@ PUBLIC_PATHS = {
 # 인증이 필요 없는 경로 접두사
 PUBLIC_PREFIXES = (
     "/static",
+    "/api/auth",
 )
 
 

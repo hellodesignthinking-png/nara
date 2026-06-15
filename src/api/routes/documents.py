@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from src.config import load_config
 from src.collectors.news_collector import NewsCollector
 
+from src.models.database import DatabaseManager
 from ._helpers import get_db
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ def _article_to_dict(a) -> dict:
 async def get_org_news(
     org_name: str,
     limit: int = Query(20, ge=1, le=100, description="최대 반환 건수"),
-    db=Depends(get_db),
+    db: DatabaseManager = Depends(get_db),
 ):
     """
     특정 기관의 뉴스 기사를 조회합니다.

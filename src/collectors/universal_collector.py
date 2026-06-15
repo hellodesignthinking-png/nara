@@ -37,7 +37,7 @@ class UniversalBidCollector(BaseCollector):
         self.config = config
         self.nara_collector = BidCollector(config)
 
-    def collect_all_sources(self, start_date: str = "", end_date: str = "", platforms: list[str] = None) -> list[BidAnnouncement]:
+    def collect_all_sources(self, start_date: str = "", end_date: str = "", platforms: list[str] = None, keyword: str = "") -> list[BidAnnouncement]:
         """
         선택 또는 활성화된 국내외 소스로부터 공고를 수집하고 통합하여 반환합니다.
         
@@ -45,6 +45,7 @@ class UniversalBidCollector(BaseCollector):
             start_date: YYYYMMDD 형식 시작일 (생략 시 오늘)
             end_date: YYYYMMDD 형식 종료일 (생략 시 오늘)
             platforms: 수집하려는 플랫폼 목록 (예: ['nara', 'kstartup', 'samgov', 'ungm'])
+            keyword: 공고명 필터링 키워드
             
         Returns:
             통합된 BidAnnouncement 리스트
@@ -59,7 +60,18 @@ class UniversalBidCollector(BaseCollector):
         if collect_all or 'nara' in target_platforms:
             try:
                 logger.info("UniversalCollector: 나라장터(Nara) 공고 수집 중...")
-                if start_date and end_date:
+                if keyword:
+                    # 키워드가 제공된 경우 나라장터 API 단에서 필터링 수집 (메모리/네트워크 락 예방)
+                    days = 30
+                    if start_date and end_date:
+                        try:
+                            d1 = datetime.strptime(start_date, "%Y%m%d")
+                            d2 = datetime.strptime(end_date, "%Y%m%d")
+                            days = max(1, (d2 - d1).days)
+                        except Exception:
+                            pass
+                    nara_bids = self.nara_collector.collect_bids_by_keyword(keyword, days=days)
+                elif start_date and end_date:
                     nara_bids = self.nara_collector.collect_bids_by_date(start_date, end_date)
                 else:
                     nara_bids = self.nara_collector.collect_today_bids()
@@ -79,7 +91,7 @@ class UniversalBidCollector(BaseCollector):
                 logger.error("UniversalCollector: 국내 타 조달망 수집 실패: %s", e)
 
         # 3. 해외 정부 조달망 (SAM.gov) Mock 수집
-        if collect_all or 'samgov' in target_platforms:
+        if 'samgov' in target_platforms:
             try:
                 logger.info("UniversalCollector: 해외 조달망(SAM.gov) 공고 수집 중...")
                 sam_bids = self._collect_sam_gov_mock(start_date, end_date)
@@ -89,7 +101,7 @@ class UniversalBidCollector(BaseCollector):
                 logger.error("UniversalCollector: SAM.gov 수집 실패: %s", e)
 
         # 4. 국제기구 조달망 (UNGM) Mock 수집
-        if collect_all or 'ungm' in target_platforms:
+        if 'ungm' in target_platforms:
             try:
                 logger.info("UniversalCollector: 국제기구 조달망(UNGM) 공고 수집 중...")
                 ungm_bids = self._collect_ungm_mock(start_date, end_date)

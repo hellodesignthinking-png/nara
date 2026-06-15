@@ -26,7 +26,11 @@
         </div>
 
         <ul class="sidebar-menu" role="menu">
-            <li class="menu-item active" data-view="dashboard" tabindex="0" role="menuitem" onclick="navigate('dashboard')">
+            <li class="menu-item" data-view="landing" id="menu-landing" tabindex="0" role="menuitem" onclick="navigate('landing')">
+                <span class="menu-icon" aria-hidden="true">🏠</span>
+                <span class="menu-label">서비스 소개</span>
+            </li>
+            <li class="menu-item" data-view="dashboard" tabindex="0" role="menuitem" onclick="navigate('dashboard')">
                 <span class="menu-icon" aria-hidden="true">📊</span>
                 <span class="menu-label">대시보드</span>
             </li>
@@ -52,9 +56,35 @@
                 <span class="menu-icon" aria-hidden="true">⚙️</span>
                 <span class="menu-label">설정</span>
             </li>
+            <li class="menu-item" data-view="ai-settings" tabindex="0" role="menuitem" onclick="navigate('ai-settings')">
+                <span class="menu-icon" aria-hidden="true">🤖</span>
+                <span class="menu-label">나의 AI 에이전트</span>
+            </li>
+            <li class="menu-item" data-view="admin" id="menu-admin" tabindex="0" role="menuitem" onclick="navigate('admin')" style="display:none">
+                <span class="menu-icon" aria-hidden="true">🛡️</span>
+                <span class="menu-label">관리자 관리</span>
+            </li>
         </ul>
 
         <div class="sidebar-footer">
+            <div id="auth-status-container" style="padding: 0 16px 12px; display: flex; flex-direction: column; gap: 8px;">
+                <!-- 비로그인 상태 -->
+                <div id="auth-logged-out" style="display: block;">
+                    <button class="btn btn-primary btn-sm" onclick="openAuthModal()" style="width:100%;font-size:0.82rem;font-weight:600;padding:8px 12px;display:flex;align-items:center;justify-content:center;gap:6px">🔒 로그인 / 회원가입</button>
+                </div>
+                <!-- 로그인 상태 -->
+                <div id="auth-logged-in" style="display: none; background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                    <div style="font-size: 0.8rem; margin-bottom: 6px; color: var(--text-secondary); display:flex; align-items:center; gap:4px; justify-content:center">
+                        <span>👤</span> <strong id="auth-username" style="color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px">사용자</strong>님
+                    </div>
+                    <div id="active-company-container" style="margin-bottom: 8px;">
+                        <select id="active-company-select" onchange="handleCompanySwitch(this.value)" style="width: 100%; font-size: 0.75rem; padding: 6px; border-radius: 4px; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; outline: none;">
+                            <option value="">소속 회사 불러오는 중...</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="handleLogout()" style="width:100%;font-size:0.75rem;padding:4px 8px;height:auto;min-height:0;background:rgba(239,68,68,0.1);color:#ef4444">로그아웃</button>
+                </div>
+            </div>
             <div style="display:flex;justify-content:center;padding:0 16px 8px">
                 <button id="theme-toggle-btn" class="btn btn-ghost btn-sm" onclick="toggleTheme()" aria-label="테마 전환" style="width:100%;font-size:0.82rem">🌙 다크 모드</button>
             </div>
@@ -76,6 +106,18 @@
 
         <!-- ════════ 대시보드 뷰 ════════ -->
         <section id="view-dashboard" class="view active">
+            <!-- 🏢 신규 유저용 사업자 등록 온보딩 배너 -->
+            <div id="no-company-banner" class="no-company-banner" style="display:none; margin-bottom:20px; background:linear-gradient(135deg, rgba(239,68,68,0.1) 0%, rgba(249,115,22,0.1) 100%); border:1px solid rgba(239,68,68,0.25); border-radius:12px; padding:16px 20px; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px">
+                <div style="display:flex; align-items:center; gap:12px">
+                    <span style="font-size:1.8rem">🏢</span>
+                    <div>
+                        <strong style="color:#ef4444; font-size:0.95rem; display:block">소속된 회사(사업자) 정보가 없습니다!</strong>
+                        <span style="color:var(--text-muted); font-size:0.82rem">AI 입찰 추천 분석 및 공동 수급(컨소시엄) 연계를 활성화하려면 자사 비즈니스 프로필을 신규 등록해 주세요.</span>
+                    </div>
+                </div>
+                <button class="btn btn-gradient btn-sm" onclick="navigate('businesses')">🏢 회사 등록하러 가기 &rarr;</button>
+            </div>
+
             <!-- 환영 헤더 + 빠른 액션 -->
             <div class="dashboard-hero">
                 <div class="hero-content">
@@ -152,6 +194,42 @@
                         <span class="stat-value" id="stat-urgent">0</span>
                         <span class="stat-label">마감 임박 (3일)</span>
                         <span class="stat-change neutral" id="stat-news-change">클릭하여 확인 →</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 🔮 글로벌 예측: 연간 반복 사업 발주 예측 브리핑 (Deltek GovWin 벤치마크) -->
+            <div class="recurring-forecast-panel" id="recurring-forecast-panel" style="margin-top:20px;padding:20px;background:linear-gradient(135deg, rgba(99,102,241,0.04) 0%, rgba(6,182,212,0.04) 100%);border-radius:16px;border:1px solid rgba(99,102,241,0.15)">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+                    <div>
+                        <h3 style="margin:0;font-size:1.1rem;display:flex;align-items:center;gap:6px;color:var(--text)">
+                            <span>🔮</span> 글로벌 벤치마크: 연간 반복 사업 발주 예측 브리핑
+                        </h3>
+                        <span style="font-size:0.75rem;color:var(--text-muted)">과거 수집 데이터를 AI 마이닝하여 30~90일 내 재발주될 가능성이 높은 예상 사업 목록을 선제 제안합니다.</span>
+                    </div>
+                    <span class="badge badge-accent" style="font-size:0.7rem;background:rgba(99,102,241,0.2);color:var(--accent-indigo)">Deltek GovWin 스펙</span>
+                </div>
+                <div id="recurring-forecast-list" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:12px;margin-top:12px">
+                    <div style="color:var(--text-muted);font-size:0.85rem;grid-column:1/-1;text-align:center;padding:20px 0">
+                        ⏳ 과거 낙찰 이력 마이닝 및 발주 일정을 분석하고 있습니다...
+                    </div>
+                </div>
+            </div>
+
+            <!-- 📊 글로벌 벤치마크: 경쟁사 수주 타깃 모니터 (BidSync 벤치마크) -->
+            <div class="competitor-intelligence-panel" id="competitor-intelligence-panel" style="margin-top:20px;padding:20px;background:linear-gradient(135deg, rgba(16,185,129,0.03) 0%, rgba(59,130,246,0.03) 100%);border-radius:16px;border:1px solid rgba(16,185,129,0.15)">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+                    <div>
+                        <h3 style="margin:0;font-size:1.1rem;display:flex;align-items:center;gap:6px;color:var(--text)">
+                            <span>📊</span> 글로벌 벤치마크: 경쟁사 수주 타깃 모니터
+                        </h3>
+                        <span style="font-size:0.75rem;color:var(--text-muted)">최근 낙찰 통계를 기반으로 가장 많은 실적을 획득한 상위 경쟁사의 수주 점유율과 평균 투찰률을 실시간 집계합니다.</span>
+                    </div>
+                    <span class="badge badge-success" style="font-size:0.7rem;background:rgba(16,185,129,0.2);color:var(--success)">BidSync 스펙</span>
+                </div>
+                <div id="competitor-intelligence-body" style="margin-top:12px">
+                    <div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:20px 0">
+                        ⏳ 경쟁업체들의 수주 점유율 및 낙찰 이력을 분석하고 있습니다...
                     </div>
                 </div>
             </div>
@@ -342,12 +420,6 @@
                     <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;cursor:pointer;color:var(--text)">
                         <input type="checkbox" id="plat-kstartup" checked> 🚀 K-Startup
                     </label>
-                    <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;cursor:pointer;color:var(--text)">
-                        <input type="checkbox" id="plat-samgov" checked> 🇺🇸 SAM.gov
-                    </label>
-                    <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;cursor:pointer;color:var(--text)">
-                        <input type="checkbox" id="plat-ungm" checked> 🇺🇳 UNGM
-                    </label>
                 </div>
 
                 <div class="search-chips" id="search-chips">
@@ -467,49 +539,99 @@
             </div>
         </section>
 
-        <!-- ════════ 사업자 관리 뷰 ════════ -->
+        <!-- ════════ 회사 및 조직 관리 뷰 ════════ -->
         <section id="view-businesses" class="view">
             <div class="view-header">
                 <div>
-                    <h1 class="view-title">사업자 관리</h1>
-                    <p class="view-subtitle">등록된 사업자 프로필 관리</p>
+                    <h1 class="view-title">회사 및 조직 관리</h1>
+                    <p class="view-subtitle">소속 회사 프로필 및 조직 직원 관리</p>
                 </div>
                 <div class="view-header-actions">
                     <button class="btn btn-primary" onclick="showBusinessModal()">
-                        <span class="btn-icon">➕</span> 사업자 등록
+                        <span class="btn-icon">➕</span> 새 회사 등록
                     </button>
                 </div>
             </div>
 
-            <!-- 🏢 등록 사업자 종합 역량 요약 -->
-            <div class="business-portfolio-summary" id="business-portfolio-summary" style="display:none;margin-bottom:20px">
-                <div class="stat-card" style="padding:16px;background:var(--bg-card);border:1px solid var(--border)">
-                    <div style="font-size:0.8rem;color:var(--text-muted);font-weight:600">🏛️ 등록 사업자 역량 풀 요약</div>
-                    <div style="display:flex;gap:24px;margin-top:10px;flex-wrap:wrap">
-                        <div>
-                            <span id="biz-summary-total-count" style="font-size:1.4rem;font-weight:800;color:var(--text-primary)">0</span>
-                            <span style="font-size:0.8rem;color:var(--text-muted)">개사</span>
+            <!-- 🏢 탭 메뉴 -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                <button class="btn btn-sm btn-primary tab-btn active" onclick="switchCompanyTab('companies')" id="company-tab-companies" style="font-size: 0.8rem; font-weight: 600; padding: 6px 12px;">🏢 회사 목록</button>
+                <button class="btn btn-sm btn-ghost tab-btn" onclick="switchCompanyTab('members')" id="company-tab-members" style="font-size: 0.8rem; font-weight: 600; padding: 6px 12px;">👥 직원 관리</button>
+            </div>
+
+            <!-- 탭 1: 회사 목록 영역 -->
+            <div id="company-section-companies" style="display: block;">
+                <!-- 🏢 등록 사업자 종합 역량 요약 -->
+                <div class="business-portfolio-summary" id="business-portfolio-summary" style="display:none;margin-bottom:20px">
+                    <div class="stat-card" style="padding:16px;background:var(--bg-card);border:1px solid var(--border)">
+                        <div style="font-size:0.8rem;color:var(--text-muted);font-weight:600">🏛️ 등록 사업자 역량 풀 요약</div>
+                        <div style="display:flex;gap:24px;margin-top:10px;flex-wrap:wrap">
+                            <div>
+                                <span id="biz-summary-total-count" style="font-size:1.4rem;font-weight:800;color:var(--text-primary)">0</span>
+                                <span style="font-size:0.8rem;color:var(--text-muted)">개사</span>
+                            </div>
+                            <div style="border-left:1px solid var(--border);padding-left:20px">
+                                <span id="biz-summary-total-revenue" style="font-size:1.4rem;font-weight:800;color:var(--text-primary)">0</span>
+                                <span style="font-size:0.8rem;color:var(--text-muted)">평균 매출</span>
+                            </div>
+                            <div style="border-left:1px solid var(--border);padding-left:20px">
+                                <span id="biz-summary-top-credit" style="font-size:1.4rem;font-weight:800;color:var(--accent-indigo)">-</span>
+                                <span style="font-size:0.8rem;color:var(--text-muted)">최고 신용등급</span>
+                            </div>
                         </div>
-                        <div style="border-left:1px solid var(--border);padding-left:20px">
-                            <span id="biz-summary-total-revenue" style="font-size:1.4rem;font-weight:800;color:var(--text-primary)">0</span>
-                            <span style="font-size:0.8rem;color:var(--text-muted)">평균 매출</span>
-                        </div>
-                        <div style="border-left:1px solid var(--border);padding-left:20px">
-                            <span id="biz-summary-top-credit" style="font-size:1.4rem;font-weight:800;color:var(--accent-indigo)">-</span>
-                            <span style="font-size:0.8rem;color:var(--text-muted)">최고 신용등급</span>
-                        </div>
+                    </div>
+                </div>
+
+                <div class="business-grid" id="business-grid">
+                    <div class="empty-state" id="business-empty">
+                        <div class="empty-icon empty-float-icon">🏢</div>
+                        <h3 class="empty-title">등록된 회사가 없습니다</h3>
+                        <p class="empty-desc">회사를 등록하거나 초대받으면 공고 분석 및 협업이 가능합니다</p>
+                        <button class="btn btn-primary" onclick="showBusinessModal()">
+                            <span class="btn-icon">➕</span> 첫 회사 등록하기
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <div class="business-grid" id="business-grid">
-                <div class="empty-state" id="business-empty">
-                    <div class="empty-icon empty-float-icon">🏢</div>
-                    <h3 class="empty-title">등록된 사업자가 없습니다</h3>
-                    <p class="empty-desc">사업자를 등록하면 공고와 자동 매칭 분석이 가능합니다</p>
-                    <button class="btn btn-primary" onclick="showBusinessModal()">
-                        <span class="btn-icon">➕</span> 첫 사업자 등록하기
-                    </button>
+            <!-- 탭 2: 직원 관리 영역 -->
+            <div id="company-section-members" style="display: none;">
+                <div class="card" style="padding: 20px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+                        <div>
+                            <h3 style="margin: 0; color: var(--text-primary);">👥 <span id="active-company-name-display" style="color:var(--accent-cyan); font-weight:800;">선택된 회사</span> 소속 직원 목록</h3>
+                            <p style="margin: 4px 0 0; font-size: 0.8rem; color: var(--text-muted);">현재 활성화된 회사에 속한 조직원을 조회하고 역할을 변경하거나 퇴사 조치합니다.</p>
+                        </div>
+                        <!-- 직원 초대(추가) 폼 -->
+                        <div id="invite-member-form" style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="invite-username" placeholder="초대할 사용자 ID(username)" class="input" style="font-size: 0.85rem; padding: 6px 12px; width: 200px; height: 34px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid var(--border); border-radius: 4px;">
+                            <select id="invite-role" class="input" style="font-size: 0.85rem; padding: 6px; width: 100px; height: 34px; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid var(--border); border-radius: 4px;">
+                                <option value="member">직원</option>
+                                <option value="admin">관리자</option>
+                            </select>
+                            <button class="btn btn-primary btn-sm" onclick="handleInviteMember()" style="height: 34px; font-weight:600;">➕ 직원 등록</button>
+                        </div>
+                    </div>
+
+                    <!-- 직원 목록 테이블 -->
+                    <div style="overflow-x: auto;">
+                        <table class="table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid var(--border); color: var(--text-muted); height: 40px;">
+                                    <th style="padding: 10px;">사용자 아이디 (username)</th>
+                                    <th style="padding: 10px;">이메일</th>
+                                    <th style="padding: 10px;">역할 (Role)</th>
+                                    <th style="padding: 10px;">가입 일시</th>
+                                    <th style="padding: 10px; text-align: right;">액션</th>
+                                </tr>
+                            </thead>
+                            <tbody id="company-members-tbody">
+                                <tr>
+                                    <td colspan="5" style="padding: 20px; text-align: center; color: var(--text-muted);">불러오는 중...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </section>
@@ -746,7 +868,365 @@
             </div>
         </section>
 
-    </main>
+        <!-- ════════ 비로그인 랜딩 뷰 ════════ -->
+        <section id="view-landing" class="view" style="position:relative">
+            <!-- 🔮 몽환적인 그라데이션 광원 데코레이션 -->
+            <div class="landing-backdrop">
+                <div class="glowing-blob blob-1"></div>
+                <div class="glowing-blob blob-2"></div>
+            </div>
+            <div class="landing-container" style="position:relative; z-index:1">
+                <div class="landing-header">
+                    <h1 class="landing-title">🏛️ NARA Analyzer</h1>
+                    <p class="landing-subtitle">나라장터 공공입찰 분석 및 다중 협업 컨소시엄 플랫폼</p>
+                    <p class="landing-description">AI 에이전트 분석과 최적의 협업 파트너 매칭을 통해 수주 확률을 혁신적으로 극대화합니다.</p>
+                    <div class="landing-actions">
+                        <button class="btn btn-gradient btn-lg" onclick="openAuthModal('register')">🚀 무료 회원가입</button>
+                        <button class="btn btn-secondary btn-lg" onclick="openAuthModal('login')">🔒 로그인</button>
+                    </div>
+                </div>
+
+                <!-- 🔄 인터랙티브 가치 흐름 SVG 다이어그램 -->
+                <div class="landing-flowchart-card">
+                    <h3 class="flowchart-title">🤝 공공입찰 다중 협업 및 AI 분석 가치 흐름</h3>
+                    <div class="svg-container">
+                        <svg class="flow-svg" viewBox="0 0 1000 350" preserveAspectRatio="xMidYMid meet">
+                            <!-- Definitions for Gradients and Markers -->
+                            <defs>
+                                <linearGradient id="flow-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.8" />
+                                    <stop offset="50%" stop-color="var(--accent)" stop-opacity="0.8" />
+                                    <stop offset="100%" stop-color="var(--success)" stop-opacity="0.8" />
+                                </linearGradient>
+                                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                                    <feGaussianBlur stdDeviation="8" result="blur" />
+                                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                                </filter>
+                            </defs>
+
+                            <!-- Animated Connection Lines (이중 겹침 네온 글로우) -->
+                            <!-- Path 1 -->
+                            <path class="flow-path-bg" d="M 170 175 L 330 175" />
+                            <path class="flow-path-pulse" d="M 170 175 L 330 175" />
+                            
+                            <!-- Path 2 -->
+                            <path class="flow-path-bg" d="M 470 175 L 630 175" />
+                            <path class="flow-path-pulse" d="M 470 175 L 630 175" />
+                            
+                            <!-- Path 3 -->
+                            <path class="flow-path-bg" d="M 770 175 L 930 175" />
+                            <path class="flow-path-pulse" d="M 770 175 L 930 175" />
+
+                            <!-- Steps / Nodes -->
+                            <!-- Step 1 -->
+                            <g class="flow-node" onclick="openAuthModal('register')">
+                                <circle cx="100" cy="175" r="70" class="node-bg" />
+                                <text x="100" y="150" class="node-icon">📋</text>
+                                <text x="100" y="185" class="node-title">1. 공고 자동 수집</text>
+                                <text x="100" y="210" class="node-desc">실시간 나라장터 수집</text>
+                            </g>
+
+                            <!-- Step 2 -->
+                            <g class="flow-node" onclick="openAuthModal('register')">
+                                <circle cx="400" cy="175" r="70" class="node-bg node-accent" />
+                                <text x="400" y="150" class="node-icon">🤖</text>
+                                <text x="400" y="185" class="node-title">2. AI 맞춤 평가</text>
+                                <text x="400" y="210" class="node-desc">가중치 기반 적합도 진단</text>
+                            </g>
+
+                            <!-- Step 3 -->
+                            <g class="flow-node" onclick="openAuthModal('register')">
+                                <circle cx="700" cy="175" r="70" class="node-bg node-success" />
+                                <text x="700" y="150" class="node-icon">🤝</text>
+                                <text x="700" y="185" class="node-title">3. 컨소시엄 구성</text>
+                                <text x="700" y="210" class="node-desc">협업사 매칭 & 가점 조율</text>
+                            </g>
+
+                            <!-- Step 4 -->
+                            <g class="flow-node" onclick="openAuthModal('register')">
+                                <circle cx="940" cy="175" r="40" class="node-bg node-gold" />
+                                <text x="940" y="165" class="node-icon" style="font-size:1.5rem">🏆</text>
+                                <text x="940" y="195" class="node-title" style="font-size:0.75rem">4. 낙찰 성공</text>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="flowchart-info">
+                        <div class="flow-info-box">
+                            <h4>📋 1단계: 실시간 공고 수집</h4>
+                            <p>국내외 조달 정보를 자동으로 수집하여 마감 기한 및 핵심 키워드를 즉시 필터링합니다.</p>
+                        </div>
+                        <div class="flow-info-box">
+                            <h4>🤖 2단계: AI 맞춤형 적합도 분석</h4>
+                            <p>기업의 실적, 신용등급, 면허 및 선호 가중치를 AI 에이전트가 종합 분석하여 입찰 참여 성공율을 리포트합니다.</p>
+                        </div>
+                        <div class="flow-info-box">
+                            <h4>🤝 3단계: 지능형 다중 협업(컨소시엄)</h4>
+                            <p>단독 입찰이 불가능한 공고도, 플랫폼 내 최적의 협업 파트너와 신속하게 연계하여 공동 수급 협정을 준비할 수 있습니다.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 🌟 특징 소개 -->
+                <div class="landing-features">
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h3>실시간 알림 및 스크래핑</h3>
+                        <p>한번의 설정으로 매일 아침 맞춤 키워드의 최신 공고 브리핑과 알림을 받을 수 있습니다.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🛡️</div>
+                        <h3>기업 데이터 프라이버시</h3>
+                        <p>기업 실적과 조직원 정보는 안전하게 보관되며, 오직 공동 입찰을 수락한 파트너에게만 필요 최소한으로 공유됩니다.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎯</div>
+                        <h3>정밀한 입찰 성공 시뮬레이터</h3>
+                        <p>공동 수급 비율을 실시간으로 조작해 최선의 낙찰 전략과 점수를 시뮬레이션할 수 있습니다.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════ 관리자 전용 뷰 ════════ -->
+        <section id="view-admin" class="view">
+            <div class="view-header">
+                <div>
+                    <h1 class="view-title">🛡️ 관리자 관리</h1>
+                    <p class="view-subtitle">시스템 사용자, 기업 프로필 및 다중 협업 연계 통계 모니터링</p>
+                </div>
+            </div>
+
+            <!-- 관리자 종합 통계 그리드 -->
+            <div class="stats-grid" style="margin-bottom: 24px;">
+                <div class="stat-card" style="--delay: 0">
+                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #4f46e5, #818cf8)">👥</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="admin-stat-users">0</span>
+                        <span class="stat-label">총 가입 회원</span>
+                    </div>
+                </div>
+                <div class="stat-card" style="--delay: 1">
+                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #0891b2, #22d3ee)">🏢</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="admin-stat-companies">0</span>
+                        <span class="stat-label">등록 기업 수</span>
+                    </div>
+                </div>
+                <div class="stat-card" style="--delay: 2">
+                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #059669, #34d399)">⭐</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="admin-stat-favorites">0</span>
+                        <span class="stat-label">총 관심 등록 건수</span>
+                    </div>
+                </div>
+                <div class="stat-card" style="--delay: 3">
+                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #dc2626, #f87171)">🤝</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="admin-stat-collaborations">0</span>
+                        <span class="stat-label">진행 중인 협업 건수</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 탭 메뉴 -->
+            <div class="admin-tabs" style="display:flex; gap:8px; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:10px">
+                <button class="btn btn-primary active-tab" id="tab-users-btn" onclick="switchAdminTab('users')">👥 회원 관리</button>
+                <button class="btn btn-secondary" id="tab-companies-btn" onclick="switchAdminTab('companies')">🏢 등록 기업 현황</button>
+                <button class="btn btn-secondary" id="tab-collaborations-btn" onclick="switchAdminTab('collaborations')">🤝 공동 입찰 협업 흐름</button>
+            </div>
+
+            <!-- 회원 관리 탭 영역 -->
+            <div class="admin-tab-content" id="admin-tab-users">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>사용자 ID</th>
+                                <th>이메일</th>
+                                <th>AI 페르소나</th>
+                                <th>관리자 여부</th>
+                                <th>가입일</th>
+                                <th style="text-align:right">작업</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-users-list-body">
+                            <!-- JavaScript 동적 생성 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 기업 관리 탭 영역 -->
+            <div class="admin-tab-content" id="admin-tab-companies" style="display:none">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>사업자번호</th>
+                                <th>회사명</th>
+                                <th>대표자</th>
+                                <th>소속 회원</th>
+                                <th>업종/지역</th>
+                                <th>매출액 / 임직원</th>
+                                <th>등록일</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-companies-list-body">
+                            <!-- JavaScript 동적 생성 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 협업 관리 탭 영역 -->
+            <div class="admin-tab-content" id="admin-tab-collaborations" style="display:none">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>공고번호</th>
+                                <th>공고명</th>
+                                <th>예산규모</th>
+                                <th>마감일</th>
+                                <th>관심 등록 회원 리스트 (역할 및 협업 상태)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-collaborations-list-body">
+                            <!-- JavaScript 동적 생성 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════ 나의 AI 에이전트 설정 뷰 ════════ -->
+        <section id="view-ai-settings" class="view">
+            <div class="view-header">
+                <div>
+                    <h1 class="view-title">🤖 나의 입찰 AI 에이전트 설정</h1>
+                    <p class="view-subtitle">개인의 사업 전략 및 강점에 맞춰 AI 매칭 평가 가중치를 직접 조정합니다</p>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h2>🎯 AI 투찰 페르소나</h2>
+                <p class="section-desc">에이전트가 입찰 분석 및 타깃 발굴을 진행할 때 중점적으로 참고할 행동 양식을 지정합니다.</p>
+                <div class="persona-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:16px; margin:16px 0">
+                    <div class="persona-card active-persona" id="persona-strategic" onclick="setAiPersona('strategic')">
+                        <div class="persona-header">
+                            <span class="persona-icon">⚖️</span>
+                            <h4>전략적 균형형 (Strategic)</h4>
+                        </div>
+                        <p class="persona-desc">실적 역량과 사업 조건, 신용 가산점을 고루 평가하여 리스크가 적으면서도 마진이 높은 기획형 입찰을 발굴합니다. (디폴트)</p>
+                    </div>
+                    <div class="persona-card" id="persona-aggressive" onclick="setAiPersona('aggressive')">
+                        <div class="persona-header">
+                            <span class="persona-icon">🚀</span>
+                            <h4>공격적 예산형 (Aggressive)</h4>
+                        </div>
+                        <p class="persona-desc">회사 규모나 신용도 디렉션보다 대형 예산 중심의 고수익 사업을 추천하며, 키워드 적합도가 다소 낮아도 높은 사업성 위주로 매칭합니다.</p>
+                    </div>
+                    <div class="persona-card" id="persona-conservative" onclick="setAiPersona('conservative')">
+                        <div class="persona-header">
+                            <span class="persona-icon">🛡️</span>
+                            <h4>보수적 안정형 (Conservative)</h4>
+                        </div>
+                        <p class="persona-desc">안전한 투찰을 위해 회사의 신용등급 가점과 지역 혜택 가중치를 극대화하고, 신용 감점 위협이 없는 수주 가능성이 명확한 공고 위주로 추천합니다.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h2>🎚️ AI 매칭 가중치 세부 조정</h2>
+                <p class="section-desc">나라장터 공고 매칭 점수(Match Score) 계산 시 적용될 평가 축의 비중을 조절하세요. (가중치 총합은 <strong>100%</strong>로 자동 보정됩니다)</p>
+
+                <div class="ai-sliders-container" style="display:flex; gap:32px; flex-wrap:wrap; margin-top:20px">
+                    <!-- 슬라이더 영역 -->
+                    <div class="ai-sliders-panel" style="flex:1; min-width:300px; display:flex; flex-direction:column; gap:20px">
+                        
+                        <div class="slider-group">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+                                <label style="font-weight:600; color:var(--text-primary)">🏷️ 키워드 및 업종 관련도</label>
+                                <span id="weight-relevance-val" style="font-weight:700; color:var(--primary)">35%</span>
+                            </div>
+                            <input type="range" id="weight-relevance-slider" min="0" max="100" value="35" class="ai-weight-slider" oninput="adjustWeights('relevance', this.value)">
+                            <div class="slider-labels" style="font-size:0.75rem; color:var(--text-muted)">
+                                <span>낮은 필터링</span>
+                                <span>밀착 키워드 우선</span>
+                            </div>
+                        </div>
+
+                        <div class="slider-group">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+                                <label style="font-weight:600; color:var(--text-primary)">🏢 기업 규모 및 실적 역량</label>
+                                <span id="weight-capacity-val" style="font-weight:700; color:var(--accent)">35%</span>
+                            </div>
+                            <input type="range" id="weight-capacity-slider" min="0" max="100" value="35" class="ai-weight-slider" oninput="adjustWeights('capacity', this.value)">
+                            <div class="slider-labels" style="font-size:0.75rem; color:var(--text-muted)">
+                                <span>예산 한계 무시</span>
+                                <span>최적 예산/실적 매치</span>
+                            </div>
+                        </div>
+
+                        <div class="slider-group">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+                                <label style="font-weight:600; color:var(--text-primary)">🛡️ 신용 평가 및 지역/가점 혜택</label>
+                                <span id="weight-credit-val" style="font-weight:700; color:var(--success)">30%</span>
+                            </div>
+                            <input type="range" id="weight-credit-slider" min="0" max="100" value="30" class="ai-weight-slider" oninput="adjustWeights('credit', this.value)">
+                            <div class="slider-labels" style="font-size:0.75rem; color:var(--text-muted)">
+                                <span>가산점 배제</span>
+                                <span>신용 가감점 최대 극대화</span>
+                            </div>
+                        </div>
+
+                        <!-- 가중치 상태 바 -->
+                        <div class="weight-total-bar-wrap" style="margin-top:10px">
+                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:6px">
+                                <span>가중치 배분 상태</span>
+                                <span id="weight-sum-status" style="font-weight:700; color:var(--success)">총합 100% (정상)</span>
+                            </div>
+                            <div class="weight-progress" style="display:flex; height:12px; border-radius:6px; overflow:hidden; background:var(--border)">
+                                <div id="weight-progress-relevance" style="width:35%; background:var(--primary); transition:width 0.2s"></div>
+                                <div id="weight-progress-capacity" style="width:35%; background:var(--accent); transition:width 0.2s"></div>
+                                <div id="weight-progress-credit" style="width:30%; background:var(--success); transition:width 0.2s"></div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- 비주얼 패널 -->
+                    <div class="ai-visual-panel" style="width:280px; padding:20px; border-radius:12px; background:rgba(255,255,255,0.03); border:1px solid var(--border); display:flex; flex-direction:column; justify-content:center">
+                        <h4 style="margin:0 0 12px; text-align:center">📊 AI 가중치 리포트</h4>
+                        <div style="display:flex; flex-direction:column; gap:10px; font-size:0.82rem">
+                            <div style="display:flex; justify-content:between; align-items:center">
+                                <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--primary); margin-right:6px"></span>
+                                <span style="flex:1">업종 및 키워드 적합</span>
+                                <strong id="report-relevance">35%</strong>
+                            </div>
+                            <div style="display:flex; justify-content:between; align-items:center">
+                                <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--accent); margin-right:6px"></span>
+                                <span style="flex:1">규모 및 사업 실적</span>
+                                <strong id="report-capacity">35%</strong>
+                            </div>
+                            <div style="display:flex; justify-content:between; align-items:center">
+                                <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--success); margin-right:6px"></span>
+                                <span style="flex:1">신용 가산 및 우대</span>
+                                <strong id="report-credit">30%</strong>
+                            </div>
+                            <hr style="border:none; border-top:1px solid var(--border); margin:8px 0">
+                            <p style="font-size:0.75rem; color:var(--text-muted); line-height:1.4; margin:0">
+                                💡 저장 버튼을 누르면 대시보드와 분석 페이지의 매칭 분석 점수 결과가 실시간으로 재계산되어 즉시 반영됩니다.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="saveUserAISettings()" style="margin-top:24px">
+                    💾 AI 에이전트 설정 저장
+                </button>
+            </div>
+        </section>
 
     <!-- ─── 사업자 등록/수정 모달 ─── -->
     <div id="modal-overlay" class="modal-overlay" onclick="closeModal(event)" role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -970,6 +1450,52 @@
                 </div>
                 <div class="strategy-panel" id="stab-strategy">
                     <div class="strategy-text" id="stab-strategy-content">분석 중...</div>
+                    
+                    <!-- 🕹️ 실시간 모의 투찰 가격 및 합격 점수 시뮬레이터 콘솔 추가 -->
+                    <div class="interactive-pricing-console" style="margin-top:16px;padding:16px;background:var(--bg-card, rgba(255,255,255,0.02));border-radius:12px;border:1px solid var(--border);font-size:0.82rem">
+                        <div style="font-weight:700;font-size:0.9rem;margin-bottom:12px;color:var(--text);display:flex;justify-content:space-between;align-items:center">
+                            <span>🕹️ 실시간 모의 투찰 & 적격점수 시뮬레이터</span>
+                            <span class="badge" id="sim-pass-badge" style="background:var(--danger);color:#fff">과락 위험</span>
+                        </div>
+                        
+                        <!-- 슬라이더 컨트롤 -->
+                        <div style="margin-bottom:16px">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-weight:600">
+                                <span>투찰률 (%) 설정:</span>
+                                <span id="sim-rate-val" style="color:var(--accent-indigo, #6366f1);font-size:1rem">88.0%</span>
+                            </div>
+                            <input type="range" id="sim-rate-slider" min="78" max="98" step="0.1" value="88.0" style="width:100%;accent-color:var(--accent-indigo, #6366f1);cursor:pointer" oninput="updateInteractiveBidSimulation()">
+                            <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-muted);margin-top:4px">
+                                <span>78% (최저 가격배점)</span>
+                                <span>88% (적격 권장)</span>
+                                <span>98% (고가 마진)</span>
+                            </div>
+                        </div>
+
+                        <!-- 실시간 점수 결과 그리드 -->
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:0.78rem">
+                            <div style="padding:10px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid var(--border)">
+                                <div style="color:var(--text-muted)">경영+실적 정량 점수</div>
+                                <div id="sim-quant-score" style="font-size:1.1rem;font-weight:700;margin-top:4px;color:var(--text)">50.0 / 60.0</div>
+                            </div>
+                            <div style="padding:10px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid var(--border)">
+                                <div style="color:var(--text-muted)">투찰 가격 점수 (예상)</div>
+                                <div id="sim-price-score" style="font-size:1.1rem;font-weight:700;margin-top:4px;color:var(--accent-indigo, #6366f1)">0.0 / 40.0</div>
+                            </div>
+                            <div style="grid-column: span 2;padding:12px;background:linear-gradient(to right, rgba(99,102,241,0.05), rgba(16,185,129,0.05));border-radius:8px;border:1px solid rgba(99,102,241,0.2);display:flex;justify-content:space-between;align-items:center">
+                                <div>
+                                    <div style="font-weight:700;font-size:0.85rem">최종 시뮬레이션 예상 점수</div>
+                                    <div style="font-size:0.68rem;color:var(--text-muted)">합격 통과 기준선: 95.0점 (협상 기준 85점)</div>
+                                </div>
+                                <div id="sim-total-score" style="font-size:1.4rem;font-weight:800;color:var(--danger)">50.0 점</div>
+                            </div>
+                        </div>
+                        
+                        <!-- AI 투찰 자문 리포트 -->
+                        <div id="sim-ai-advice" style="margin-top:12px;padding:8px 10px;background:rgba(99,102,241,0.04);border-radius:6px;font-size:0.75rem;color:var(--text-muted);font-style:italic">
+                            ※ 슬라이더를 드래그하여 낙찰 가격 시나리오를 점검하세요.
+                        </div>
+                    </div>
                 </div>
                 <div class="strategy-panel" id="stab-proposal">
                     <div class="strategy-text" id="stab-proposal-content">분석 중...</div>
@@ -1083,6 +1609,53 @@
                         <button class="btn btn-sm btn-accent" onclick="addFavPartner()">+ 추가</button>
                     </div>
                     <div id="fav-partner-suggest"></div>
+                    
+                    <!-- 💡 공동수급(협업) 입찰 전략 팁 카드 추가 -->
+                    <div class="collaboration-tip-box" style="margin-top:12px;padding:12px;background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(16,185,129,0.06) 100%);border-radius:10px;border:1px solid rgba(99,102,241,0.15);font-size:0.78rem;line-height:1.45">
+                        <div style="font-weight:700;color:var(--accent-indigo, #6366f1);display:flex;align-items:center;gap:4px;margin-bottom:6px;font-size:0.82rem">
+                            <span>💡</span> 공동도급(협업) 낙찰 극대화 전략
+                        </div>
+                        <ul style="margin:0;padding-left:16px;color:var(--text);display:flex;flex-direction:column;gap:4px">
+                            <li><strong>실적 합산 보완 (공동이행)</strong>: 본사 실적 규모가 공고 예산에 비해 미달하는 경우, 풍부한 실적을 보유한 파트너사와 공동수급체(컨소시엄)를 구성하여 실적 평가 만점을 획득하십시오.</li>
+                            <li><strong>자격/면허 상호 보완 (분담이행)</strong>: 정보통신, 소프트웨어 개발, 인프라 등 다중 면허/참가자격이 복합 요구될 때 전문 면허 보유사와 분담 협업하여 참가 자격을 완성하십시오.</li>
+                            <li><strong>우대조건 및 신인도 가점 극대화</strong>: 지역 의무 공동도급(지역업체 지분 30%~40% 이상 배정) 또는 여성기업/사회적기업을 구성원으로 추가 배분할 경우, <strong>적격심사 신인도 가점(1.0~1.5점)</strong>을 추가 획득하여 단 0.1점 차이로 결정되는 낙찰 가능성을 수십 배 끌어올릴 수 있습니다.</li>
+                        </ul>
+                    </div>
+
+                    <!-- 🧮 공동도급(컨소시엄) 지분율 & 실적 시뮬레이터 위젯 -->
+                    <div class="consortium-simulator-box" style="margin-top:16px;padding:16px;background:var(--bg-input, rgba(255,255,255,0.01));border-radius:12px;border:1px solid var(--border)">
+                        <h4 style="margin:0 0 10px 0;font-size:0.88rem;display:flex;align-items:center;gap:6px;color:var(--text)">
+                            <span>🧮</span> 컨소시엄 지분 & 가점 시뮬레이터
+                        </h4>
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:12px;line-height:1.4">
+                            본사와 파트너사의 실적액 및 우대 조건에 맞추어 지분 합산 평가액과 가점을 계산합니다.
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:10px">
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                <span style="font-size:0.78rem;width:80px;color:var(--text-secondary);font-weight:600">본사 실적</span>
+                                <input type="number" id="sim-corp-revenue" class="fav-detail-input" placeholder="본사 5년 실적 (만원)" style="flex:1;min-width:100px" oninput="calculateConsortiumMetrics()" value="30000">
+                                <span style="font-size:0.78rem;width:80px;color:var(--text-secondary);font-weight:600">본사 지분</span>
+                                <input type="number" id="sim-corp-share" class="fav-detail-input" placeholder="지분 (%)" style="width:75px" oninput="calculateConsortiumMetrics()" value="60" min="0" max="100">
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                <span style="font-size:0.78rem;width:80px;color:var(--text-secondary);font-weight:600">파트너 실적</span>
+                                <div id="sim-partner-display" style="font-size:0.8rem;color:var(--text);font-weight:500;flex:1;min-width:100px">등록된 파트너 실적 자동 반영</div>
+                                <span style="font-size:0.78rem;width:80px;color:var(--text-secondary);font-weight:600">파트너 지분</span>
+                                <div id="sim-partner-share-total" style="font-size:0.8rem;color:var(--text);font-weight:600;width:75px;text-align:center">40 %</div>
+                            </div>
+                            <div style="border-top:1px dashed var(--border);padding-top:10px;margin-top:6px;display:flex;flex-direction:column;gap:8px">
+                                <div style="display:flex;justify-content:space-between;align-items:center">
+                                    <span style="font-size:0.78rem;color:var(--text-secondary)">지분 합산 평가액:</span>
+                                    <strong id="sim-eval-revenue" style="font-size:0.85rem;color:var(--accent-indigo, #6366f1)">0 원</strong>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center">
+                                    <span style="font-size:0.78rem;color:var(--text-secondary)">합산 신인도 가점:</span>
+                                    <strong id="sim-eval-score" style="font-size:0.85rem;color:var(--success, #10b981)">+0.0 점</strong>
+                                </div>
+                                <div id="sim-eval-result-badge" class="badge" style="width:100%;text-align:center;padding:6px;font-size:0.78rem;margin-top:4px;border-radius:6px;background:rgba(245,158,11,0.1);color:#f59e0b">실적 입력 필요</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <!-- 체크리스트 -->
                 <div class="fav-detail-section">
@@ -1131,6 +1704,61 @@
             </div>
             <div class="strategy-modal-body" id="compare-modal-body" style="padding:20px;overflow-x:auto">
                 <!-- 동적으로 비교 테이블 렌더링 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── 🔒 로그인 및 회원가입 모달 ─── -->
+    <div id="auth-modal-overlay" class="strategy-modal-overlay" onclick="closeAuthModal(event)" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+        <div class="strategy-modal" onclick="event.stopPropagation()" style="max-width:380px; border-radius:16px; overflow:hidden; border: 1px solid rgba(255,255,255,0.1); background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+            <div class="strategy-modal-header" style="background:var(--gradient-primary); color:#fff; padding: 24px 20px 16px; display:flex; justify-content:space-between; align-items:flex-start">
+                <div>
+                    <h2 id="auth-modal-title" style="color:#fff; font-size: 1.3rem; font-weight: 700; margin:0">🔒 로그인</h2>
+                    <p id="auth-modal-subtitle" style="color:rgba(255,255,255,0.85); font-size:0.8rem; margin:6px 0 0 0; line-height:1.4">NARA Analyzer 이용을 위해 로그인해 주세요.</p>
+                </div>
+                <button class="close-btn" onclick="closeAuthModal()" style="color:#fff; font-size: 1.5rem; background:none; border:none; cursor:pointer; padding:0; line-height:1">&times;</button>
+            </div>
+            
+            <div class="strategy-modal-body" style="padding:20px;">
+                <!-- 로그인 폼 -->
+                <form id="auth-login-form" onsubmit="handleLoginSubmit(event)" style="display: flex; flex-direction: column; gap: 14px;">
+                    <div>
+                        <label for="login-username" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">사용자명 (ID)</label>
+                        <input type="text" id="login-username" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="사용자명을 입력하세요">
+                    </div>
+                    <div>
+                        <label for="login-password" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">비밀번호</label>
+                        <input type="password" id="login-password" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="비밀번호를 입력하세요">
+                    </div>
+                    <button type="submit" class="btn btn-prepare" style="width:100%; font-size:0.9rem; padding:12px; margin-top:10px; border-radius:8px">🔑 로그인</button>
+                    <div style="text-align:center; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
+                        아직 계정이 없으신가요? <a href="#" onclick="toggleAuthForm(event, 'register')" style="color:var(--accent-indigo, #6366f1); font-weight:600; text-decoration:underline;">회원가입하기</a>
+                    </div>
+                </form>
+
+                <!-- 회원가입 폼 -->
+                <form id="auth-register-form" onsubmit="handleRegisterSubmit(event)" style="display: none; flex-direction: column; gap: 14px;">
+                    <div>
+                        <label for="register-username" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">사용자명 (ID)</label>
+                        <input type="text" id="register-username" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="사용자명(영문/숫자 3자 이상)" minlength="3">
+                    </div>
+                    <div>
+                        <label for="register-email" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">이메일 주소 (선택)</label>
+                        <input type="email" id="register-email" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" placeholder="example@domain.com">
+                    </div>
+                    <div>
+                        <label for="register-password" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">비밀번호</label>
+                        <input type="password" id="register-password" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="최소 4자 이상" minlength="4">
+                    </div>
+                    <div>
+                        <label for="register-password-confirm" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">비밀번호 확인</label>
+                        <input type="password" id="register-password-confirm" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="비밀번호를 다시 한 번 입력하세요" minlength="4">
+                    </div>
+                    <button type="submit" class="btn btn-prepare" style="width:100%; font-size:0.9rem; padding:12px; margin-top:10px; border-radius:8px">📝 회원가입 완료</button>
+                    <div style="text-align:center; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
+                        이미 계정이 있으신가요? <a href="#" onclick="toggleAuthForm(event, 'login')" style="color:var(--accent-indigo, #6366f1); font-weight:600; text-decoration:underline;">로그인하기</a>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

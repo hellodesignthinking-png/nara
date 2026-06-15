@@ -14,8 +14,11 @@ from src.models.schemas import _parse_json_field
 from src.analyzers.keyword_filter import KeywordFilter
 from src.analyzers.biz_matcher import BizMatcher
 
+from src.models.database import DatabaseManager
 from ._helpers import (
     get_db,
+    get_active_company,
+    get_current_user,
     _bid_to_api_dict,
     _bid_to_matcher_dict,
     _biz_profile_to_matcher_dict,
@@ -36,7 +39,7 @@ router = APIRouter(tags=["dashboard"])
 
 
 @router.get("/dashboard/stats", summary="대시보드 통계")
-async def get_dashboard_stats(db=Depends(get_db)):
+async def get_dashboard_stats(db: DatabaseManager = Depends(get_db)):
     """
     DB 전체 통계를 반환합니다.
 
@@ -89,7 +92,10 @@ async def get_dashboard_stats(db=Depends(get_db)):
 
 
 @router.get("/dashboard/recent", summary="최근 분석 결과")
-async def get_dashboard_recent(db=Depends(get_db)):
+async def get_dashboard_recent(
+    active_biz_id: str = Depends(get_active_company),
+    db: DatabaseManager = Depends(get_db)
+):
     """
     최근 분석 결과 상위 10건을 공고 정보와 함께 반환합니다.
 
@@ -110,9 +116,11 @@ async def get_dashboard_recent(db=Depends(get_db)):
             FROM analysis_results a
             LEFT JOIN bid_announcements b ON a.bid_ntce_no = b.bid_ntce_no
             LEFT JOIN business_profiles bp ON a.biz_id = bp.biz_id
+            WHERE a.biz_id = ?
             ORDER BY a.analyzed_at DESC
             LIMIT 10
-            """
+            """,
+            (active_biz_id,)
         )
         rows = cursor.fetchall()
 
@@ -152,7 +160,7 @@ async def get_dashboard_recent(db=Depends(get_db)):
 
 
 @router.get("/dashboard/charts", summary="대시보드 차트 데이터")
-async def get_dashboard_charts(db=Depends(get_db)):
+async def get_dashboard_charts(db: DatabaseManager = Depends(get_db)):
     """
     대시보드 차트에 필요한 집계 데이터를 반환합니다.
 
@@ -235,7 +243,11 @@ async def get_dashboard_charts(db=Depends(get_db)):
 
 
 @router.get("/dashboard/top10", summary="오늘의 추천 사업 TOP 10")
-async def get_daily_top10(db=Depends(get_db)):
+async def get_daily_top10(
+    active_biz_id: str = Depends(get_active_company),
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
     """
     수집된 공고를 키워드 + 사업자 프로필로 종합 평가하여
     사업 참여 가능성이 높은 순으로 TOP 10을 반환합니다.
@@ -270,8 +282,9 @@ async def get_daily_top10(db=Depends(get_db)):
             return {"top10": [], "message": "키워드에 매칭되는 공고가 없습니다."}
 
         # ── 3. 사업자 매칭 ──
-        biz_profiles = db.get_businesses()
-        biz_dicts = [_biz_profile_to_matcher_dict(bp) for bp in biz_profiles] if biz_profiles else []
+        biz_profile = db.get_business(active_biz_id)
+        biz_dicts = [_biz_profile_to_matcher_dict(biz_profile)] if biz_profile else []
+        ai_settings = db.get_user_ai_settings(username)
 
         results = []
 
@@ -313,7 +326,7 @@ async def get_daily_top10(db=Depends(get_db)):
             collaboration_tip = ""
             if biz_matcher and biz_dicts:
                 try:
-                    matches = biz_matcher.find_best_match(biz_dicts, scored_bid)
+                    matches = biz_matcher.find_best_match(biz_dicts, scored_bid, ai_settings)
                     if matches:
                         best = matches[0]
                         match_score = best.get("score", 0)
@@ -416,7 +429,8 @@ async def get_daily_top10(db=Depends(get_db)):
 @router.get("/dashboard/curated", summary="키워드 큐레이션 공고 목록")
 async def get_curated_bids(
     limit: int = Query(50, ge=1, le=200, description="최대 반환 건수"),
-    db=Depends(get_db),
+    active_biz_id: str = Depends(get_active_company),
+    db: DatabaseManager = Depends(get_db),
 ):
     """
     키워드 매칭 기반으로 큐레이션된 공고 목록을 반환합니다.
@@ -458,8 +472,8 @@ async def get_curated_bids(
         if bid_nos:
             placeholders = ",".join("?" for _ in bid_nos)
             cursor = conn.execute(
-                f"SELECT bid_ntce_no, strategy_report FROM analysis_results WHERE bid_ntce_no IN ({placeholders}) ORDER BY analyzed_at DESC",
-                bid_nos,
+                f"SELECT bid_ntce_no, strategy_report FROM analysis_results WHERE bid_ntce_no IN ({placeholders}) AND biz_id = ? ORDER BY analyzed_at DESC",
+                bid_nos + [active_biz_id],
             )
             for row in cursor.fetchall():
                 bno = row["bid_ntce_no"]

@@ -11,8 +11,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from src.config import load_config
 from src.models.schemas import BusinessProfile
 
-from ._helpers import get_db, _business_profile_to_api_dict, _load_settings
-from ._models import BusinessCreateRequest
+from src.models.database import DatabaseManager
+from ._helpers import get_db, get_current_user, get_active_company, _business_profile_to_api_dict, _load_settings
+from ._models import BusinessCreateRequest, MemberAddRequest, MemberRoleUpdateRequest
 
 logger = logging.getLogger(__name__)
 
@@ -25,24 +26,28 @@ router = APIRouter(tags=["businesses"])
 
 
 @router.get("/businesses", summary="사업자 목록 조회")
-async def get_businesses(db=Depends(get_db)):
+async def get_businesses(username: str = Depends(get_current_user), db: DatabaseManager = Depends(get_db)):
     """
-    등록된 전체 사업자 프로필 목록을 반환합니다.
+    등록된 현재 로그인한 사용자의 사업자 프로필 목록을 반환합니다.
 
     JSON 필드(business_types, licenses 등)는 파싱된 리스트로 반환됩니다.
     """
     try:
-        profiles = db.get_businesses()
+        profiles = db.get_businesses(username)
         return [_business_profile_to_api_dict(p) for p in profiles]
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("사업자 목록 조회 실패: %s", e)
+        logger.error("사업자 목록 조회 실패: %s [유저: %s]", e, username)
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
 
 
 @router.post("/businesses", summary="사업자 등록", status_code=201)
-async def create_business(request: BusinessCreateRequest, db=Depends(get_db)):
+async def create_business(
+    request: BusinessCreateRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
     """
     새 사업자 프로필을 등록합니다.
 
@@ -59,6 +64,7 @@ async def create_business(request: BusinessCreateRequest, db=Depends(get_db)):
         profile = BusinessProfile(
             biz_id=request.biz_id,
             company_name=request.company_name,
+            username=username,
             ceo_name=request.ceo_name,
             business_types=request.business_types,
             licenses=request.licenses,
@@ -70,8 +76,8 @@ async def create_business(request: BusinessCreateRequest, db=Depends(get_db)):
             min_budget=request.min_budget,
             max_budget=request.max_budget,
         )
-        db.add_business(profile)
-        logger.info("사업자 등록 완료: %s (%s)", request.company_name, request.biz_id)
+        db.add_business(profile, username=username)
+        logger.info("사업자 등록 완료: %s (%s) [유저: %s]", request.company_name, request.biz_id, username)
 
         return {
             "message": f"사업자 '{request.company_name}'이(가) 등록되었습니다.",
@@ -80,12 +86,41 @@ async def create_business(request: BusinessCreateRequest, db=Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("사업자 등록 실패: %s", e)
+        logger.error("사업자 등록 실패: %s [유저: %s]", e, username)
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
+
+
+@router.get("/businesses/{biz_id}", summary="사업자 상세 조회")
+async def get_business(
+    biz_id: str,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    특정 사업자의 상세 프로필 정보를 반환합니다.
+    """
+    try:
+        profile = db.get_business(biz_id, username)
+        if not profile:
+            raise HTTPException(
+                status_code=404,
+                detail=f"사업자를 찾을 수 없습니다: {biz_id}",
+            )
+        return _business_profile_to_api_dict(profile)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("사업자 상세 조회 실패: %s [유저: %s]", e, username)
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
 
 
 @router.put("/businesses/{biz_id}", summary="사업자 수정")
-async def update_business(biz_id: str, request: BusinessCreateRequest, db=Depends(get_db)):
+async def update_business(
+    biz_id: str,
+    request: BusinessCreateRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
     """
     기존 사업자 프로필을 수정합니다.
 
@@ -98,8 +133,15 @@ async def update_business(biz_id: str, request: BusinessCreateRequest, db=Depend
         )
 
     try:
-        # 기존 프로필 존재 여부 확인
-        existing = db.get_business(biz_id)
+        # 기존 프로필 존재 여부 확인 및 권한 검증
+        role = db.get_business_user_role(biz_id, username)
+        if not role or role not in ("owner", "admin"):
+            raise HTTPException(
+                status_code=403,
+                detail="회사 프로필을 수정할 권한이 없습니다. (owner 또는 admin 권한 필요)"
+            )
+            
+        existing = db.get_business(biz_id, username)
         if not existing:
             raise HTTPException(
                 status_code=404,
@@ -109,6 +151,7 @@ async def update_business(biz_id: str, request: BusinessCreateRequest, db=Depend
         profile = BusinessProfile(
             biz_id=request.biz_id,
             company_name=request.company_name,
+            username=username,
             ceo_name=request.ceo_name,
             business_types=request.business_types,
             licenses=request.licenses,
@@ -125,32 +168,36 @@ async def update_business(biz_id: str, request: BusinessCreateRequest, db=Depend
         if not success:
             raise HTTPException(status_code=500, detail="사업자 수정에 실패했습니다.")
 
-        logger.info("사업자 수정 완료: %s", biz_id)
+        logger.info("사업자 수정 완료: %s [유저: %s]", biz_id, username)
         return {"message": f"사업자 '{request.company_name}'이(가) 수정되었습니다."}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("사업자 수정 실패: %s", e)
+        logger.error("사업자 수정 실패: %s [유저: %s]", e, username)
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
 
 
 @router.delete("/businesses/{biz_id}", summary="사업자 삭제")
-async def delete_business(biz_id: str, db=Depends(get_db)):
+async def delete_business(
+    biz_id: str,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
     """사업자 프로필을 삭제합니다."""
     try:
-        success = db.delete_business(biz_id)
+        success = db.delete_business(biz_id, username)
         if not success:
             raise HTTPException(
                 status_code=404,
                 detail=f"사업자를 찾을 수 없습니다: {biz_id}",
             )
 
-        logger.info("사업자 삭제 완료: %s", biz_id)
+        logger.info("사업자 삭제 완료: %s [유저: %s]", biz_id, username)
         return {"message": f"사업자 '{biz_id}'이(가) 삭제되었습니다."}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("사업자 삭제 실패: %s", e)
+        logger.error("사업자 삭제 실패: %s [유저: %s]", e, username)
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
 
 
@@ -289,3 +336,127 @@ async def parse_multiple_business_docs(
     except Exception as e:
         logger.error("복수 문서 파싱 실패: %s", e)
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
+
+
+# ──────────────────────────────────────────────
+# 다중 회사 조직 및 멤버(직원) 관리 API
+# ──────────────────────────────────────────────
+
+@router.get("/companies/my", summary="내 소속 회사 목록 조회")
+async def get_my_companies(
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """현재 로그인한 사용자가 소속된 모든 회사 및 멤버 역할 정보를 가져옵니다."""
+    try:
+        return db.get_user_companies(username)
+    except Exception as e:
+        logger.error("내 소속 회사 목록 조회 실패: %s [유저: %s]", e, username)
+        raise HTTPException(status_code=500, detail="소속 회사 목록을 가져오는 도중 오류가 발생했습니다.")
+
+
+@router.get("/companies/{biz_id}/members", summary="회사 멤버 목록 조회")
+async def get_members(
+    biz_id: str,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """현재 활성화된 회사의 소속 직원 목록을 조회합니다 (회사 멤버만 허용)."""
+    try:
+        role = db.get_business_user_role(biz_id, username)
+        if not role:
+            raise HTTPException(status_code=403, detail="해당 회사의 멤버 목록 조회 권한이 없습니다.")
+            
+        return db.get_business_members(biz_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("회사 멤버 조회 실패: %s [회사: %s]", e, biz_id)
+        raise HTTPException(status_code=500, detail="직원 목록 조회 도중 오류가 발생했습니다.")
+
+
+@router.post("/companies/{biz_id}/members", summary="회사 직원 등록 (초대)")
+async def add_member(
+    biz_id: str,
+    req: MemberAddRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """회사의 대표(owner) 또는 관리자(admin)가 타 회원을 자사 직원으로 초대 등록합니다."""
+    try:
+        my_role = db.get_business_user_role(biz_id, username)
+        if not my_role or my_role not in ("owner", "admin"):
+            raise HTTPException(status_code=403, detail="직원을 추가할 권한이 없습니다. (owner/admin 권한 필요)")
+            
+        target_user = req.username.strip()
+        user_info = db.get_user(target_user)
+        if not user_info:
+            raise HTTPException(status_code=404, detail="존재하지 않는 사용자 아이디입니다.")
+            
+        success = db.add_business_member(biz_id, target_user, req.role)
+        if not success:
+            raise HTTPException(status_code=400, detail="이미 등록된 직원이거나 등록에 실패했습니다.")
+            
+        return {"message": f"직원 '{target_user}'이(가) 등록되었습니다."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("직원 등록 실패: %s [회사: %s]", e, biz_id)
+        raise HTTPException(status_code=500, detail="직원을 추가하는 도중 서버 오류가 발생했습니다.")
+
+
+@router.put("/companies/{biz_id}/members/{target_username}", summary="직원 역할 수정")
+async def update_member_role(
+    biz_id: str,
+    target_username: str,
+    req: MemberRoleUpdateRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """회사의 대표(owner) 또는 관리자(admin)가 직원의 역할을 수정합니다."""
+    try:
+        my_role = db.get_business_user_role(biz_id, username)
+        if not my_role or my_role not in ("owner", "admin"):
+            raise HTTPException(status_code=403, detail="직원 권한을 수정할 권한이 없습니다.")
+            
+        if target_username == username:
+            raise HTTPException(status_code=400, detail="본인의 역할은 스스로 수정할 수 없습니다.")
+            
+        success = db.update_business_member_role(biz_id, target_username, req.role)
+        if not success:
+            raise HTTPException(status_code=404, detail="수정할 대상을 찾을 수 없거나 권한 변경에 실패했습니다.")
+            
+        return {"message": f"직원 '{target_username}'의 역할이 '{req.role}'(으)로 변경되었습니다."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("직원 권한 수정 실패: %s [회사: %s]", e, biz_id)
+        raise HTTPException(status_code=500, detail="역할 수정 도중 서버 오류가 발생했습니다.")
+
+
+@router.delete("/companies/{biz_id}/members/{target_username}", summary="직원 삭제 (퇴사)")
+async def remove_member(
+    biz_id: str,
+    target_username: str,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """회사의 대표(owner) 또는 관리자(admin)가 직원을 조직에서 제거(퇴사 처리)합니다."""
+    try:
+        my_role = db.get_business_user_role(biz_id, username)
+        if not my_role or my_role not in ("owner", "admin"):
+            raise HTTPException(status_code=403, detail="직원을 제외할 권한이 없습니다.")
+            
+        if target_username == username:
+            raise HTTPException(status_code=400, detail="스스로 퇴사할 수 없습니다. (회사 삭제를 이용해 주세요)")
+            
+        success = db.remove_business_member(biz_id, target_username)
+        if not success:
+            raise HTTPException(status_code=404, detail="제외할 직원을 찾을 수 없습니다.")
+            
+        return {"message": f"직원 '{target_username}'이(가) 회사에서 제외되었습니다."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("직원 제외 실패: %s [회사: %s]", e, biz_id)
+        raise HTTPException(status_code=500, detail="직원을 제외하는 도중 서버 오류가 발생했습니다.")

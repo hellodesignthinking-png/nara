@@ -21,11 +21,17 @@ from .businesses import router as businesses_router
 from .analyses import router as analyses_router
 from .settings import router as settings_router
 from .documents import router as documents_router
+from .auth import router as auth_router
+from .favorites import router as favorites_router
+from .admin import router as admin_router
 
 
 def create_main_router() -> APIRouter:
     """모든 하위 라우터를 결합한 메인 API 라우터를 생성합니다."""
     main = APIRouter(prefix="/api", tags=["api"])
+    main.include_router(auth_router)
+    main.include_router(favorites_router)
+    main.include_router(admin_router)
     main.include_router(dashboard_router)
     main.include_router(bids_router)
     main.include_router(businesses_router)

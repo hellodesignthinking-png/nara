@@ -10,6 +10,8 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+from fastapi import Request, Depends
+
 from src.utils.converters import biz_profile_to_matcher_dict, bid_to_matcher_dict
 from src.config import load_config
 from src.models.database import DatabaseManager
@@ -249,3 +251,69 @@ def _generate_strategy_tip(match_score: float, breakdown: dict, biz_name: str) -
             tips.append(f"{'·'.join(weaknesses[:2])} 부족으로 공동입찰 또는 하도급 검토 권장")
 
     return " / ".join(tips) if tips else ""
+
+
+def get_current_user(request: Request) -> str:
+    """
+    쿠키에서 JWT 토큰을 추출하고 해독하여 인증된 username을 반환하는 FastAPI 의존성 주입용 헬퍼입니다.
+    비인증 사용자의 경우 401 Unauthorized 예외를 반환합니다.
+    """
+    from fastapi import HTTPException, status
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="인증이 필요한 서비스입니다. 먼저 로그인해 주세요."
+        )
+    
+    from .auth import decode_jwt
+    payload = decode_jwt(token)
+    if not payload or not payload.get("sub"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="로그인 세션이 유효하지 않거나 만료되었습니다. 다시 로그인해 주세요."
+        )
+        
+    return payload["sub"]
+
+
+def get_active_company(request: Request, username: str = Depends(get_current_user), db: DatabaseManager = Depends(get_db)) -> str:
+    """
+    요청 헤더 'X-Active-Company' 에서 활성화된 회사의 biz_id를 추출하고,
+    현재 유저가 해당 회사의 멤버인지 검증합니다.
+    권한이 없을 경우 403 Forbidden 예외를 반환합니다.
+    """
+    from fastapi import HTTPException, status
+    active_biz_id = request.headers.get("X-Active-Company")
+    if not active_biz_id:
+        companies = db.get_user_companies(username)
+        if not companies:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="등록된 회사 정보가 없습니다. 먼저 회사를 등록해 주세요."
+            )
+        return companies[0]["biz_id"]
+        
+    role = db.get_business_user_role(active_biz_id, username)
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="해당 회사 정보에 접근할 권한이 없습니다."
+        )
+        
+    return active_biz_id
+
+
+def get_admin_user(username: str = Depends(get_current_user), db: DatabaseManager = Depends(get_db)) -> str:
+    """
+    현재 사용자가 관리자(is_admin == 1) 인지 검증하고 username을 반환합니다.
+    관리자가 아닐 경우 403 Forbidden 예외를 반환합니다.
+    """
+    from fastapi import HTTPException, status
+    user_info = db.get_user(username)
+    if not user_info or not user_info.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="관리자 권한이 필요합니다."
+        )
+    return username

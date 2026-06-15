@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 # API 상수
 AWARD_API_URL = (
-    "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
+    "https://apis.data.go.kr/1230000/"
+    "as/ScsbidInfoService/getScsbidListInfoServc"
 )
 DEFAULT_NUM_OF_ROWS = 100   # 한 페이지당 최대 건수
 MAX_PAGES = 100             # 최대 페이지 수 (무한 루프 방지)

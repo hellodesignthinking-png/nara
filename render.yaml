@@ -7,6 +7,10 @@ services:
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
+    disk:
+      name: nara-data
+      mountPath: /app/data
+      sizeGB: 1
     envVars:
       - key: PORT
         value: "8000"

@@ -60,12 +60,21 @@ class BidRateOptimizer:
         # 1. 유사 키워드 기반 통계
         keyword_stats = {}
         if title:
-            keyword = title.split()[0] if title.split() else ""
+            import re
+            # 2글자 이상의 한글/영문 단어 추출
+            words = re.findall(r'[가-힣]{2,}|[A-Za-z]{2,}', title)
+            # 연도나 불필요한 조달 수식어 필터링
+            stopwords = {"2020년", "2021년", "2022년", "2023년", "2024년", "2025년", "2026년", "2027년", "긴급", "공고", "재공고", "입찰", "사업", "용역", "구축", "개발"}
+            valid_keywords = [w for w in words if w not in stopwords]
+            
+            # 유효 키워드 중 첫 번째 키워드를 사용 (없으면 첫 번째 추출어 폴백)
+            keyword = valid_keywords[0] if valid_keywords else (words[0] if words else "")
+            
             if keyword and len(keyword) >= 2:
                 try:
                     keyword_stats = db.get_award_stats(keyword=keyword)
                 except Exception as e:
-                    logger.warning("키워드 기반 투찰률 통계 조회 실패: %s", e)
+                    logger.warning("키워드 기반 투찰률 통계 조회 실패 (키워드: %s): %s", keyword, e)
 
         # 2. 발주기관 기반 통계
         org_stats = {}

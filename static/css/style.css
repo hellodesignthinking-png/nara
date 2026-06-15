@@ -6611,4 +6611,485 @@ textarea:focus-visible {
     to { transform: scale(1); opacity: 1; }
 }
 
+/* 🔒 회원 인증 UI 스타일 */
+#auth-status-container .btn {
+    transition: all 0.2s ease-in-out;
+}
+#auth-status-container .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+#auth-logged-in {
+    animation: authSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes authSlideIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+#auth-modal-overlay.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.fav-detail-input:focus {
+    outline: none;
+    border-color: var(--accent-indigo, #6366f1);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+/* ──────────────────────────────────────────────
+   비로그인 랜딩 페이지 및 전용 레이아웃 스타일
+   ────────────────────────────────────────────── */
+body.logged-out #sidebar {
+    display: none !important;
+}
+body.logged-out #main-content {
+    margin-left: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+body.logged-out #mobile-menu-btn {
+    display: none !important;
+}
+
+/* 🔒 비로그인 전용 잠금 메뉴 스타일 */
+.menu-item-locked {
+    opacity: 0.55;
+    position: relative;
+    cursor: pointer;
+    transition: opacity 0.3s, background 0.3s;
+}
+.menu-item-locked:hover {
+    opacity: 0.95;
+    background: rgba(249, 115, 22, 0.08) !important;
+}
+.menu-item-locked .menu-lock-badge {
+    animation: pulseLock 2s infinite;
+}
+@keyframes pulseLock {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); opacity: 0.9; }
+    100% { transform: scale(1); }
+}
+
+/* 🔮 랜딩 뷰 몽환적인 백그라운드 데코 글로우 */
+.landing-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+}
+/* 정교하고 얇은 가상 메쉬 그리드 패턴 깔기 */
+.landing-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+    background-size: 50px 50px;
+    mask-image: radial-gradient(ellipse at 50% 40%, black 50%, transparent 90%);
+    -webkit-mask-image: radial-gradient(ellipse at 50% 40%, black 50%, transparent 90%);
+    opacity: 0.8;
+}
+.glowing-blob {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    filter: blur(140px);
+    opacity: 0.18;
+    mix-blend-mode: screen;
+    animation: floatBlob 25s infinite alternate ease-in-out;
+}
+.blob-1 {
+    background: radial-gradient(circle, #6366f1 20%, #8b5cf6 60%, transparent 100%);
+    top: -15%;
+    right: -5%;
+}
+.blob-2 {
+    background: radial-gradient(circle, #06b6d4 20%, #10b981 60%, transparent 100%);
+    bottom: -15%;
+    left: 0%;
+    animation-delay: -7s;
+}
+@keyframes floatBlob {
+    0% { transform: translate(0, 0) scale(0.9); }
+    50% { transform: translate(100px, 80px) scale(1.1); }
+    100% { transform: translate(-50px, 120px) scale(1.0); }
+}
+
+.landing-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 100px 24px 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+}
+
+.landing-header {
+    text-align: center;
+    max-width: 850px;
+    animation: fadeInDown 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.landing-title {
+    font-size: 3.6rem;
+    font-weight: 800;
+    line-height: 1.15;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #ffffff 10%, #c7d2fe 50%, #60a5fa 75%, #34d399 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -1px;
+}
+
+.landing-subtitle {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--primary);
+    margin-bottom: 20px;
+}
+
+.landing-description {
+    font-size: 1.05rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin-bottom: 32px;
+}
+
+.landing-actions {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+}
+
+.landing-actions .btn-lg {
+    padding: 14px 28px;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 30px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.15);
+    transition: all 0.25s ease;
+}
+
+.landing-actions .btn-lg:hover {
+    transform: translateY(-2px);
+}
+
+/* 🔄 SVG 다이어그램 카드 */
+.landing-flowchart-card {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    padding: 40px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    backdrop-filter: blur(20px);
+    animation: fadeInUp 0.8s ease-out;
+}
+
+.flowchart-title {
+    text-align: center;
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 30px;
+    color: var(--text-primary);
+}
+
+.svg-container {
+    width: 100%;
+    overflow: visible;
+}
+
+.flow-svg {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+/* 🔄 SVG 다이어그램 선 세부 애니메이션 고도화 (이중 네온 겹선) */
+.flow-path-bg {
+    fill: none;
+    stroke: rgba(99, 102, 241, 0.08);
+    stroke-width: 6;
+    stroke-linecap: round;
+}
+
+.flow-path-pulse {
+    fill: none;
+    stroke: url(#flow-grad);
+    stroke-width: 3.5;
+    stroke-linecap: round;
+    stroke-dasharray: 12, 18;
+    animation: flowPulse 25s linear infinite;
+    filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.6)) drop-shadow(0 0 3px rgba(6, 182, 212, 0.5));
+}
+
+@keyframes flowPulse {
+    to {
+        stroke-dashoffset: -1000;
+    }
+}
+
+/* SVG Node */
+.flow-node {
+    cursor: pointer;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flow-node:hover {
+    transform: scale(1.05);
+}
+
+.node-bg {
+    fill: rgba(30, 41, 59, 0.85);
+    stroke: var(--primary);
+    stroke-width: 2.5;
+    transition: all 0.25s ease;
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.25));
+}
+
+.flow-node:hover .node-bg {
+    fill: rgba(99, 102, 241, 0.15);
+    stroke-width: 3.5;
+    stroke: #818cf8;
+}
+
+.node-bg.node-accent {
+    stroke: var(--accent);
+}
+.flow-node:hover .node-bg.node-accent {
+    fill: rgba(168, 85, 247, 0.15);
+    stroke: #c084fc;
+}
+
+.node-bg.node-success {
+    stroke: var(--success);
+}
+.flow-node:hover .node-bg.node-success {
+    fill: rgba(16, 185, 129, 0.15);
+    stroke: #34d399;
+}
+
+.node-bg.node-gold {
+    stroke: #eab308;
+    fill: rgba(234, 179, 8, 0.1);
+}
+.flow-node:hover .node-bg.node-gold {
+    fill: rgba(234, 179, 8, 0.2);
+    stroke: #facc15;
+}
+
+.node-icon {
+    font-size: 2.2rem;
+    text-anchor: middle;
+    dominant-baseline: middle;
+}
+
+.node-title {
+    fill: #fff;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-anchor: middle;
+}
+
+.node-desc {
+    fill: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 500;
+    text-anchor: middle;
+}
+
+.flowchart-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    margin-top: 40px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding-top: 30px;
+}
+
+.flow-info-box h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 8px 0;
+}
+
+.flow-info-box p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* 🌟 특징 그리드 */
+.landing-features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
+    width: 100%;
+}
+
+.feature-card {
+    background: rgba(255,255,255,0.015);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 16px;
+    padding: 28px;
+    transition: all 0.3s ease;
+}
+
+.feature-card:hover {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(99,102,241,0.2);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+}
+
+.feature-icon {
+    font-size: 2rem;
+    margin-bottom: 16px;
+}
+
+.feature-card h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 10px 0;
+    color: var(--text-primary);
+}
+
+.feature-card p {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* 🛡️ 어드민 대시보드 전용 스타일 */
+.admin-tabs .btn {
+    border-radius: 20px;
+    font-weight: 600;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+}
+
+.admin-tabs .btn.active-tab {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+
+.admin-tab-content {
+    animation: fadeIn 0.35s ease-out;
+}
+
+/* 🤖 AI 설정 에이전트 스타일 */
+.persona-card {
+    border: 1.5px solid rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.02);
+    border-radius: 16px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.persona-card:hover {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(99,102,241,0.25);
+    transform: translateY(-2px);
+}
+
+.persona-card.active-persona {
+    background: rgba(99,102,241,0.08);
+    border-color: var(--primary);
+    box-shadow: 0 0 15px rgba(99,102,241,0.25);
+}
+
+.persona-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.persona-icon {
+    font-size: 1.5rem;
+}
+
+.persona-header h4 {
+    margin: 0;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.persona-desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin: 0;
+}
+
+/* 슬라이더 스타일 */
+.ai-weight-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--bg-light);
+    outline: none;
+    margin: 10px 0;
+}
+
+.ai-weight-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0,0,0,0.5);
+    transition: transform 0.15s;
+}
+
+.ai-weight-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+#weight-capacity-slider::-webkit-slider-thumb {
+    background: var(--accent);
+}
+
+#weight-credit-slider::-webkit-slider-thumb {
+    background: var(--success);
+}
+
+/* 공통 애니메이션 */
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
 

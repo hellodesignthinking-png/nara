@@ -23,6 +23,8 @@ let favViewMode = 'list'; // 관심공고 뷰 모드 ('list' | 'kanban')
 let qaChatHistory = []; // AI Q&A 대화 내역
 let currentProposalBidNo = ''; // 제안서 Q&A 대상 공고번호
 let currentProposalBizId = ''; // 제안서 Q&A 대상 사업자 ID
+let _currentUser = null; // 현재 로그인된 사용자명
+let _favoritesCache = []; // 관심공고 전역 캐시
 
 
 
@@ -117,7 +119,7 @@ const state = {
     },
 };
 
-// ── 관심공고 관리 (localStorage) ──
+// ── 관심공고 관리 (localStorage & Server API Sync) ──
 const FAV_STATUSES = {
     reviewing: { label: '⭐ 검토중', color: '#f59e0b' },
     proceeding: { label: '🚀 사업진행', color: '#3b82f6' },
@@ -128,36 +130,54 @@ const FAV_STATUSES = {
 
 let _favFilterStatus = 'all';
 let _favDetailBidNo = null; // 현재 상세 모달에 열린 공고번호
+let _favSortMode = 'deadline';
+
+function changeFavSort(val) {
+    _favSortMode = val;
+    loadFavorites();
+}
 
 function getFavorites() {
+    if (_currentUser) {
+        return _favoritesCache.map(f => _fillFavoriteDefaults(f));
+    }
+    
     try {
         const raw = JSON.parse(localStorage.getItem('nara_favorites') || '[]');
-        // 기존 데이터 호환: 새 필드 없으면 기본값 보충
-        return raw.map(f => ({
-            status: 'reviewing',
-            memo: '',
-            partners: [],
-            analysis_done: false,
-            analysis_summary: '',
-            org_name: '',
-            budget: '',
-            bid_close_dt: '',
-            checklist: [
-                { id: 'rfp', label: 'RFP/공고문 확인', hint: '나라장터에서 공고문/RFP를 다운로드하고 핵심 요구사항을 파악하세요', done: false },
-                { id: 'qualify', label: '참가자격 요건 확인', hint: '면허, 실적, 재무상태 등 참가자격 충족 여부를 확인하세요', done: false },
-                { id: 'docs', label: '제출서류 준비', hint: '사업자등록증, 인감증명서, 실적증명서 등 필수 서류를 준비하세요', done: false },
-                { id: 'pricing', label: '가격 산정/견적', hint: '원가 계산, 이윤율 검토, 투찰가격을 산정하세요', done: false },
-                { id: 'proposal', label: '제안서 작성', hint: '기술제안서, 사업수행계획서를 작성하세요', done: false },
-                { id: 'submit', label: '입찰서 제출', hint: '나라장터에 입찰서를 전자 제출하세요 (마감시간 확인!)', done: false },
-            ],
-            result: null,
-            ...f,
-        }));
-    } catch (e) { console.warn('관심공고 로컬 데이터 파싱 실패', e); return []; }
+        return raw.map(f => _fillFavoriteDefaults(f));
+    } catch (e) { 
+        console.warn('관심공고 로컬 데이터 파싱 실패', e); 
+        return []; 
+    }
+}
+
+function _fillFavoriteDefaults(f) {
+    return {
+        status: 'reviewing',
+        memo: '',
+        partners: [],
+        analysis_done: false,
+        analysis_summary: '',
+        org_name: '',
+        budget: '',
+        bid_close_dt: '',
+        checklist: [
+            { id: 'rfp', label: 'RFP/공고문 확인', hint: '나라장터에서 공고문/RFP를 다운로드하고 핵심 요구사항을 파악하세요', done: false },
+            { id: 'qualify', label: '참가자격 요건 확인', hint: '면허, 실적, 재무상태 등 참가자격 충족 여부를 확인하세요', done: false },
+            { id: 'docs', label: '제출서류 준비', hint: '사업자등록증, 인감증명서, 실적증명서 등 필수 서류를 준비하세요', done: false },
+            { id: 'pricing', label: '가격 산정/견적', hint: '원가 계산, 이윤율 검토, 투찰가격을 산정하세요', done: false },
+            { id: 'proposal', label: '제안서 작성', hint: '기술제안서, 사업수행계획서를 작성하세요', done: false },
+            { id: 'submit', label: '입찰서 제출', hint: '나라장터에 입찰서를 전자 제출하세요 (마감시간 확인!)', done: false },
+        ],
+        result: null,
+        ...f,
+    };
 }
 
 function saveFavorites(favs) {
-    localStorage.setItem('nara_favorites', JSON.stringify(favs));
+    if (!_currentUser) {
+        localStorage.setItem('nara_favorites', JSON.stringify(favs));
+    }
 }
 
 function isFavorite(bidNo) {
@@ -168,51 +188,105 @@ function getFavByBidNo(bidNo) {
     return getFavorites().find(f => f.bid_ntce_no === bidNo) || null;
 }
 
-function updateFav(bidNo, updates) {
-    let favs = getFavorites();
-    const idx = favs.findIndex(f => f.bid_ntce_no === bidNo);
-    if (idx >= 0) {
-        favs[idx] = { ...favs[idx], ...updates };
-        saveFavorites(favs);
+async function updateFav(bidNo, updates) {
+    if (_currentUser) {
+        try {
+            // 캐시 즉시 업데이트 (비동기 통신 중 정합성 유지)
+            const idx = _favoritesCache.findIndex(f => f.bid_ntce_no === bidNo);
+            if (idx >= 0) {
+                _favoritesCache[idx] = { ..._favoritesCache[idx], ...updates };
+            }
+            
+            const response = await fetch(`/api/favorites/${bidNo}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            });
+            
+            if (!response.ok) {
+                throw new Error('서버 업데이트 실패');
+            }
+        } catch (e) {
+            console.error('관심공고 서버 업데이트 오류:', e);
+            showToast('서버 데이터 변경에 실패했습니다.', 'error');
+        }
+    } else {
+        let favs = getFavorites();
+        const idx = favs.findIndex(f => f.bid_ntce_no === bidNo);
+        if (idx >= 0) {
+            favs[idx] = { ...favs[idx], ...updates };
+            saveFavorites(favs);
+        }
     }
 }
 
-function toggleFavorite(bidNo, btnEl) {
-    let favs = getFavorites();
-    const idx = favs.findIndex(f => f.bid_ntce_no === bidNo);
+async function toggleFavorite(bidNo, btnEl) {
+    if (!_currentUser) {
+        showToast('관심공고를 관리하려면 먼저 로그인해 주세요.', 'warning');
+        openAuthModal();
+        return;
+    }
+
+    const idx = _favoritesCache.findIndex(f => f.bid_ntce_no === bidNo);
 
     if (idx >= 0) {
-        favs.splice(idx, 1);
-        if (btnEl) {
-            btnEl.classList.remove('active');
-            btnEl.innerHTML = '☆ 관심공고 추가';
+        // 관심공고 삭제
+        try {
+            _favoritesCache.splice(idx, 1);
+            if (btnEl) {
+                btnEl.classList.remove('active');
+                btnEl.innerHTML = '☆ 관심공고 추가';
+            }
+            showToast('관심공고에서 해제되었습니다.', 'info');
+            
+            const response = await fetch(`/api/favorites/${bidNo}`, { method: 'DELETE' });
+            if (!response.ok) throw new Error('서버 삭제 실패');
+        } catch (e) {
+            console.error('서버 관심공고 삭제 실패:', e);
         }
-        showToast('관심공고에서 해제되었습니다.', 'info');
     } else {
+        // 관심공고 추가
         const titleEl = document.getElementById('bqv-title');
         const overlay = document.getElementById('bid-quick-view');
-        // 원본 데이터를 dataset에서 가져오기 (포맷된 텍스트가 아닌 원본값)
-        favs.push({
+        
+        const newFav = {
             bid_ntce_no: bidNo,
             title: titleEl?.textContent || bidNo,
             org_name: overlay?.dataset?.orgName || '',
-            budget: overlay?.dataset?.budget || '',
+            budget: overlay?.dataset?.budget ? parseInt(overlay.dataset.budget) : null,
             bid_close_dt: overlay?.dataset?.closeDt || '',
-            added_at: new Date().toISOString(),
             status: 'reviewing',
             memo: '',
             partners: [],
-            analysis_done: false,
-            analysis_summary: '',
-        });
-        if (btnEl) {
-            btnEl.classList.add('active');
-            btnEl.innerHTML = '⭐ 관심공고 해제';
+            checklist: [
+                { id: 'rfp', label: 'RFP/공고문 확인', hint: '나라장터에서 공고문/RFP를 다운로드하고 핵심 요구사항을 파악하세요', done: false },
+                { id: 'qualify', label: '참가자격 요건 확인', hint: '면허, 실적, 재무상태 등 참가자격 충족 여부를 확인하세요', done: false },
+                { id: 'docs', label: '제출서류 준비', hint: '사업자등록증, 인감증명서, 실적증명서 등 필수 서류를 준비하세요', done: false },
+                { id: 'pricing', label: '가격 산정/견적', hint: '원가 계산, 이윤율 검토, 투찰가격을 산정하세요', done: false },
+                { id: 'proposal', label: '제안서 작성', hint: '기술제안서, 사업수행계획서를 작성하세요', done: false },
+                { id: 'submit', label: '입찰서 제출', hint: '나라장터에 입찰서를 전자 제출하세요 (마감시간 확인!)', done: false },
+            ]
+        };
+
+        try {
+            _favoritesCache.push(newFav);
+            if (btnEl) {
+                btnEl.classList.add('active');
+                btnEl.innerHTML = '⭐ 관심공고 해제';
+            }
+            showToast('관심공고에 추가되었습니다!', 'success');
+            
+            const response = await fetch('/api/favorites', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newFav)
+            });
+            if (!response.ok) throw new Error('서버 추가 실패');
+        } catch (e) {
+            console.error('서버 관심공고 추가 실패:', e);
         }
-        showToast('관심공고에 추가되었습니다!', 'success');
     }
 
-    saveFavorites(favs);
     if (state.currentView === 'favorites') loadFavorites();
     updateFavBadge();
 }
@@ -275,15 +349,22 @@ function loadFavorites() {
         );
     }
 
-    // 마감일 기준 정렬 (가까운 순)
-    favs.sort((a, b) => {
-        const da = getDaysLeft(a.bid_close_dt);
-        const db = getDaysLeft(b.bid_close_dt);
-        if (da === null && db === null) return 0;
-        if (da === null) return 1;
-        if (db === null) return -1;
-        return da - db;
-    });
+    // 정렬
+    if (_favSortMode === 'score') {
+        favs.sort((a, b) => (b.match_score || 0) - (a.match_score || 0));
+    } else if (_favSortMode === 'budget') {
+        favs.sort((a, b) => (b.budget || 0) - (a.budget || 0));
+    } else {
+        // 마감일 기준 정렬 (가까운 순)
+        favs.sort((a, b) => {
+            const da = getDaysLeft(a.bid_close_dt);
+            const db = getDaysLeft(b.bid_close_dt);
+            if (da === null && db === null) return 0;
+            if (da === null) return 1;
+            if (db === null) return -1;
+            return da - db;
+        });
+    }
 
     // 마감 임박 공고 알림 (3일 이내)
     const urgentFavs = allFavs.filter(f => {
@@ -334,7 +415,12 @@ function loadFavorites() {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:8px;flex-wrap:wrap">
             <span style="color:var(--text-muted);font-size:0.85rem">${favs.length}건 표시 중</span>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                <input type="text" id="fav-search-input" class="fav-detail-input" placeholder="🔍 검색..." value="${escapeHTML(searchQuery)}" oninput="loadFavorites()" style="width:140px;padding:6px 10px;font-size:0.82rem">
+                <input type="text" id="fav-search-input" class="fav-detail-input" placeholder="🔍 검색..." value="${escapeHTML(searchQuery)}" oninput="loadFavorites()" style="width:120px;padding:6px 10px;font-size:0.82rem">
+                <select id="fav-sort-select" onchange="changeFavSort(this.value)" class="fav-detail-input" style="width:140px;padding:6px 10px;font-size:0.82rem;background:var(--bg-input);color:var(--text);border:1px solid var(--border);border-radius:6px">
+                    <option value="deadline" ${_favSortMode === 'deadline' ? 'selected' : ''}>📅 마감일 가까운 순</option>
+                    <option value="score" ${_favSortMode === 'score' ? 'selected' : ''}>🎯 AI 적합도 높은 순</option>
+                    <option value="budget" ${_favSortMode === 'budget' ? 'selected' : ''}>💰 예산 규모 높은 순</option>
+                </select>
                 <button class="btn btn-ghost btn-sm" onclick="shareFavSummary()" title="요약을 클립보드에 복사">📋 공유</button>
                 <button class="btn btn-ghost btn-sm" onclick="exportFavoritesJSON()" title="JSON 내보내기">💾 내보내기</button>
                 <button class="btn btn-ghost btn-sm" onclick="deleteFavsByStatus('${_favFilterStatus}')">🗑️ 삭제</button>
@@ -354,12 +440,21 @@ function loadFavorites() {
             else if (daysLeft !== null && daysLeft <= 7) deadlineClass = 'soon';
             const deadlineBadge = daysLeft !== null ? `<span class="fav-card-deadline ${deadlineClass}">${formatDaysLeft(f.bid_close_dt)}</span>` : '';
 
+            // AI 적합도 배지 렌더링
+            let scoreColor = '#ef4444';
+            if (f.match_score >= 80) scoreColor = '#10b981';
+            else if (f.match_score >= 50) scoreColor = '#eab308';
+            const scoreDisplay = f.match_score !== undefined
+                ? `<span class="fav-score-badge" style="background:rgba(255,255,255,0.04); border:1px solid ${scoreColor}; color:${scoreColor}; padding:2px 8px; border-radius:12px; font-size:0.72rem; font-weight:700; display:inline-flex; align-items:center; gap:4px">🎯 적합도 ${Math.round(f.match_score)}%</span>`
+                : '';
+
             return `
                 <div class="fav-pipeline-card ${isExpired ? 'expired' : ''}" onclick="openFavDetail('${escapeHTML(f.bid_ntce_no)}')">
                     <div class="fav-pipeline-left">
-                        <div class="fav-meta-row">
+                        <div class="fav-meta-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
                             <span class="fav-status-badge" style="--status-color:${st.color}">${st.label}</span>
                             ${deadlineBadge}
+                            ${scoreDisplay}
                         </div>
                         <div class="fav-card-title">${escapeHTML(f.title || f.bid_ntce_no)}</div>
                         <div class="fav-card-meta">🏢 ${escapeHTML(f.org_name || '-')} · 💰 ${displayBudget(f.budget)}</div>
@@ -419,12 +514,22 @@ async function api(method, path, body = null, { timeout } = {}) {
     const effectiveTimeout = timeout || getTimeoutForPath(path);
     const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
+    const headers = {};
+    if (body) {
+        headers['Content-Type'] = 'application/json';
+    }
+
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (activeBizId) {
+        headers['X-Active-Company'] = activeBizId;
+    }
+
     const opts = {
         method,
+        headers,
         signal: controller.signal,
     };
     if (body) {
-        opts.headers = { 'Content-Type': 'application/json' };
         opts.body = JSON.stringify(body);
     }
 
@@ -561,21 +666,80 @@ function openFavDetail(bidNo) {
     // 협업사
     renderFavPartners(fav.partners || []);
 
-    // 과거 협업사 추천
-    const suggestions = suggestPartners(bidNo);
+    // AI 협업사 추천 및 이전 협업사 추천 동시 조회
     const suggestEl = document.getElementById('fav-partner-suggest');
-    if (suggestEl && suggestions.length > 0) {
-        suggestEl.innerHTML = `
-            <div style="margin-top:8px;padding:8px 10px;background:rgba(99,102,241,0.05);border-radius:8px;border:1px dashed rgba(99,102,241,0.3)">
-                <div style="font-size:0.75rem;color:var(--accent-indigo, #6366f1);font-weight:600;margin-bottom:4px">💡 이전 협업사 추천</div>
-                <div style="display:flex;gap:6px;flex-wrap:wrap">${suggestions.map(s => `
-                    <button class="btn btn-sm btn-ghost" style="font-size:0.75rem;padding:2px 8px" onclick="addSuggestedPartner('${escapeHTML(s.name.replace(/'/g,''))}', '${escapeHTML(s.role.replace(/'/g,''))}', '${escapeHTML(s.contact.replace(/'/g,''))}')">
-                        + ${escapeHTML(s.name)} (${s.count}회)
-                    </button>
-                `).join('')}</div>
-            </div>`;
-    } else if (suggestEl) {
-        suggestEl.innerHTML = '';
+    if (suggestEl) {
+        suggestEl.innerHTML = `<div style="text-align:center;padding:12px;color:var(--text-muted);font-size:0.78rem">🤖 AI 협업사 추천을 분석 중입니다...</div>`;
+        
+        api('GET', `/favorites/${bidNo}/recommend-partners`)
+            .then(res => {
+                let html = '';
+                
+                // 1. AI 지능형 추천 파트너사
+                if (res && res.partners && res.partners.length > 0) {
+                    html += `
+                        <div style="margin-top:10px;padding:12px;background:rgba(16,185,129,0.04);border-radius:10px;border:1px solid rgba(16,185,129,0.15)">
+                            <div style="font-size:0.8rem;color:var(--success, #10b981);font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                                <span>🤖</span> AI 지능형 협업사 추천
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:8px">`;
+                    res.partners.forEach(p => {
+                        const reasons = p.matched_reasons.map(r => `<div style="font-size:0.72rem;color:var(--text-secondary);padding-left:14px;position:relative"><span style="position:absolute;left:2px;color:var(--success)">•</span>${escapeHTML(r)}</div>`).join('');
+                        const nameEsc = escapeHTML(p.company_name.replace(/'/g, "\\'"));
+                        const roleEsc = escapeHTML((p.matched_reasons[0] || '공동수급').replace(/'/g, "\\'"));
+                        const contactEsc = escapeHTML((p.ceo_name || '대표자').replace(/'/g, "\\'"));
+                        
+                        html += `
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px;background:var(--bg-card, rgba(0,0,0,0.02));border-radius:6px;border:1px solid var(--border)">
+                                <div style="flex:1">
+                                    <div style="font-size:0.78rem;font-weight:600;color:var(--text-primary)">
+                                        ${escapeHTML(p.company_name)} <small style="color:var(--text-muted);font-weight:400">(대표: ${escapeHTML(p.ceo_name)} | 신용: ${escapeHTML(p.credit_rating)})</small>
+                                    </div>
+                                    <div style="margin-top:4px">${reasons}</div>
+                                </div>
+                                <button class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:0.72rem;height:24px" 
+                                    onclick="addSuggestedPartner('${nameEsc}', '${roleEsc}', '${contactEsc}')">
+                                    + 추가
+                                </button>
+                            </div>
+                        `;
+                    });
+                    html += `</div></div>`;
+                }
+                
+                // 2. 이전 협업사 추천
+                const suggestions = suggestPartners(bidNo);
+                if (suggestions && suggestions.length > 0) {
+                    html += `
+                        <div style="margin-top:10px;padding:12px;background:rgba(99,102,241,0.04);border-radius:10px;border:1px dashed rgba(99,102,241,0.25)">
+                            <div style="font-size:0.8rem;color:var(--accent-indigo, #6366f1);font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                                <span>💡</span> 이전 협업사 추천
+                            </div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap">`;
+                    suggestions.forEach(s => {
+                        const nameEsc = escapeHTML(s.name.replace(/'/g, "\\'"));
+                        const roleEsc = escapeHTML(s.role.replace(/'/g, "\\'"));
+                        const contactEsc = escapeHTML(s.contact.replace(/'/g, "\\'"));
+                        html += `
+                            <button class="btn btn-sm btn-ghost" style="font-size:0.75rem;padding:4px 10px" 
+                                onclick="addSuggestedPartner('${nameEsc}', '${roleEsc}', '${contactEsc}')">
+                                + ${escapeHTML(s.name)} (${s.count}회)
+                            </button>
+                        `;
+                    });
+                    html += `</div></div>`;
+                }
+                
+                if (!html) {
+                    suggestEl.innerHTML = `<div style="padding:10px;color:var(--text-muted);font-size:0.75rem;text-align:center">💡 추천 가능한 파트너사 정보가 없습니다.</div>`;
+                } else {
+                    suggestEl.innerHTML = html;
+                }
+            })
+            .catch(err => {
+                console.error("AI 협업 추천 오류:", err);
+                suggestEl.innerHTML = `<div style="padding:10px;color:var(--text-muted);font-size:0.75rem;text-align:center">❌ 추천 정보를 불러오지 못했습니다. (회사가 등록되어 있는지 확인해주세요)</div>`;
+            });
     }
 
     // 분석 결과
@@ -667,6 +831,8 @@ function openFavDetail(bidNo) {
     // 스크롤 초기화 + 모달 열기
     const detailBody = document.querySelector('.fav-detail-body');
     if (detailBody) detailBody.scrollTop = 0;
+    calculateConsortiumSynergy();
+    calculateConsortiumMetrics();
     document.getElementById('fav-detail-overlay').classList.add('active');
 }
 
@@ -678,6 +844,7 @@ function closeFavDetail(e) {
 
 function renderFavPartners(partners) {
     const container = document.getElementById('fav-detail-partners');
+    if (!container) return;
     if (!partners || partners.length === 0) {
         container.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem">등록된 협업사가 없습니다</span>';
         return;
@@ -689,11 +856,13 @@ function renderFavPartners(partners) {
         const role = typeof p === 'object' ? (p.role || '') : '';
         const contact = typeof p === 'object' ? (p.contact || '') : '';
         const share = typeof p === 'object' ? (p.share || 0) : 0;
+        const exp = typeof p === 'object' ? (p.exp || 0) : 0;
         return `<div class="fav-partner-tag" style="flex-direction:column;align-items:flex-start;gap:3px;padding:8px 12px">
             <div style="display:flex;align-items:center;gap:6px;width:100%">
                 <span style="font-weight:600">🤝 ${escapeHTML(name)}</span>
                 ${role ? `<span style="font-size:0.72rem;background:var(--bg-hover);padding:1px 6px;border-radius:4px">${escapeHTML(role)}</span>` : ''}
-                ${share ? `<span style="font-size:0.72rem;color:var(--warning);font-weight:600">${share}%</span>` : ''}
+                ${share ? `<span style="font-size:0.72rem;color:var(--warning);font-weight:600">지분: ${share}%</span>` : ''}
+                ${exp ? `<span style="font-size:0.72rem;color:var(--success, #10b981);font-weight:600">실적: ${exp}억</span>` : ''}
                 <button class="fav-partner-remove" onclick="removeFavPartner(${i})" style="margin-left:auto">×</button>
             </div>
             ${contact ? `<span style="font-size:0.72rem;color:var(--text-muted)">📞 ${escapeHTML(contact)}</span>` : ''}
@@ -706,23 +875,29 @@ function addFavPartner() {
     const roleInput = document.getElementById('fav-partner-role');
     const contactInput = document.getElementById('fav-partner-contact');
     const shareInput = document.getElementById('fav-partner-share');
+    const expInput = document.getElementById('fav-partner-exp');
     const name = input.value.trim();
     const role = roleInput ? roleInput.value.trim() : '';
     const contact = contactInput ? contactInput.value.trim() : '';
     const share = shareInput ? parseInt(shareInput.value) || 0 : 0;
+    const exp = expInput ? parseFloat(expInput.value) || 0 : 0;
     if (!name) return;
 
     const fav = getFavByBidNo(_favDetailBidNo);
     if (!fav) return;
 
     const partners = fav.partners || [];
-    partners.push({ name, role, contact, share });
+    partners.push({ name, role, contact, share, exp });
     updateFav(_favDetailBidNo, { partners });
     renderFavPartners(partners);
+    calculateConsortiumSynergy();
+    calculateConsortiumMetrics();
+
     input.value = '';
     if (roleInput) roleInput.value = '';
     if (contactInput) contactInput.value = '';
     if (shareInput) shareInput.value = '';
+    if (expInput) expInput.value = '';
     showToast(`'${name}' 협업사가 추가되었습니다.`, 'success');
 }
 
@@ -734,9 +909,11 @@ function addSuggestedPartner(name, role, contact) {
         showToast(`'${name}'은(는) 이미 추가된 협업사입니다.`, 'info');
         return;
     }
-    partners.push({ name, role, contact, share: 0 });
+    partners.push({ name, role, contact, share: 0, exp: 0 });
     updateFav(_favDetailBidNo, { partners });
     renderFavPartners(partners);
+    calculateConsortiumSynergy();
+    calculateConsortiumMetrics();
     showToast(`'${name}' 협업사가 추가되었습니다!`, 'success');
 }
 
@@ -747,6 +924,8 @@ function removeFavPartner(index) {
     partners.splice(index, 1);
     updateFav(_favDetailBidNo, { partners });
     renderFavPartners(partners);
+    calculateConsortiumSynergy();
+    calculateConsortiumMetrics();
 }
 
 function saveFavDetail() {
@@ -1011,6 +1190,15 @@ function exportFavorites() {
 // 3. 네비게이션
 // ──────────────────────────────────────────────
 function navigate(view) {
+    // 비로그인 상태일 때는 무조건 랜딩 페이지만 노출
+    if (!_currentUser && view !== 'landing') {
+        view = 'landing';
+    }
+    // 로그인 상태일 때 랜딩 페이지로 이동하면 대시보드로 우회
+    if (_currentUser && view === 'landing') {
+        view = 'dashboard';
+    }
+
     state.currentView = view;
 
     // 모든 뷰 숨기기
@@ -1034,12 +1222,15 @@ function navigate(view) {
 
     // 데이터 로드
     switch (view) {
+        case 'landing': break;
         case 'dashboard': loadDashboard(); break;
         case 'bids': loadBids(); break;
         case 'favorites': loadFavorites(); break;
         case 'businesses': loadBusinesses(); break;
         case 'analysis': loadAnalyses(); break;
         case 'settings': loadSettings(); break;
+        case 'ai-settings': loadUserAISettings(); break;
+        case 'admin': loadAdminPanel(); break;
     }
 
     // 접근성: 뷰 전환 시 포커스 이동
@@ -1232,6 +1423,14 @@ function _showCollectingProgress(keyword, current, total, collectedSoFar) {
 }
 
 async function loadDashboard() {
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    const banner = document.getElementById('no-company-banner');
+    if (!activeBizId) {
+        if (banner) banner.style.display = 'flex';
+    } else {
+        if (banner) banner.style.display = 'none';
+    }
+
     // 대시보드 통계를 한 번만 호출하고 결과를 재사용
     let dashboardStats = null;
     try {
@@ -1273,11 +1472,16 @@ async function loadDashboard() {
         if (footerDot) footerDot.style.background = 'var(--danger)';
     }
 
-    try {
-        const recent = await api('GET', '/dashboard/recent');
-        renderRecentAnalyses(recent || []);
-    } catch (err) {
-        console.warn('최근 분석 로드 실패:', err.message);
+    if (activeBizId) {
+        try {
+            const recent = await api('GET', '/dashboard/recent');
+            renderRecentAnalyses(recent || []);
+        } catch (err) {
+            console.warn('최근 분석 로드 실패:', err.message);
+            renderRecentAnalyses([]);
+        }
+    } else {
+        renderRecentAnalyses([]);
     }
 
     // 차트 로드
@@ -1286,8 +1490,14 @@ async function loadDashboard() {
     // TOP 10 추천 사업도 함께 로드
     loadTop10();
 
+    // 연간 반복 사업 발주 예측 로드
+    loadRecurringForecast();
+
     // 관심 키워드 패널 로드
     loadKeywordSearchPanel();
+
+    // 경쟁사 수주 타깃 모니터 로드
+    loadCompetitorIntelligence();
 
     // 대시보드 환영 헤더 날짜 표시
     const dashDateEl = document.getElementById('dashboard-date');
@@ -1872,8 +2082,6 @@ function getSelectedPlatforms() {
     const platforms = [];
     if (document.getElementById('plat-nara')?.checked) platforms.push('nara');
     if (document.getElementById('plat-kstartup')?.checked) platforms.push('kstartup');
-    if (document.getElementById('plat-samgov')?.checked) platforms.push('samgov');
-    if (document.getElementById('plat-ungm')?.checked) platforms.push('ungm');
     return platforms;
 }
 
@@ -2762,7 +2970,10 @@ document.addEventListener('keydown', (e) => {
 // ──────────────────────────────────────────────
 // 16. 초기화
 // ──────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // 로그인 상태 확인
+    await checkLoginStatus();
+
     // 태그 인풀 초기화
     initTagInput('biz-types', 'biz-types');
     initTagInput('licenses', 'licenses');
@@ -2904,8 +3115,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 대시보드 로드
-    navigate('dashboard');
+    // 로그인 상태에 따른 초기 뷰 로드
+    if (_currentUser) {
+        navigate('dashboard');
+    } else {
+        navigate('landing');
+    }
 
     // 테이블 가로 스크롤 감지 (모바일 스크롤 힌트)
     const _resizeObservers = [];
@@ -3474,6 +3689,14 @@ async function testSlack() {
 async function loadTop10() {
     const list = document.getElementById('top10-list');
     if (!list) return;
+
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!activeBizId) {
+        list.innerHTML = '<div class="empty-state-inline"><span>🏢</span><p>사업자를 먼저 등록하면 실시간 추천 공고가 분석 표출됩니다.</p></div>';
+        renderBriefing({ top10: [], message: '사업자 정보가 없습니다.' });
+        return;
+    }
+
     list.innerHTML = '<div class="skeleton skeleton-card" style="height:100px;margin-bottom:12px"></div>'.repeat(3);
 
     try {
@@ -3623,7 +3846,7 @@ function renderBriefing(data) {
             matchBarsHTML = `<div class="match-bars-container">${bars}</div>`;
         }
 
-        return `<div class="briefing-item" data-bid-no="${escapeHTML(item.bid_ntce_no || '')}" data-title="${escapeHTML(item.title || '')}" data-org-name="${escapeHTML(item.org_name || '')}" data-budget="${item.budget || ''}" data-close-dt="${escapeHTML(item.bid_close_dt || '')}">
+        return `<div class="briefing-item" data-bid-no="${escapeHTML(item.bid_ntce_no || '')}" data-title="${escapeHTML(item.title || '')}" data-org-name="${escapeHTML(item.org_name || '')}" data-budget="${item.budget || ''}" data-close-dt="${escapeHTML(item.bid_close_dt || '')}" onclick="toggleBriefingDetail(this)" style="cursor:pointer">
             <div class="briefing-rank grade-${grade.toLowerCase()}">${i + 1}</div>
             <div class="briefing-content">
                 <div class="briefing-item-header">
@@ -3641,17 +3864,38 @@ function renderBriefing(data) {
                 <div class="briefing-item-meta">
                     🏢 ${escapeHTML(item.org_name || '기관 미상')} · 💰 ${budgetText}
                 </div>
-                ${item.matched_business ? `<div class="briefing-match-reason">✅ <strong>${escapeHTML(item.matched_business)}</strong>와 매칭 (${item.total_score}점) — ${escapeHTML(item.match_reason || '')}</div>` : ''}
-                ${item.strategy_tip ? `<div class="briefing-strategy-tip">💡 ${escapeHTML(item.strategy_tip)}</div>` : ''}
-                ${item.collaboration_tip ? `<div class="briefing-collab-tip">🤝 ${escapeHTML(item.collaboration_tip)}</div>` : ''}
-                ${matchBarsHTML}
-                ${qualChips.length ? `<div class="briefing-qual-row">${qualChips.join('')}</div>` : ''}
-                ${(item.matched_keywords||[]).length ? `<div class="briefing-item-kw">🏷️ ${(item.matched_keywords||[]).join(', ')}</div>` : ''}
+                <!-- 아코디언 상세 영역 -->
+                <div class="briefing-item-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+                    ${item.matched_business ? `<div class="briefing-match-reason">✅ <strong>${escapeHTML(item.matched_business)}</strong>와 매칭 (${item.total_score}점) — ${escapeHTML(item.match_reason || '')}</div>` : ''}
+                    ${item.strategy_tip ? `<div class="briefing-strategy-tip">💡 ${escapeHTML(item.strategy_tip)}</div>` : ''}
+                    ${item.collaboration_tip ? `<div class="briefing-collab-tip">🤝 ${escapeHTML(item.collaboration_tip)}</div>` : ''}
+                    ${matchBarsHTML}
+                    ${qualChips.length ? `<div class="briefing-qual-row">${qualChips.join('')}</div>` : ''}
+                    ${(item.matched_keywords||[]).length ? `<div class="briefing-item-kw">🏷️ ${(item.matched_keywords||[]).join(', ')}</div>` : ''}
+                </div>
+                <div class="briefing-item-toggle-indicator" style="text-align:center;font-size:0.72rem;color:var(--text-muted);margin-top:6px">▼ 상세 매칭 및 분석 더보기</div>
             </div>
         </div>`;
     }).join('');
 
     body.innerHTML = summaryHTML + cardsHTML;
+}
+
+/**
+ * 브리핑 아코디언 토글 헬퍼
+ */
+function toggleBriefingDetail(itemEl) {
+    const detail = itemEl.querySelector('.briefing-item-detail');
+    const indicator = itemEl.querySelector('.briefing-item-toggle-indicator');
+    if (!detail) return;
+    
+    if (detail.style.display === 'none') {
+        detail.style.display = 'block';
+        if (indicator) indicator.textContent = '▲ 접기';
+    } else {
+        detail.style.display = 'none';
+        if (indicator) indicator.textContent = '▼ 상세 매칭 및 분석 더보기';
+    }
 }
 
 
@@ -3850,6 +4094,9 @@ async function openStrategyModal(bidNo) {
                 org_name: s.bid_info?.org_name || result.org_name || undefined,
             });
         }
+
+        // 모의 투찰 시뮬레이터 초기 바인딩
+        initializeInteractiveBidSimulation(s, result);
 
     } catch (e) {
         title.textContent = '⚠️ 분석 실패';
@@ -5534,4 +5781,1390 @@ function addStructuredPastProject() {
     yearInput.value = '';
     
     showToast('📈 실적이 추가되었습니다.', 'success');
+}
+
+// 공동수급 실적 합산 시뮬레이션 계산 엔진
+function calculateConsortiumSynergy() {
+    const container = document.getElementById('consortium-synergy-simulator');
+    if (!container) return;
+
+    const fav = getFavByBidNo(_favDetailBidNo);
+    if (!fav) {
+        container.style.display = 'none';
+        return;
+    }
+
+    // 1. 공고 예산 가져오기 (원 단위 -> 억 원 단위 변환)
+    const budgetVal = fav.budget || 0;
+    const budgetInEok = budgetVal / 100000000;
+
+    // 2. 자사 보유 실적 계산
+    let ownExpInEok = 0;
+    if (state.businesses && state.businesses.length > 0) {
+        const primaryBiz = state.businesses[0];
+        const pastProjects = primaryBiz.past_projects || [];
+        let total = 0;
+        pastProjects.forEach(p => {
+            const amt = parseFloat(p.amount) || 0; // 만원 단위
+            total += amt;
+        });
+        ownExpInEok = total / 10000; // 만원 -> 억 원
+    }
+
+    // 3. 파트너사 지분율 반영 실적 합산
+    const partners = fav.partners || [];
+    let partnerExpInEok = 0;
+    let totalPartnerShare = 0;
+
+    partners.forEach(p => {
+        const share = (p.share || 0) / 100;
+        const pExp = p.exp || 0; // 억 원 단위
+        partnerExpInEok += pExp * share;
+        totalPartnerShare += p.share || 0;
+    });
+
+    // 주간사(자사) 지분율 (나머지 지분)
+    const ownShare = Math.max(0, 100 - totalPartnerShare) / 100;
+    
+    // 최종 인정 실적 = (자사 실적 * 자사 지분) + SUM(파트너 실적 * 파트너 지분)
+    const totalRecognizedExp = (ownExpInEok * ownShare) + partnerExpInEok;
+
+    // 공고 예산 대비 충족율
+    let satisfactionRate = 0;
+    if (budgetInEok > 0) {
+        satisfactionRate = (totalRecognizedExp / budgetInEok) * 100;
+    }
+
+    // UI 엘리먼트 바인딩
+    container.style.display = 'block';
+    
+    document.getElementById('synergy-own-exp').textContent = `${ownExpInEok.toFixed(1)}억 원 (지분 ${(ownShare * 100).toFixed(0)}%)`;
+    document.getElementById('synergy-partner-exp').textContent = `+ ${partnerExpInEok.toFixed(1)}억 원`;
+    document.getElementById('synergy-total-exp').textContent = `${totalRecognizedExp.toFixed(1)}억 원`;
+    document.getElementById('synergy-satisfaction-rate').textContent = `${satisfactionRate.toFixed(1)}%`;
+
+    const progressEl = document.getElementById('synergy-progress-bar');
+    if (progressEl) {
+        const progressWidth = Math.min(100, satisfactionRate);
+        progressEl.style.width = `${progressWidth}%`;
+        progressEl.style.background = satisfactionRate >= 100 ? 'var(--success, #10b981)' : 'var(--accent-indigo, #6366f1)';
+    }
+
+    const badgeEl = document.getElementById('synergy-status-badge');
+    const recTextEl = document.getElementById('synergy-recommendation-text');
+    if (badgeEl && recTextEl) {
+        if (satisfactionRate >= 100) {
+            badgeEl.className = 'badge badge-success';
+            badgeEl.textContent = '실적 만점';
+            badgeEl.style.background = 'var(--success)';
+            recTextEl.textContent = '🟢 실적 만점 기준을 충족했습니다! 정성제안 및 가격최적화에 역량을 투입하십시오.';
+            recTextEl.style.color = 'var(--success)';
+        } else if (satisfactionRate >= 70) {
+            badgeEl.className = 'badge badge-info';
+            badgeEl.textContent = '실적 보통';
+            badgeEl.style.background = '#0ea5e9';
+            recTextEl.textContent = '🟡 실적이 약간 부족합니다. 파트너사 지분을 높이거나 실적이 더 높은 파트너 영입을 검토하세요.';
+            recTextEl.style.color = '#0ea5e9';
+        } else {
+            badgeEl.className = 'badge badge-danger';
+            badgeEl.textContent = '실적 부족';
+            badgeEl.style.background = 'var(--danger)';
+            recTextEl.textContent = '🔴 정량평가 감점 우려! 협업사의 지분배정 및 실적 합산 비율을 추가 보완하여 만점을 맞추십시오.';
+            recTextEl.style.color = 'var(--danger)';
+        }
+    }
+}
+
+// 연간 반복 사업 발주 예측 로드 및 렌더링
+async function loadRecurringForecast() {
+    const listEl = document.getElementById('recurring-forecast-list');
+    if (!listEl) return;
+
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!activeBizId) {
+        listEl.innerHTML = `
+            <div style="color:var(--text-muted);font-size:0.85rem;grid-column:1/-1;text-align:center;padding:20px 0">
+                🏢 발주 예측 분석을 위해 사업자를 먼저 등록해주세요.
+            </div>`;
+        return;
+    }
+
+    try {
+        const forecast = await api('GET', '/analyses/recurring-forecast');
+        if (!forecast || forecast.length === 0) {
+            listEl.innerHTML = `
+                <div style="color:var(--text-muted);font-size:0.85rem;grid-column:1/-1;text-align:center;padding:20px 0">
+                    🔮 충분한 과거 입찰 이력 데이터가 축적된 후 정기 반복 사업이 이곳에 자동으로 표출됩니다.
+                </div>`;
+            return;
+        }
+
+        listEl.innerHTML = forecast.map((f, i) => {
+            return `
+                <div class="forecast-card" style="padding:16px;background:var(--bg-card, rgba(255,255,255,0.02));border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden">
+                    <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(to bottom, var(--accent-indigo, #6366f1), var(--success, #10b981))"></div>
+                    <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+                        <span style="font-weight:700;font-size:0.85rem;color:var(--text);line-height:1.4">${escapeHTML(f.predicted_title)}</span>
+                        <span class="badge" style="font-size:0.7rem;background:rgba(16,185,129,0.1);color:var(--success);white-space:nowrap">${f.probability}% 신뢰도</span>
+                    </div>
+                    <div style="font-size:0.78rem;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;margin-top:4px">
+                        <div style="display:flex;justify-content:space-between"><span>🏢 발주기관:</span><span style="color:var(--text);font-weight:500">${escapeHTML(f.org_name)}</span></div>
+                        <div style="display:flex;justify-content:space-between"><span>💰 평균예산:</span><span style="color:var(--text);font-weight:500">${escapeHTML(f.budget_str)}</span></div>
+                        <div style="display:flex;justify-content:space-between"><span>📅 예상시기:</span><span style="color:var(--text);font-weight:600;color:var(--accent-indigo, #6366f1)">매년 ${f.expected_month}월경 (D-${f.days_left})</span></div>
+                    </div>
+                    <div style="border-top:1px dashed var(--border);padding-top:8px;margin-top:4px;display:flex;justify-content:space-between;align-items:center">
+                        <span style="font-size:0.7rem;color:var(--text-muted)">수집빈도: 연간 반복 ${f.frequency}회 관측</span>
+                        <button class="btn btn-ghost btn-sm" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('bids'); document.getElementById('ksp-search-input').value='${escapeHTML(f.original_title.substring(0,12))}'; dashboardKeywordSearch()">🔍 사전 검색</button>
+                    </div>
+                </div>`;
+        }).join('');
+    } catch (err) {
+        console.warn('발주 예측 로드 실패:', err.message);
+        listEl.innerHTML = `
+            <div style="color:var(--text-muted);font-size:0.85rem;grid-column:1/-1;text-align:center;padding:20px 0">
+                ⚠️ 발주 예측 정보를 불러오는 중 오류가 발생했습니다.
+            </div>`;
+    }
+}
+
+// 경쟁사 수주 타깃 모니터 로드 및 렌더링
+async function loadCompetitorIntelligence() {
+    const bodyEl = document.getElementById('competitor-intelligence-body');
+    if (!bodyEl) return;
+
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!activeBizId) {
+        bodyEl.innerHTML = `
+            <div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:20px 0">
+                🏢 경쟁사 정보 분석을 위해 사업자를 먼저 등록해주세요.
+            </div>`;
+        return;
+    }
+
+    try {
+        const stats = await api('GET', '/analyses/competitor-intelligence?limit=5');
+        if (!stats || stats.length === 0) {
+            bodyEl.innerHTML = `
+                <div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:20px 0">
+                    📊 충분한 과거 낙찰 데이터가 축적된 후 경쟁사 정보가 이곳에 자동으로 표출됩니다.
+                </div>`;
+            return;
+        }
+
+        // 최대 수주액 탐색 (가로 그래프 비율 조정용)
+        const maxAward = Math.max(...stats.map(s => s.total_award_amount), 1);
+
+        bodyEl.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:14px">
+                ${stats.map((s, idx) => {
+                    const pct = Math.min(100, Math.max(8, (s.total_award_amount / maxAward) * 100));
+                    const formattedAmt = s.total_award_amount >= 100000 
+                        ? `${(s.total_award_amount / 100000).toFixed(1)}억 원` 
+                        : `${(s.total_award_amount / 1000).toFixed(0)}천만 원`;
+                    return `
+                        <div style="display:flex;flex-direction:column;gap:4px">
+                            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.8rem">
+                                <span style="font-weight:700;color:var(--text)">
+                                    <span style="color:var(--accent-indigo, #6366f1);margin-right:6px">#${idx+1}</span> ${escapeHTML(s.winner_name)}
+                                </span>
+                                <span style="font-size:0.75rem;color:var(--text-muted)">
+                                    수주 <strong>${s.win_count}건</strong> (${formattedAmt}) | 평균 투찰률 <strong style="color:var(--accent-indigo, #6366f1)">${s.avg_bid_rate}%</strong>
+                                </span>
+                            </div>
+                            <div style="width:100%;height:8px;background:var(--bg-input, rgba(255,255,255,0.05));border-radius:4px;overflow:hidden">
+                                <div style="width:${pct}%;height:100%;background:linear-gradient(to right, #3b82f6, #10b981);border-radius:4px"></div>
+                            </div>
+                        </div>`;
+                }).join('')}
+            </div>`;
+    } catch (err) {
+        console.warn('경쟁사 수주 타깃 로드 실패:', err.message);
+        bodyEl.innerHTML = `
+            <div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:20px 0">
+                ⚠️ 경쟁사 통계 정보를 불러오는 중 오류가 발생했습니다.
+            </div>`;
+    }
+}
+
+// 공동도급(컨소시엄) 지분율 & 실적 시뮬레이터 실시간 계산
+function calculateConsortiumMetrics() {
+    const corpRevInput = document.getElementById('sim-corp-revenue');
+    const corpShareInput = document.getElementById('sim-corp-share');
+    const partnerDisplay = document.getElementById('sim-partner-display');
+    const partnerShareTotalEl = document.getElementById('sim-partner-share-total');
+    const evalRevenueEl = document.getElementById('sim-eval-revenue');
+    const evalScoreEl = document.getElementById('sim-eval-score');
+    const resultBadge = document.getElementById('sim-eval-result-badge');
+
+    if (!corpRevInput || !corpShareInput || !evalRevenueEl || !evalScoreEl || !resultBadge) return;
+
+    // 본사 입력값
+    const corpRevenue = parseInt(corpRevInput.value) || 0;
+    const corpShare = Math.min(100, Math.max(0, parseInt(corpShareInput.value) || 0));
+    corpShareInput.value = corpShare; // 보정값 바인딩
+
+    // 1. 등록된 파트너 정보 취합
+    const bidNo = _favDetailBidNo;
+    const fav = getFavByBidNo(bidNo);
+    const partners = fav ? (fav.partners || []) : [];
+
+    let partnerShareSum = 0;
+    let partnerRevenueSum = 0;
+    let localBonusScore = 0.0;
+    let weakCorpBonusScore = 0.0;
+
+    partners.forEach(p => {
+        const share = Math.min(100, Math.max(0, parseInt(p.share) || 0));
+        partnerShareSum += share;
+
+        // 연락처 정보에서 실적 숫자 추출 (예: "실적: 50000" -> 50000)
+        const contactText = p.contact || '';
+        const numMatch = contactText.replace(/,/g, '').match(/\d+/);
+        const revenue = numMatch ? parseInt(numMatch[0]) : 0;
+        partnerRevenueSum += (revenue * (share / 100));
+
+        // 역할 란의 키워드로 우대 가점 판정
+        const roleText = p.role || '';
+        if (roleText.includes('지역')) {
+            // 지역의무공동도급 가점 (지분율 비례)
+            if (share >= 30) localBonusScore = 5.0;
+            else if (share >= 20) localBonusScore = 3.0;
+            else if (share >= 10) localBonusScore = 1.0;
+        }
+        if (roleText.includes('여성') || roleText.includes('장애인') || roleText.includes('사회적')) {
+            weakCorpBonusScore += 1.5;
+        }
+    });
+
+    // 파트너 합계 지분율 표시 및 본사 지분율 보정
+    if (partnerShareTotalEl) {
+        partnerShareTotalEl.textContent = `${partnerShareSum} %`;
+    }
+    
+    // 파트너 실적 표시
+    if (partnerDisplay) {
+        partnerDisplay.textContent = partnerRevenueSum > 0 
+            ? `합산 지분실적: ${(partnerRevenueSum).toLocaleString()}만 원` 
+            : '파트너 지분실적 없음';
+    }
+
+    // 2. 지분 합산 평가액 계산
+    const corpEvalRevenue = corpRevenue * (corpShare / 100);
+    const totalEvalRevenue = Math.floor(corpEvalRevenue + partnerRevenueSum);
+    
+    evalRevenueEl.textContent = `${totalEvalRevenue.toLocaleString()}만 원`;
+
+    // 3. 신인도 가점 합산
+    const totalBonus = Math.min(5.0, localBonusScore + weakCorpBonusScore);
+    evalScoreEl.textContent = `+${totalBonus.toFixed(1)} 점`;
+
+    // 4. 만점 통과 여부 시각적 판정 (공고 예산 대조)
+    const naraBtn = document.getElementById('fav-detail-nara-btn');
+    const budgetVal = naraBtn?.dataset?.budget ? parseInt(naraBtn.dataset.budget) : 0;
+
+    if (budgetVal <= 0) {
+        resultBadge.className = 'badge';
+        resultBadge.style.background = 'rgba(255,255,255,0.08)';
+        resultBadge.style.color = 'var(--text-secondary)';
+        resultBadge.textContent = '공고 예산 정보 없음';
+        return;
+    }
+
+    // 통상 만점 기준 평가액 = 공고 예산(추정가격)의 1배수 이상
+    // 예산이 만원 단위이므로 1:1 비교
+    const budgetInMan = Math.floor(budgetVal / 10000);
+
+    if (totalEvalRevenue >= budgetInMan) {
+        resultBadge.className = 'badge badge-success';
+        resultBadge.style.background = 'var(--success)';
+        resultBadge.style.color = '#fff';
+        resultBadge.textContent = `🟢 실적 만점 충족! (만점 기준: ${budgetInMan.toLocaleString()}만 원)`;
+    } else {
+        const needed = budgetInMan - totalEvalRevenue;
+        resultBadge.className = 'badge badge-warning';
+        resultBadge.style.background = 'rgba(245,158,11,0.15)';
+        resultBadge.style.color = '#f59e0b';
+        resultBadge.textContent = `⚠️ 실적 부족 (만점 도달까지 ${needed.toLocaleString()}만 원 보완 필요)`;
+    }
+}
+
+// 모의 투찰 시뮬레이터 전역 상태 변수
+let _simQuantBaseScore = 50.0; // 기본 경영+실적 정량 평가 점수 (디폴트 50)
+let _simBidBudget = 0; // 공고 예산 (만원 단위)
+let _simContractMethod = ''; // 계약 방식
+
+// 모의 투찰 초기화
+function initializeInteractiveBidSimulation(strategyData, resultData) {
+    const slider = document.getElementById('sim-rate-slider');
+    const valText = document.getElementById('sim-rate-val');
+    if (!slider || !valText) return;
+
+    // 슬라이더 초기화
+    slider.value = "88.0";
+    valText.textContent = "88.0%";
+
+    // 공고의 계약 방식 및 예산 바인딩
+    const bidInfo = strategyData.bid_info || resultData.bid_info || {};
+    _simContractMethod = bidInfo.contract_method || resultData.contract_method || '';
+    
+    const budgetVal = bidInfo.budget || resultData.budget || 0;
+    _simBidBudget = budgetVal > 1000000 ? Math.floor(budgetVal / 10000) : budgetVal;
+
+    // 자사 정량 평가 점수 획득
+    let quantBase = 45.0; // 기본 디폴트
+    
+    if (resultData.match_score) {
+        quantBase = parseFloat(resultData.match_score) * 0.6; // 정량 평가를 60% 비중으로 환산
+    }
+    
+    _simQuantBaseScore = Math.min(60.0, Math.max(20.0, quantBase));
+    
+    const quantScoreEl = document.getElementById('sim-quant-score');
+    if (quantScoreEl) {
+        quantScoreEl.textContent = `${_simQuantBaseScore.toFixed(1)} / 60.0`;
+    }
+
+    // 초기 시뮬레이션 계산 실행
+    updateInteractiveBidSimulation();
+}
+
+// 실시간 투찰율 조정에 따른 점수 연산
+function updateInteractiveBidSimulation() {
+    const slider = document.getElementById('sim-rate-slider');
+    const valText = document.getElementById('sim-rate-val');
+    if (!slider || !valText) return;
+
+    const rate = parseFloat(slider.value) || 88.0;
+    valText.textContent = `${rate.toFixed(1)}%`;
+
+    // 1. 가격 평가 점수 계산 (만점 40점 기준)
+    let priceScore = 0.0;
+    let maxPriceScore = 40.0;
+    
+    if (_simContractMethod.includes('협상')) {
+        maxPriceScore = 20.0;
+        if (rate >= 80.0) {
+            priceScore = (80.0 / rate) * maxPriceScore;
+        } else {
+            priceScore = 0.0;
+        }
+    } else {
+        const optimalRate = 88.0; 
+        const deviation = Math.abs(rate - optimalRate);
+        priceScore = maxPriceScore - (deviation * 1.5);
+    }
+    
+    priceScore = Math.min(maxPriceScore, Math.max(0.0, priceScore));
+
+    // 2. 최종 합산 예상 점수
+    let totalScore = 0.0;
+    let passThreshold = 95.0;
+
+    if (_simContractMethod.includes('협상')) {
+        const adjustedQuant = (_simQuantBaseScore / 60.0) * 80.0;
+        totalScore = adjustedQuant + priceScore;
+        passThreshold = 85.0;
+    } else {
+        totalScore = _simQuantBaseScore + priceScore;
+        passThreshold = 95.0;
+    }
+
+    totalScore = parseFloat(totalScore.toFixed(2));
+
+    // 3. UI 바인딩
+    const priceScoreEl = document.getElementById('sim-price-score');
+    if (priceScoreEl) {
+        priceScoreEl.textContent = `${priceScore.toFixed(1)} / ${maxPriceScore.toFixed(0)}`;
+    }
+    
+    const totalScoreEl = document.getElementById('sim-total-score');
+    if (totalScoreEl) {
+        totalScoreEl.textContent = `${totalScore.toFixed(1)} 점`;
+    }
+
+    const badgeEl = document.getElementById('sim-pass-badge');
+    const adviceEl = document.getElementById('sim-ai-advice');
+
+    if (badgeEl && adviceEl) {
+        if (totalScore >= passThreshold) {
+            badgeEl.className = 'badge badge-success';
+            badgeEl.textContent = '수주 우수';
+            badgeEl.style.background = 'var(--success)';
+            if (totalScoreEl) totalScoreEl.style.color = 'var(--success)';
+            
+            let advice = `🟢 <strong>합격 안정권!</strong> 예상 종합 점수(${totalScore.toFixed(1)}점)가 합격선(${passThreshold}점)을 초과하여 낙찰 가능성이 매우 높습니다. `;
+            if (rate > 89.0) {
+                advice += `고가 투찰 상태이므로 가격 마진 확보에 유리합니다.`;
+            } else {
+                advice += `안정된 가격 경쟁력을 확보하였습니다.`;
+            }
+            adviceEl.innerHTML = advice;
+        } else {
+            badgeEl.className = 'badge badge-danger';
+            badgeEl.textContent = '과락 위험';
+            badgeEl.style.background = 'var(--danger)';
+            if (totalScoreEl) totalScoreEl.style.color = 'var(--danger)';
+            
+            let advice = `🔴 <strong>점수 부족!</strong> 예상 종합 점수가 기준선(${passThreshold}점)에 미달하여 탈락 위험이 있습니다. `;
+            if (_simContractMethod.includes('협상') && (_simQuantBaseScore / 60.0 * 80.0) < 68.0) {
+                advice += `정성제안(기술점수) 배점 부족이 주원인이므로 제안서 고도화가 절실합니다.`;
+            } else {
+                advice += `투찰률을 조정하거나 공동수급체(협업) 구성을 늘려 정량 점수를 추가 보완해야 합니다.`;
+            }
+            adviceEl.innerHTML = advice;
+        }
+    }
+}
+
+// ──────────────────────────────────────────────
+// 17. 회원 인증 및 관심공고 서버 동기화 핸들러
+// ──────────────────────────────────────────────
+
+function openAuthModal() {
+    const overlay = document.getElementById('auth-modal-overlay');
+    if (overlay) {
+        overlay.classList.add('active');
+        toggleAuthForm(null, 'login');
+    }
+}
+
+function closeAuthModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    const overlay = document.getElementById('auth-modal-overlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+    }
+}
+
+function toggleAuthForm(event, type) {
+    if (event) event.preventDefault();
+    const loginForm = document.getElementById('auth-login-form');
+    const registerForm = document.getElementById('auth-register-form');
+    const title = document.getElementById('auth-modal-title');
+    const subtitle = document.getElementById('auth-modal-subtitle');
+
+    if (type === 'login') {
+        if (loginForm) loginForm.style.display = 'flex';
+        if (registerForm) registerForm.style.display = 'none';
+        if (title) title.textContent = '🔒 로그인';
+        if (subtitle) subtitle.textContent = 'NARA Analyzer 이용을 위해 로그인해 주세요.';
+    } else {
+        if (loginForm) loginForm.style.display = 'none';
+        if (registerForm) registerForm.style.display = 'flex';
+        if (title) title.textContent = '📝 회원가입';
+        if (subtitle) subtitle.textContent = '새로운 계정을 생성하고 입찰 데이터를 관리하세요.';
+    }
+}
+
+async function checkLoginStatus() {
+    try {
+        const response = await fetch('/api/auth/me');
+        if (response.ok) {
+            const data = await response.json();
+            _currentUser = data.username;
+            state.isAdmin = !!data.is_admin;
+            
+            document.body.classList.remove('logged-out');
+            const menuAdmin = document.getElementById('menu-admin');
+            if (menuAdmin) {
+                menuAdmin.style.display = state.isAdmin ? 'block' : 'none';
+            }
+            
+            const loggedOutEl = document.getElementById('auth-logged-out');
+            const loggedInEl = document.getElementById('auth-logged-in');
+            const usernameEl = document.getElementById('auth-username');
+            
+            if (loggedOutEl) loggedOutEl.style.display = 'none';
+            if (loggedInEl) loggedInEl.style.display = 'block';
+            if (usernameEl) usernameEl.textContent = _currentUser;
+            
+            await loadFavoritesFromServer();
+            await loadUserCompanies();
+        } else {
+            _currentUser = null;
+            state.isAdmin = false;
+            _favoritesCache = [];
+            _clearAuthUI();
+        }
+    } catch (e) {
+        _currentUser = null;
+        state.isAdmin = false;
+        _favoritesCache = [];
+        _clearAuthUI();
+    }
+    updateFavBadge();
+    updateSidebarMenu();
+}
+
+function _clearAuthUI() {
+    const loggedOutEl = document.getElementById('auth-logged-out');
+    const loggedInEl = document.getElementById('auth-logged-in');
+    if (loggedOutEl) loggedOutEl.style.display = 'block';
+    if (loggedInEl) loggedInEl.style.display = 'none';
+    localStorage.removeItem('activeCompanyBizId');
+    const container = document.getElementById('active-company-container');
+    if (container) container.style.display = 'none';
+    const select = document.getElementById('active-company-select');
+    if (select) select.innerHTML = '';
+    
+    document.body.classList.add('logged-out');
+    const menuAdmin = document.getElementById('menu-admin');
+    if (menuAdmin) menuAdmin.style.display = 'none';
+    updateSidebarMenu();
+}
+
+function updateSidebarMenu() {
+    const isLoggedIn = !!_currentUser;
+    
+    // 1. 랜딩 메뉴 제어 (로그인 전에는 보이고 로그인 후에는 숨김)
+    const menuLanding = document.getElementById('menu-landing');
+    if (menuLanding) {
+        menuLanding.style.display = isLoggedIn ? 'none' : 'block';
+    }
+    
+    // 2. 다른 일반 메뉴들 (locked 상태 제어)
+    const lockedViews = ['dashboard', 'bids', 'favorites', 'businesses', 'analysis', 'settings', 'ai-settings'];
+    
+    lockedViews.forEach(viewName => {
+        const item = document.querySelector(`.menu-item[data-view="${viewName}"]`);
+        if (item) {
+            if (isLoggedIn) {
+                // 로그인 시 잠금 해제
+                item.classList.remove('menu-item-locked');
+                const lockBadge = item.querySelector('.menu-lock-badge');
+                if (lockBadge) lockBadge.remove();
+                
+                // 원래의 navigate 클릭 복원
+                item.setAttribute('onclick', `navigate('${viewName}')`);
+            } else {
+                // 비로그인 시 잠금
+                item.classList.add('menu-item-locked');
+                if (!item.querySelector('.menu-lock-badge')) {
+                    const badge = document.createElement('span');
+                    badge.className = 'menu-lock-badge';
+                    badge.textContent = '🔒';
+                    badge.style.marginLeft = 'auto';
+                    badge.style.fontSize = '0.75rem';
+                    badge.style.opacity = '0.7';
+                    item.appendChild(badge);
+                }
+                
+                // 클릭 시 로그인 모달 및 토스트 안내 유도
+                item.setAttribute('onclick', `openAuthModal('login'); showToast('로그인이 필요한 서비스입니다. 회원가입 후 이용해주세요.', 'info');`);
+            }
+        }
+    });
+
+    // 3. 관리자 메뉴 제어 (로그인 + 관리자 플래그 필요)
+    const menuAdmin = document.getElementById('menu-admin');
+    if (menuAdmin) {
+        menuAdmin.style.display = (isLoggedIn && state.isAdmin) ? 'block' : 'none';
+    }
+}
+
+async function loadFavoritesFromServer() {
+    try {
+        const response = await fetch('/api/favorites');
+        if (response.ok) {
+            _favoritesCache = await response.json();
+        } else {
+            _favoritesCache = [];
+        }
+    } catch (e) {
+        console.error('관심공고 서버 조회 실패:', e);
+        _favoritesCache = [];
+    }
+}
+
+async function handleLoginSubmit(event) {
+    event.preventDefault();
+    const usernameInput = document.getElementById('login-username');
+    const passwordInput = document.getElementById('login-password');
+    if (!usernameInput || !passwordInput) return;
+
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
+
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        if (response.ok) {
+            showToast('로그인에 성공했습니다!', 'success');
+            closeAuthModal();
+            
+            // 로컬 관심공고 임시 백업 검사 및 동기화
+            const localFavs = localStorage.getItem('nara_favorites');
+            
+            await checkLoginStatus(); // 로그인 상태 업데이트 및 캐시 충진
+            
+            if (localFavs && JSON.parse(localFavs).length > 0) {
+                await syncFavoritesWithServer(JSON.parse(localFavs));
+            }
+
+            // 각 뷰 강제 리로드하여 격리된 데이터 반영
+            if (state.currentView === 'favorites') loadFavorites();
+            if (state.currentView === 'businesses') loadBusinesses();
+            
+            // 대시보드 새로고침 및 이동
+            const heroGuide = document.getElementById('hero-guide');
+            if (heroGuide) heroGuide.textContent = `Welcome! ${username}님만의 대시보드가 준비되었습니다.`;
+            navigate('dashboard');
+        } else {
+            const err = await response.json();
+            showToast(err.detail || '로그인에 실패했습니다.', 'error');
+        }
+    } catch (e) {
+        console.error('로그인 에러:', e);
+        showToast('서버 통신에 실패했습니다.', 'error');
+    }
+}
+
+async function handleRegisterSubmit(event) {
+    event.preventDefault();
+    const usernameInput = document.getElementById('register-username');
+    const emailInput = document.getElementById('register-email');
+    const passwordInput = document.getElementById('register-password');
+    const confirmInput = document.getElementById('register-password-confirm');
+    
+    if (!usernameInput || !passwordInput || !confirmInput) return;
+    
+    const username = usernameInput.value.trim();
+    const email = emailInput.value.trim() || null;
+    const password = passwordInput.value;
+    const confirm = confirmInput.value;
+
+    if (password !== confirm) {
+        showToast('비밀번호가 서로 일치하지 않습니다.', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, email })
+        });
+
+        if (response.ok) {
+            showToast('회원가입이 완료되었습니다! 가입한 계정으로 로그인해 주세요.', 'success');
+            toggleAuthForm(null, 'login');
+            
+            // 로그인 아이디란에 자동 입력
+            const loginUserEl = document.getElementById('login-username');
+            if (loginUserEl) loginUserEl.value = username;
+        } else {
+            const err = await response.json();
+            showToast(err.detail || '회원가입에 실패했습니다.', 'error');
+        }
+    } catch (e) {
+        console.error('회원가입 에러:', e);
+        showToast('서버 통신에 실패했습니다.', 'error');
+    }
+}
+
+async function handleLogout() {
+    try {
+        const response = await fetch('/api/auth/logout', { method: 'POST' });
+        if (response.ok) {
+            showToast('로그아웃되었습니다.', 'info');
+            _currentUser = null;
+            _favoritesCache = [];
+            _clearAuthUI();
+            
+            // 상태 갱신 및 대시보드 리다이렉트
+            window.location.reload();
+        } else {
+            showToast('로그아웃에 실패했습니다.', 'error');
+        }
+    } catch (e) {
+        console.error('로그아웃 에러:', e);
+        window.location.reload();
+    }
+}
+
+async function syncFavoritesWithServer(localFavs) {
+    try {
+        const response = await fetch('/api/favorites/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorites: localFavs })
+        });
+        if (response.ok) {
+            localStorage.removeItem('nara_favorites');
+            showToast('로컬 관심공고가 계정에 안전하게 통합되었습니다!', 'success');
+            await loadFavoritesFromServer();
+            if (state.currentView === 'favorites') loadFavorites();
+        }
+    } catch (e) {
+        console.error('관심공고 서버 동기화 에러:', e);
+    }
+}
+
+// ──────────────────────────────────────────────
+// 7. 다중 회사 연계 및 직원 관리
+// ──────────────────────────────────────────────
+
+function switchCompanyTab(tab) {
+    const tabCompanies = document.getElementById('company-tab-companies');
+    const tabMembers = document.getElementById('company-tab-members');
+    const secCompanies = document.getElementById('company-section-companies');
+    const secMembers = document.getElementById('company-section-members');
+
+    if (tab === 'companies') {
+        if (tabCompanies) {
+            tabCompanies.classList.add('btn-primary');
+            tabCompanies.classList.remove('btn-ghost', 'active');
+            tabCompanies.classList.add('active');
+        }
+        if (tabMembers) {
+            tabMembers.classList.add('btn-ghost');
+            tabMembers.classList.remove('btn-primary', 'active');
+        }
+        if (secCompanies) secCompanies.style.display = 'block';
+        if (secMembers) secMembers.style.display = 'none';
+        
+        loadBusinesses();
+    } else {
+        if (tabMembers) {
+            tabMembers.classList.add('btn-primary');
+            tabMembers.classList.remove('btn-ghost', 'active');
+            tabMembers.classList.add('active');
+        }
+        if (tabCompanies) {
+            tabCompanies.classList.add('btn-ghost');
+            tabCompanies.classList.remove('btn-primary', 'active');
+        }
+        if (secCompanies) secCompanies.style.display = 'none';
+        if (secMembers) secMembers.style.display = 'block';
+        
+        const activeBizId = localStorage.getItem('activeCompanyBizId');
+        if (activeBizId) {
+            loadCompanyMembers(activeBizId);
+        } else {
+            const tbody = document.getElementById('company-members-tbody');
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="5" style="padding: 20px; text-align: center; color: var(--text-muted);">활성화된 회사가 없습니다. 먼저 회사를 등록하거나 선택해 주세요.</td></tr>';
+            }
+        }
+    }
+}
+
+async function loadUserCompanies() {
+    try {
+        const companies = await api('GET', '/companies/my');
+        const select = document.getElementById('active-company-select');
+        const container = document.getElementById('active-company-container');
+        
+        if (!companies || companies.length === 0) {
+            if (container) container.style.display = 'none';
+            localStorage.removeItem('activeCompanyBizId');
+            const displayName = document.getElementById('active-company-name-display');
+            if (displayName) displayName.textContent = '선택된 회사';
+            return;
+        }
+
+        if (container) container.style.display = 'block';
+        
+        let activeBizId = localStorage.getItem('activeCompanyBizId');
+        const isValid = companies.some(c => c.biz_id === activeBizId);
+        if (!activeBizId || !isValid) {
+            activeBizId = companies[0].biz_id;
+            localStorage.setItem('activeCompanyBizId', activeBizId);
+        }
+
+        if (select) {
+            select.innerHTML = companies.map(c => 
+                `<option value="${escapeHTML(c.biz_id)}" ${c.biz_id === activeBizId ? 'selected' : ''}>
+                    ${escapeHTML(c.company_name)} (${c.role === 'owner' ? '소유자' : c.role === 'admin' ? '관리자' : '직원'})
+                </option>`
+            ).join('');
+        }
+
+        const activeComp = companies.find(c => c.biz_id === activeBizId);
+        const displayName = document.getElementById('active-company-name-display');
+        if (displayName && activeComp) {
+            displayName.textContent = activeComp.company_name;
+        }
+        
+    } catch (err) {
+        console.error('소속 회사 목록 조회 에러:', err);
+    }
+}
+
+async function handleCompanySwitch(bizId) {
+    if (!bizId) return;
+    localStorage.setItem('activeCompanyBizId', bizId);
+    
+    showToast('활성 회사가 전환되었습니다.', 'success');
+    
+    await loadUserCompanies();
+    
+    if (state.currentView === 'dashboard') {
+        if (typeof loadDashboard === 'function') {
+            await loadDashboard();
+        }
+    } else if (state.currentView === 'businesses') {
+        const tabMembers = document.getElementById('company-tab-members');
+        if (tabMembers && tabMembers.classList.contains('active')) {
+            loadCompanyMembers(bizId);
+        } else {
+            loadBusinesses();
+        }
+    } else if (state.currentView === 'favorites') {
+        if (typeof loadFavorites === 'function') {
+            loadFavorites();
+        }
+    }
+}
+
+async function loadCompanyMembers(bizId) {
+    const tbody = document.getElementById('company-members-tbody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '<tr><td colspan="5" style="padding: 20px; text-align: center; color: var(--text-muted);"><div class="skeleton" style="height:20px;width:100%"></div></td></tr>';
+    
+    try {
+        const members = await api('GET', `/companies/${bizId}/members`);
+        
+        const myInfo = members.find(m => m.username === _currentUser);
+        const myRole = myInfo ? myInfo.role : 'member';
+        const hasAdminAccess = myRole === 'owner' || myRole === 'admin';
+        
+        const inviteForm = document.getElementById('invite-member-form');
+        if (inviteForm) {
+            inviteForm.style.display = hasAdminAccess ? 'flex' : 'none';
+        }
+
+        if (!members || members.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="padding: 20px; text-align: center; color: var(--text-muted);">등록된 직원이 없습니다.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = members.map(m => {
+            const isSelf = m.username === _currentUser;
+            const joinedAt = m.joined_at ? m.joined_at.substring(0, 10) : '-';
+            
+            let roleCell = '';
+            if (isSelf || !hasAdminAccess || m.role === 'owner') {
+                let roleText = '직원';
+                if (m.role === 'owner') roleText = '소유자(대표)';
+                if (m.role === 'admin') roleText = '관리자';
+                roleCell = `<span class="biz-tag ${m.role}">${roleText}</span>`;
+            } else {
+                roleCell = `
+                    <select onchange="handleUpdateMemberRole('${escapeHTML(m.username)}', this.value)" class="input" style="font-size: 0.8rem; padding: 2px 4px; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid var(--border); border-radius: 4px;">
+                        <option value="member" ${m.role === 'member' ? 'selected' : ''}>직원</option>
+                        <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>관리자</option>
+                    </select>
+                `;
+            }
+
+            let actionCell = '';
+            if (isSelf) {
+                actionCell = '<span style="color:var(--text-muted); font-size:0.8rem;">본인</span>';
+            } else if (m.role === 'owner') {
+                actionCell = '-';
+            } else if (hasAdminAccess) {
+                actionCell = `
+                    <button class="btn btn-sm btn-outline btn-danger" onclick="handleRemoveMember('${escapeHTML(m.username)}')" style="padding: 2px 8px; font-size:0.75rem;">
+                        제외
+                    </button>
+                `;
+            } else {
+                actionCell = '-';
+            }
+
+            return `
+                <tr style="border-bottom: 1px solid var(--border); height: 45px;">
+                    <td style="padding: 10px; font-weight: 600; color: var(--text-primary);">${escapeHTML(m.username)}</td>
+                    <td style="padding: 10px; color: var(--text-muted);">${escapeHTML(m.email || '-')}</td>
+                    <td style="padding: 10px;">${roleCell}</td>
+                    <td style="padding: 10px; color: var(--text-muted);">${escapeHTML(joinedAt)}</td>
+                    <td style="padding: 10px; text-align: right;">${actionCell}</td>
+                </tr>
+            `;
+        }).join('');
+        
+    } catch (err) {
+        showToast(`직원 목록 로드 실패: ${err.message}`, 'error');
+        tbody.innerHTML = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: var(--text-muted);">직원 정보를 가져오지 못했습니다: ${err.message}</td></tr>`;
+    }
+}
+
+async function handleInviteMember() {
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!activeBizId) {
+        showToast('활성화된 회사가 없습니다.', 'error');
+        return;
+    }
+
+    const usernameInput = document.getElementById('invite-username');
+    const roleSelect = document.getElementById('invite-role');
+    if (!usernameInput || !roleSelect) return;
+
+    const targetUser = usernameInput.value.trim();
+    const role = roleSelect.value;
+
+    if (!targetUser) {
+        showToast('초대할 사용자의 ID를 입력해 주세요.', 'error');
+        return;
+    }
+
+    try {
+        const res = await api('POST', `/companies/${activeBizId}/members`, {
+            username: targetUser,
+            role: role
+        });
+        showToast(res.message || '직원이 성공적으로 등록되었습니다.', 'success');
+        usernameInput.value = '';
+        
+        await loadCompanyMembers(activeBizId);
+    } catch (err) {
+        showToast(`직원 등록 실패: ${err.message}`, 'error');
+    }
+}
+
+async function handleRemoveMember(username) {
+    if (!username) return;
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!activeBizId) return;
+
+    if (!confirm(`정말로 직원 '${username}'을(를) 회사 조직에서 제외하시겠습니까?`)) {
+        return;
+    }
+
+    try {
+        const res = await api('DELETE', `/companies/${activeBizId}/members/${username}`);
+        showToast(res.message || '직원이 제외되었습니다.', 'success');
+        await loadCompanyMembers(activeBizId);
+    } catch (err) {
+        showToast(`직원 제외 실패: ${err.message}`, 'error');
+    }
+}
+
+async function handleUpdateMemberRole(username, role) {
+    if (!username || !role) return;
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!activeBizId) return;
+
+    try {
+        const res = await api('PUT', `/companies/${activeBizId}/members/${username}`, {
+            role: role
+        });
+        showToast(res.message || '역할이 성공적으로 수정되었습니다.', 'success');
+        await loadCompanyMembers(activeBizId);
+    } catch (err) {
+        showToast(`역할 변경 실패: ${err.message}`, 'error');
+    }
+}
+
+
+// ──────────────────────────────────────────────
+// 18. 나의 입찰 AI 에이전트 설정 (My AI)
+// ──────────────────────────────────────────────
+let _aiSettings = {
+    bid_target: 'stable',
+    relevance_weight: 0.35,
+    capacity_weight: 0.35,
+    credit_weight: 0.30,
+    ai_persona: 'strategic'
+};
+
+async function loadUserAISettings() {
+    try {
+        const data = await api('GET', '/user/ai-settings');
+        if (data) {
+            _aiSettings = data;
+            updateAISettingsUI();
+        }
+    } catch (err) {
+        console.error('AI 에이전트 설정 조회 실패:', err);
+        showToast('AI 설정을 불러오는 중 오류가 발생했습니다.', 'error');
+    }
+}
+
+function updateAISettingsUI() {
+    // 페르소나 카드 활성화
+    document.querySelectorAll('.persona-card').forEach(card => {
+        card.classList.remove('active-persona');
+    });
+    const activeCard = document.getElementById(`persona-${_aiSettings.ai_persona}`);
+    if (activeCard) activeCard.classList.add('active-persona');
+
+    // 슬라이더 값 동기화 (API 값 0~1.0 -> UI 0~100)
+    const relevance = Math.round((_aiSettings.relevance_weight || 0.35) * 100);
+    const capacity = Math.round((_aiSettings.capacity_weight || 0.35) * 100);
+    const credit = Math.round((_aiSettings.credit_weight || 0.30) * 100);
+
+    document.getElementById('weight-relevance-slider').value = relevance;
+    document.getElementById('weight-capacity-slider').value = capacity;
+    document.getElementById('weight-credit-slider').value = credit;
+
+    document.getElementById('weight-relevance-val').textContent = `${relevance}%`;
+    document.getElementById('weight-capacity-val').textContent = `${capacity}%`;
+    document.getElementById('weight-credit-val').textContent = `${credit}%`;
+
+    // 가중치 현황 UI 업데이트
+    updateWeightVisuals(relevance, capacity, credit);
+}
+
+function setAiPersona(persona) {
+    _aiSettings.ai_persona = persona;
+    document.querySelectorAll('.persona-card').forEach(card => {
+        card.classList.remove('active-persona');
+    });
+    document.getElementById(`persona-${persona}`).classList.add('active-persona');
+    
+    // 페르소나에 따른 자동 가중치 조절
+    let r = 35, c = 35, cr = 30;
+    if (persona === 'aggressive') {
+        r = 25; c = 55; cr = 20; // 대형 예산/실적 중심
+    } else if (persona === 'conservative') {
+        r = 30; c = 20; cr = 50; // 안정적 신용/가점 중심
+    }
+    
+    _aiSettings.relevance_weight = r / 100;
+    _aiSettings.capacity_weight = c / 100;
+    _aiSettings.credit_weight = cr / 100;
+    
+    updateAISettingsUI();
+}
+
+function adjustWeights(changedType, val) {
+    val = Number(val);
+    const sliderR = document.getElementById('weight-relevance-slider');
+    const sliderC = document.getElementById('weight-capacity-slider');
+    const sliderCr = document.getElementById('weight-credit-slider');
+
+    let r = Number(sliderR.value);
+    let c = Number(sliderC.value);
+    let cr = Number(sliderCr.value);
+
+    if (changedType === 'relevance') {
+        r = val;
+        const remain = 100 - r;
+        const otherSum = c + cr;
+        if (otherSum > 0) {
+            c = Math.round((remain * c) / otherSum);
+            cr = remain - c;
+        } else {
+            c = Math.round(remain / 2);
+            cr = remain - c;
+        }
+    } else if (changedType === 'capacity') {
+        c = val;
+        const remain = 100 - c;
+        const otherSum = r + cr;
+        if (otherSum > 0) {
+            r = Math.round((remain * r) / otherSum);
+            cr = remain - r;
+        } else {
+            r = Math.round(remain / 2);
+            cr = remain - r;
+        }
+    } else if (changedType === 'credit') {
+        cr = val;
+        const remain = 100 - cr;
+        const otherSum = r + c;
+        if (otherSum > 0) {
+            r = Math.round((remain * r) / otherSum);
+            c = remain - r;
+        } else {
+            r = Math.round(remain / 2);
+            c = remain - r;
+        }
+    }
+
+    // 범위 제한
+    r = Math.max(0, Math.min(100, r));
+    c = Math.max(0, Math.min(100, c));
+    cr = Math.max(0, Math.min(100, cr));
+
+    // UI 값 동기화
+    sliderR.value = r;
+    sliderC.value = c;
+    sliderCr.value = cr;
+
+    document.getElementById('weight-relevance-val').textContent = `${r}%`;
+    document.getElementById('weight-capacity-val').textContent = `${c}%`;
+    document.getElementById('weight-credit-val').textContent = `${cr}%`;
+
+    // 상태 업데이트
+    _aiSettings.relevance_weight = r / 100;
+    _aiSettings.capacity_weight = c / 100;
+    _aiSettings.credit_weight = cr / 100;
+
+    updateWeightVisuals(r, c, cr);
+}
+
+function updateWeightVisuals(r, c, cr) {
+    // 게이지바 업데이트
+    document.getElementById('weight-progress-relevance').style.width = `${r}%`;
+    document.getElementById('weight-progress-capacity').style.width = `${c}%`;
+    document.getElementById('weight-progress-credit').style.width = `${cr}%`;
+
+    // 리포트 텍스트 업데이트
+    document.getElementById('report-relevance').textContent = `${r}%`;
+    document.getElementById('report-capacity').textContent = `${c}%`;
+    document.getElementById('report-credit').textContent = `${cr}%`;
+
+    // 상태 요약 텍스트
+    const statusText = document.getElementById('weight-sum-status');
+    const total = r + c + cr;
+    if (total === 100) {
+        statusText.textContent = '총합 100% (정상)';
+        statusText.style.color = 'var(--success)';
+    } else {
+        statusText.textContent = `총합 ${total}% (오류: 100% 보정 필요)`;
+        statusText.style.color = 'var(--danger)';
+    }
+}
+
+async function saveUserAISettings() {
+    try {
+        const payload = {
+            bid_target: _aiSettings.bid_target || 'stable',
+            relevance_weight: _aiSettings.relevance_weight,
+            capacity_weight: _aiSettings.capacity_weight,
+            credit_weight: _aiSettings.credit_weight,
+            ai_persona: _aiSettings.ai_persona,
+            custom_keywords: _aiSettings.custom_keywords || null
+        };
+        await api('POST', '/user/ai-settings', payload);
+        showToast('AI 에이전트 가중치와 페르소나가 저장되었습니다!', 'success');
+        
+        // 대시보드 리로드 (변경된 가중치에 맞춰 매칭점수 재연산)
+        if (state.currentView === 'dashboard') {
+            loadDashboard();
+        }
+    } catch (err) {
+        console.error('AI 설정 저장 실패:', err);
+        showToast('AI 설정을 저장하지 못했습니다.', 'error');
+    }
+}
+
+
+// ──────────────────────────────────────────────
+// 19. 종합 관리자 대시보드 (Admin Dashboard)
+// ──────────────────────────────────────────────
+let _currentAdminTab = 'users';
+
+async function loadAdminPanel() {
+    if (!state.isAdmin) {
+        showToast('관리자 권한이 없습니다.', 'error');
+        navigate('dashboard');
+        return;
+    }
+
+    try {
+        // 전역 통계 로드
+        const stats = await api('GET', '/admin/stats');
+        document.getElementById('admin-stat-users').textContent = stats.total_users || 0;
+        document.getElementById('admin-stat-companies').textContent = stats.total_companies || 0;
+        document.getElementById('admin-stat-favorites').textContent = stats.total_favorites || 0;
+        document.getElementById('admin-stat-collaborations').textContent = stats.total_collaborations || 0;
+
+        switchAdminTab(_currentAdminTab);
+    } catch (err) {
+        console.error('어드민 통계 조회 실패:', err);
+        showToast('어드민 데이터를 불러오지 못했습니다.', 'error');
+    }
+}
+
+function switchAdminTab(tab) {
+    _currentAdminTab = tab;
+
+    // 탭 버튼 스타일 전환
+    const tabs = ['users', 'companies', 'collaborations'];
+    tabs.forEach(t => {
+        const btn = document.getElementById(`tab-${t}-btn`);
+        const content = document.getElementById(`admin-tab-${t}`);
+        if (btn) {
+            if (t === tab) {
+                btn.classList.add('btn-primary', 'active-tab');
+                btn.classList.remove('btn-secondary');
+            } else {
+                btn.classList.remove('btn-primary', 'active-tab');
+                btn.classList.add('btn-secondary');
+            }
+        }
+        if (content) {
+            content.style.display = (t === tab) ? 'block' : 'none';
+        }
+    });
+
+    // 탭에 맞는 데이터 불러오기
+    if (tab === 'users') {
+        loadAdminUsers();
+    } else if (tab === 'companies') {
+        loadAdminCompanies();
+    } else if (tab === 'collaborations') {
+        loadAdminCollaborations();
+    }
+}
+
+async function loadAdminUsers() {
+    try {
+        const users = await api('GET', '/admin/users');
+        const body = document.getElementById('admin-users-list-body');
+        if (!body) return;
+
+        if (!users || users.length === 0) {
+            body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">가입된 회원이 없습니다.</td></tr>';
+            return;
+        }
+
+        body.innerHTML = users.map(user => {
+            const joinedDate = user.created_at ? user.created_at.substring(0, 10) : '-';
+            const isSystemAdmin = user.username === 'admin';
+            const roleButton = isSystemAdmin
+                ? '<span class="badge badge-accent">최고관리자</span>'
+                : `<button class="btn ${user.is_admin ? 'btn-secondary' : 'btn-ghost'} btn-xs" onclick="toggleUserAdminRole('${user.username}', ${user.is_admin})">
+                     ${user.is_admin ? '🔒 일반회원으로 변경' : '🔑 관리자로 승격'}
+                   </button>`;
+            
+            const deleteButton = (isSystemAdmin || user.username === _currentUser)
+                ? '-'
+                : `<button class="btn btn-ghost btn-xs" style="color:var(--danger);background:rgba(239,68,68,0.08)" onclick="deleteUserByAdmin('${user.username}')">✕ 강제탈퇴</button>`;
+
+            return `
+                <tr>
+                    <td><strong>${escapeHtml(user.username)}</strong></td>
+                    <td>${escapeHtml(user.email || '-')}</td>
+                    <td><span class="badge">${escapeHtml(user.ai_persona || 'strategic')}</span></td>
+                    <td>${roleButton}</td>
+                    <td>${joinedDate}</td>
+                    <td style="text-align:right">${deleteButton}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('회원 목록 로드 실패:', err);
+        showToast('회원 목록을 불러오는 중 오류가 발생했습니다.', 'error');
+    }
+}
+
+async function toggleUserAdminRole(username, isCurrentlyAdmin) {
+    const action = isCurrentlyAdmin ? '해제' : '부여';
+    if (!confirm(`'${username}' 회원에게서 관리자 권한을 ${action}하시겠습니까?`)) {
+        return;
+    }
+
+    try {
+        await api('PUT', `/admin/users/${username}/role`, {
+            is_admin: !isCurrentlyAdmin
+        });
+        showToast(`'${username}' 사용자의 관리자 권한이 변경되었습니다.`, 'success');
+        loadAdminUsers();
+    } catch (err) {
+        console.error('권한 변경 실패:', err);
+        showToast(`권한 변경 실패: ${err.message}`, 'error');
+    }
+}
+
+async function deleteUserByAdmin(username) {
+    if (!confirm(`정말로 사용자 '${username}' 회원을 시스템에서 영구 탈퇴 처리하시겠습니까?\n이 작업은 되돌릴 수 없으며 모든 등록 회사 및 관심공고 데이터가 삭제됩니다.`)) {
+        return;
+    }
+
+    try {
+        await api('DELETE', `/admin/users/${username}`);
+        showToast(`사용자 '${username}' 회원이 강제 탈퇴 처리되었습니다.`, 'success');
+        loadAdminUsers();
+        // 통계 갱신
+        loadAdminPanel();
+    } catch (err) {
+        console.error('회원 탈퇴 처리 실패:', err);
+        showToast(`강제 탈퇴 실패: ${err.message}`, 'error');
+    }
+}
+
+async function loadAdminCompanies() {
+    try {
+        const companies = await api('GET', '/admin/companies');
+        const body = document.getElementById('admin-companies-list-body');
+        if (!body) return;
+
+        if (!companies || companies.length === 0) {
+            body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">등록된 회사가 없습니다.</td></tr>';
+            return;
+        }
+
+        body.innerHTML = companies.map(comp => {
+            const revenue = comp.annual_revenue ? `${(comp.annual_revenue / 100000000).toFixed(1)}억 원` : '-';
+            const employees = comp.employee_count ? `${comp.employee_count}명` : '-';
+            const created = comp.created_at ? comp.created_at.substring(0, 10) : '-';
+
+            return `
+                <tr>
+                    <td><code>${escapeHtml(comp.biz_id)}</code></td>
+                    <td><strong>${escapeHtml(comp.company_name)}</strong></td>
+                    <td>${escapeHtml(comp.ceo_name || '-')}</td>
+                    <td><span class="badge" style="background:rgba(99,102,241,0.15)">👤 ${comp.member_count || 1}명</span></td>
+                    <td>${escapeHtml(comp.business_types || '-')}<br><small style="color:var(--text-muted)">${escapeHtml(comp.regions || '-')}</small></td>
+                    <td>${revenue} / ${employees}</td>
+                    <td>${created}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('등록 기업 조회 실패:', err);
+        showToast('등록 기업 현황을 불러오지 못했습니다.', 'error');
+    }
+}
+
+async function loadAdminCollaborations() {
+    try {
+        const collabs = await api('GET', '/admin/collaborations');
+        const body = document.getElementById('admin-collaborations-list-body');
+        if (!body) return;
+
+        if (!collabs || collabs.length === 0) {
+            body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">현재 협업 중인 파트너십이 없습니다.</td></tr>';
+            return;
+        }
+
+        body.innerHTML = collabs.map(col => {
+            const closeDate = col.bid_close_dt ? col.bid_close_dt.substring(0, 10) : '-';
+            const budgetText = col.budget ? `${(col.budget / 100000000).toFixed(2)}억 원` : '-';
+            
+            // 관심 등록 멤버 렌더링
+            const membersHtml = col.interested_members.map(member => {
+                const isLeader = member.role === 'owner';
+                const roleBadge = isLeader ? '<span class="badge badge-accent" style="font-size:0.65rem">리더</span>' : '<span class="badge badge-secondary" style="font-size:0.65rem">참여자</span>';
+                const compName = member.company_name ? `(${member.company_name})` : '';
+                return `
+                    <div style="display:inline-flex; align-items:center; gap:4px; background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px; margin-right:6px; margin-bottom:4px; font-size:0.8rem">
+                        👤 <strong>${escapeHtml(member.username)}</strong>${escapeHtml(compName)} ${roleBadge}
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <tr>
+                    <td><code>${escapeHtml(col.bid_ntce_no)}</code></td>
+                    <td>
+                        <strong style="display:block; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${escapeHtml(col.bid_ntce_nm)}">
+                            ${escapeHtml(col.bid_ntce_nm)}
+                        </strong>
+                        <small style="color:var(--text-muted)">발주처: ${escapeHtml(col.dmin_instt_nm || '-')}</small>
+                    </td>
+                    <td>${budgetText}</td>
+                    <td>${closeDate}</td>
+                    <td>
+                        <div style="display:flex; flex-wrap:wrap">
+                            ${membersHtml}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('협업 현황 로드 실패:', err);
+        showToast('협업사 매칭 모니터 데이터를 불러오지 못했습니다.', 'error');
+    }
 }

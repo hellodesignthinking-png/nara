@@ -24,6 +24,10 @@ class BusinessCreateRequest(BaseModel):
     employee_count: Optional[int] = Field(None, description="직원 수")
     min_budget: Optional[int] = Field(None, description="최소 예산(원)")
     max_budget: Optional[int] = Field(None, description="최대 예산(원)")
+    credit_rating: Optional[str] = Field("BBB", description="신용평가등급")
+    company_type: Optional[str] = Field(None, description="기업 구분")
+    has_sanctions: Optional[bool] = Field(False, description="제재 이력 여부")
+
 
 
 class BidCollectRequest(BaseModel):
@@ -80,4 +84,31 @@ class ApiKeyTestRequest(BaseModel):
     api_name: str = Field(..., description="API 종류 (data_go_kr, naver, openai, gemini)")
     api_key: str = Field(..., description="API Key 값")
     api_secret: Optional[str] = Field(None, description="API Secret 값 (네이버 등에 필요)")
+
+
+class MemberAddRequest(BaseModel):
+    """직원 추가 요청 본문"""
+    username: str = Field(..., description="추가할 유저 ID")
+    role: str = Field("member", description="역할 (admin, member 등)")
+
+
+class MemberRoleUpdateRequest(BaseModel):
+    """직원 역할 수정 요청 본문"""
+    role: str = Field(..., description="변경할 역할 (admin, member 등)")
+
+
+class AISettingsUpdateRequest(BaseModel):
+    """개인 AI 에이전트 가중치 및 설정 요청 본문"""
+    bid_target: str = Field("stable", description="관심 입찰 목표")
+    relevance_weight: float = Field(0.35, ge=0.0, le=1.0, description="키워드/업종 가중치")
+    capacity_weight: float = Field(0.35, ge=0.0, le=1.0, description="예산/실적 가중치")
+    credit_weight: float = Field(0.30, ge=0.0, le=1.0, description="신용/가점 가중치")
+    ai_persona: str = Field("strategic", description="AI 에이전트 페르소나")
+    custom_keywords: list[str] = Field(default_factory=list, description="개인 맞춤 키워드")
+
+
+class AdminRoleUpdateRequest(BaseModel):
+    """관리자 권한 변경 요청 본문"""
+    is_admin: bool = Field(..., description="관리자 여부 플래그")
+
 

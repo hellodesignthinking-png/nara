@@ -1,0 +1,49 @@
+# fly.toml app configuration file for NARA Analyzer
+# Fly.io에 영구 배포할 때 사용되는 설정 파일입니다.
+
+app = "nara-analyzer"
+primary_region = "icn" # 한국 인천 리전 (기본값)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  SCHEDULER_ENABLED = "true"
+  SCHEDULE_HOUR = "8"
+  SCHEDULE_MINUTE = "0"
+  LLM_ENGINE = "gemini"
+  GEMINI_MODEL = "gemini-2.5-flash"
+  DB_PATH = "/app/data/nara.db"
+
+# 💾 SQLite DB가 재부팅 시 유실되는 것을 막기 위한 영구 볼륨 마운트 설정
+[[mounts]]
+  source = "nara_data"
+  destination = "/app/data"
+
+[[services]]
+  http_checks = []
+  internal_port = 8080
+  processes = ["app"]
+  protocol = "tcp"
+  script_checks = []
+
+  [services.concurrency]
+    hard_limit = 25
+    soft_limit = 20
+    type = "connections"
+
+  [[services.ports]]
+    force_https = true
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [[services.tcp_checks]]
+    grace_period = "1s"
+    interval = "15s"
+    restart_limit = 0
+    timeout = "2s"

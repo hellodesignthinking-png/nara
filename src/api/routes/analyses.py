@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.config import load_config
 from src.models.schemas import AnalysisResult
+from src.models.database import DatabaseManager
 from src.analyzers.biz_matcher import BizMatcher
 from src.analyzers.llm_analyzer import LLMAnalyzer
 from src.analyzers.strategy_engine import StrategyEngine
@@ -28,6 +29,8 @@ except ImportError:
 
 from ._helpers import (
     get_db,
+    get_active_company,
+    get_current_user,
     _analysis_to_api_dict,
     _bid_to_matcher_dict,
     _biz_profile_to_matcher_dict,
@@ -46,7 +49,11 @@ router = APIRouter(tags=["analyses"])
 
 
 @router.post("/analyze", summary="참여 가능 공고 분석")
-async def run_full_analysis(db=Depends(get_db)):
+async def run_full_analysis(
+    active_biz_id: str = Depends(get_active_company),
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
     """
     DB에 수집된 공고를 분석하여 참여 가능한 공고를 분류합니다.
 
@@ -80,25 +87,26 @@ async def run_full_analysis(db=Depends(get_db)):
             }
 
         # ── 2단계: 사업자 로드 ──
-        logger.info("🏢 분석: 2단계 - 사업자 프로필 로드")
-        biz_profiles = db.get_businesses()
+        logger.info("🏢 분석: 2단계 - 사업자 프로필 로드 (%s)", active_biz_id)
+        biz_profile = db.get_business(active_biz_id)
+        ai_settings = db.get_user_ai_settings(username)
 
-        if not biz_profiles:
+        if not biz_profile:
             return {
                 "total_bids": len(bids),
                 "participable": 0,
                 "analyzed": 0,
                 "results": [],
-                "message": "등록된 사업자가 없습니다. 먼저 사업자를 등록해주세요.",
+                "message": "활성화된 회사 프로필을 찾을 수 없습니다. 먼저 회사를 등록해주세요.",
             }
 
         # ── 3단계: 사업자-공고 매칭 (참여 가능성 평가) ──
         logger.info("🎯 분석: 3단계 - 참여 가능 공고 필터링")
-        biz_dicts = [_biz_profile_to_matcher_dict(bp) for bp in biz_profiles]
+        biz_dicts = [_biz_profile_to_matcher_dict(biz_profile)]
         bid_dicts = [_bid_to_matcher_dict(b) for b in bids]
 
         biz_matcher = BizMatcher()
-        match_results = biz_matcher.match_all_bids(biz_dicts, bid_dicts)
+        match_results = biz_matcher.match_all_bids(biz_dicts, bid_dicts, ai_settings)
 
         # 매칭 점수 40점 이상만 "참여 가능" 으로 분류
         MIN_MATCH_SCORE = 40
@@ -231,28 +239,41 @@ async def run_full_analysis(db=Depends(get_db)):
 async def get_analyses(
     bid_ntce_no: Optional[str] = Query(None, description="공고번호 필터"),
     biz_id: Optional[str] = Query(None, description="사업자번호 필터"),
-    db=Depends(get_db),
+    active_biz_id: str = Depends(get_active_company),
+    db: DatabaseManager = Depends(get_db),
 ):
     """
     분석 결과 목록을 조회합니다.
 
     bid_ntce_no 또는 biz_id로 필터링할 수 있습니다.
-    필터가 없으면 최근 분석 결과 전체를 반환합니다.
+    필터가 없으면 활성화된 회사의 최근 분석 결과 전체를 반환합니다.
     """
     try:
+        # 안전한 격리: 다른 회사 데이터를 요청 시 권한 체크 또는 강제 교체
+        target_biz_id = biz_id if biz_id else active_biz_id
+        if target_biz_id != active_biz_id:
+            target_biz_id = active_biz_id
+
         if bid_ntce_no:
-            results = db.get_analyses_by_bid(bid_ntce_no)
-        elif biz_id:
-            results = db.get_analyses_by_biz(biz_id)
+            conn = db.get_connection()
+            cursor = conn.execute(
+                "SELECT * FROM analysis_results WHERE bid_ntce_no = ? AND biz_id = ?",
+                (bid_ntce_no, target_biz_id),
+            )
+            results = [
+                AnalysisResult.from_dict(dict(row))
+                for row in cursor.fetchall()
+            ]
         else:
-            # 전체 최근 결과 조회 (커스텀 쿼리)
             conn = db.get_connection()
             cursor = conn.execute(
                 """
                 SELECT * FROM analysis_results
+                WHERE biz_id = ?
                 ORDER BY analyzed_at DESC
                 LIMIT 100
-                """
+                """,
+                (target_biz_id,)
             )
             results = [
                 AnalysisResult.from_dict(dict(row))
@@ -317,8 +338,121 @@ async def get_analyses(
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
 
 
+@router.get("/analyses/recurring-forecast", summary="연간 반복 사업 발주 예측")
+async def get_recurring_forecast(db: DatabaseManager = Depends(get_db)):
+    """
+    과거 수집된 입찰 공고를 정밀 분석하여 매년 정기적으로 반복 발주되는 사업을 예측합니다.
+    """
+    try:
+        # DB에서 최근 500건의 입찰 공고 로드
+        bids = db.get_recent_bids(limit=500)
+        if not bids:
+            return []
+
+        # 제목 정규화 및 그룹화
+        import re
+        from collections import defaultdict
+        
+        # 연도를 식별하기 위한 정규식
+        year_pat = re.compile(r'20\d{2}년?|\[긴급\]|\[재공고\]')
+        
+        groups = defaultdict(list)
+        for bid in bids:
+            title = bid.title
+            if not title:
+                continue
+            # 연도 및 상태 수식어 제거하여 표준 사업명 획득
+            norm_title = year_pat.sub('', title).strip()
+            norm_title = re.sub(r'\s+', ' ', norm_title) # 중복 공백 제거
+            
+            # 발주기관명과 결합하여 고유 사업 키 정의 (이름이 유사하고 기관이 같아야 함)
+            key = (norm_title, bid.org_name or '')
+            groups[key].append(bid)
+            
+        forecast_results = []
+        for (norm_title, org_name), bid_list in groups.items():
+            # 연도별로 최소 2회 이상 정기 발주된 사업만 연간 반복 사업으로 판단
+            if len(bid_list) < 2:
+                continue
+                
+            # 발주월(Month) 통계 내기
+            months = []
+            budgets = []
+            for b in bid_list:
+                if b.bid_close_dt:
+                    try:
+                        month = int(b.bid_close_dt.split('-')[1])
+                        months.append(month)
+                    except Exception:
+                        pass
+                if b.budget:
+                    budgets.append(b.budget)
+                    
+            if not months:
+                continue
+                
+            # 예측 발주월 (가장 빈도가 높은 달 또는 평균 달)
+            pred_month = int(sum(months) / len(months))
+            avg_budget = int(sum(budgets) / len(budgets)) if budgets else 0
+            
+            # D-Day 계산 (2026년 기준 다가오는 예상 시기 계산)
+            from datetime import datetime
+            current_date = datetime.now()
+            current_year = current_date.year
+            current_month = current_date.month
+            
+            # 예측월이 올해 이미 지났으면 내년으로 설정
+            pred_year = current_year
+            if pred_month < current_month:
+                pred_year = current_year + 1
+                
+            try:
+                pred_date = datetime(pred_year, pred_month, 15) # 매월 중순으로 가정
+                days_left = (pred_date - current_date).days
+            except Exception:
+                days_left = 30 # 예외 발생 시 디폴트 값
+                
+            # 예산 포맷팅
+            budget_str = f"{avg_budget // 10000:,}만 원" if avg_budget else "정보 없음"
+            
+            forecast_results.append({
+                "original_title": bid_list[0].title,
+                "predicted_title": f"{pred_year}년 {norm_title}",
+                "org_name": org_name,
+                "avg_budget": avg_budget,
+                "budget_str": budget_str,
+                "expected_month": pred_month,
+                "probability": min(75 + len(bid_list) * 5, 95), # 반복 횟수에 비례한 신뢰도
+                "days_left": max(1, days_left),
+                "frequency": len(bid_list)
+            })
+            
+        # 남은 일수가 가까운 순으로 정렬
+        forecast_results.sort(key=lambda x: x["days_left"])
+        
+        # 상위 5개 알짜 예측 리스트만 반환
+        return forecast_results[:5]
+
+    except Exception as e:
+        logger.error("연간 반복 사업 발주 예측 실패: %s", e)
+        return []
+
+
+@router.get("/analyses/competitor-intelligence", summary="경쟁사 수주 타깃 분석")
+async def get_competitor_intelligence(limit: int = 5, db: DatabaseManager = Depends(get_db)):
+    """
+    최근 낙찰 정보를 기반으로 경쟁사들의 수주 현황 및 투찰 통계를 분석해 반환합니다.
+    """
+    try:
+        stats = db.get_competitor_market_share(limit=limit)
+        return stats
+    except Exception as e:
+        logger.error("경쟁사 수주 타깃 분석 실패: %s", e)
+        return []
+
+
 @router.get("/analyses/{analysis_id}", summary="분석 결과 상세 조회")
-async def get_analysis_detail(analysis_id: int, db=Depends(get_db)):
+async def get_analysis_detail(analysis_id: int, db: DatabaseManager = Depends(get_db)):
     """
     분석 결과 ID로 상세 정보(전략 보고서 포함)를 조회합니다.
 
@@ -356,7 +490,7 @@ async def get_analysis_detail(analysis_id: int, db=Depends(get_db)):
 
 
 @router.delete("/analyses/{analysis_id}", summary="분석 결과 삭제")
-async def delete_analysis(analysis_id: int, db=Depends(get_db)):
+async def delete_analysis(analysis_id: int, db: DatabaseManager = Depends(get_db)):
     """분석 결과를 삭제합니다."""
     try:
         deleted = db.delete_analysis(analysis_id)
@@ -374,7 +508,7 @@ async def delete_analysis(analysis_id: int, db=Depends(get_db)):
 
 
 @router.delete("/analyses", summary="분석 결과 전체 삭제")
-async def delete_all_analyses(db=Depends(get_db)):
+async def delete_all_analyses(db: DatabaseManager = Depends(get_db)):
     """모든 분석 결과를 삭제합니다."""
     try:
         count = db.delete_all_analyses()
@@ -392,7 +526,11 @@ async def delete_all_analyses(db=Depends(get_db)):
 
 
 @router.post("/analyze-strategy", summary="실시간 전략 분석")
-async def analyze_strategy(request: StrategyAnalysisRequest, db=Depends(get_db)):
+async def analyze_strategy(
+    request: StrategyAnalysisRequest, 
+    username: str = Depends(get_current_user), 
+    db: DatabaseManager = Depends(get_db)
+):
     """
     단일 공고에 대한 실시간 전략 분석을 수행합니다.
 
@@ -422,7 +560,8 @@ async def analyze_strategy(request: StrategyAnalysisRequest, db=Depends(get_db))
         org_name = bid.org_name or ""
 
         # ── 2단계: 등록 사업자 로드 ──
-        biz_profiles = db.get_businesses()
+        biz_profiles = db.get_businesses(username)
+        ai_settings = db.get_user_ai_settings(username)
 
         best_match = {}
         business = {}
@@ -433,7 +572,7 @@ async def analyze_strategy(request: StrategyAnalysisRequest, db=Depends(get_db))
             # 최적 사업자 매칭
             biz_dicts = [_biz_profile_to_matcher_dict(bp) for bp in biz_profiles]
             biz_matcher = BizMatcher()
-            match_results = biz_matcher.match_all_bids(biz_dicts, [bid_dict])
+            match_results = biz_matcher.match_all_bids(biz_dicts, [bid_dict], ai_settings)
             if match_results:
                 best_match = match_results[0].get("best_match") or {}
                 business = best_match.get("business", {})
@@ -610,7 +749,7 @@ async def analyze_strategy(request: StrategyAnalysisRequest, db=Depends(get_db))
 
 
 @router.post("/analyze-proposal-strategy", summary="제안서 고도화 전략 분석")
-async def analyze_proposal_strategy(request: ProposalStrategyRequest, db=Depends(get_db)):
+async def analyze_proposal_strategy(request: ProposalStrategyRequest, db: DatabaseManager = Depends(get_db)):
     """
     제안서 고도화 전략 분석 API
 
@@ -809,7 +948,7 @@ async def analyze_proposal_strategy(request: ProposalStrategyRequest, db=Depends
 
 
 @router.post("/analyses/chat", summary="AI 참여 전략 Q&A 대화")
-async def analysis_chat(request: AnalysisChatRequest, db=Depends(get_db)):
+async def analysis_chat(request: AnalysisChatRequest, db: DatabaseManager = Depends(get_db)):
     """
     제안서 고도화 전략 분석 결과에 대한 후속 Q&A 대화 API
     """
@@ -825,12 +964,15 @@ async def analysis_chat(request: AnalysisChatRequest, db=Depends(get_db)):
             )
 
         # 사업자 정보 로드
-        business = db.get_business_by_id(request.biz_id)
+        business = db.get_business(request.biz_id)
         if not business:
             raise HTTPException(
                 status_code=404,
                 detail=f"사업자를 찾을 수 없습니다: {request.biz_id}"
             )
+
+        budget_str = f"{bid.budget:,}원" if bid.budget is not None else "정보 없음"
+        revenue_str = f"{business.annual_revenue:,}원" if business.annual_revenue is not None else "정보 없음"
 
         # 챗봇을 위한 시스템 프롬프트 구성
         system_prompt = f"""당신은 입찰 전략 컨설턴트 AI입니다.
@@ -839,16 +981,16 @@ async def analysis_chat(request: AnalysisChatRequest, db=Depends(get_db)):
 [입찰 공고 정보]
 - 공고명: {bid.title}
 - 발주기관: {bid.org_name}
-- 추정가격: {bid.budget:,}원
+- 추정가격: {budget_str}
 - 마감일: {bid.bid_close_dt}
 - 계약 방식: {bid.contract_method}
-- 자격 요건: {bid.qualifications}
+- 자격 요건: {bid.license_limit or "제한 없음"}
 
 [사업자 정보 (귀사)]
 - 회사명: {business.company_name}
 - 보유 면허: {business.licenses}
 - 과거 유사 실적: {business.past_projects}
-- 연매출: {business.annual_revenue:,}원
+- 연매출: {revenue_str}
 
 사용자가 해당 공고의 제안서 작성, 수주 전략, 경쟁사 대응, 리스크 극복 방안 등에 대해 묻고 있습니다.
 컨설턴트의 톤으로 전문적이고 구체적인 행동 전략(Action Plan) 위주로 답변을 제공하세요.

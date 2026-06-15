@@ -11,17 +11,19 @@ import tempfile
 import httpx
 from pathlib import Path as _Path
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Depends
 
 from src.config import load_config, reload_config
+from src.models.database import DatabaseManager
 
-from ._helpers import _load_settings, _save_settings
+from ._helpers import _load_settings, _save_settings, get_db, get_current_user
 from ._models import (
     KeywordsUpdateRequest,
     RelevanceUpdateRequest,
     ScheduleUpdateRequest,
     SlackWebhookRequest,
     ApiKeyTestRequest,
+    AISettingsUpdateRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -513,4 +515,79 @@ async def test_api_key(request: ApiKeyTestRequest):
     except Exception as e:
         logger.error("API 연결 테스트 실패: %s", e)
         return {"success": False, "message": f"오류 발생: {str(e)}"}
+
+
+# ──────────────────────────────────────────────
+# 개인화 AI 에이전트 설정 API
+# ──────────────────────────────────────────────
+
+@router.get("/user/ai-settings", summary="개인 AI 에이전트 설정 조회")
+async def get_user_ai_settings(
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    현재 로그인된 사용자의 개인화 AI 에이전트 설정(가중치 슬라이더, 투찰Persona 등)을 가져옵니다.
+    설정이 아직 없다면 디폴트 설정값을 반환합니다.
+    """
+    try:
+        settings = db.get_user_ai_settings(username)
+        if not settings:
+            return {
+                "username": username,
+                "bid_target": "stable",
+                "relevance_weight": 0.35,
+                "capacity_weight": 0.35,
+                "credit_weight": 0.30,
+                "ai_persona": "strategic",
+                "custom_keywords": []
+            }
+        return settings
+    except Exception as e:
+        logger.error("개인 AI 설정 조회 실패 [유저: %s]: %s", username, e)
+        raise HTTPException(status_code=500, detail="개인 AI 설정을 조회하는 도중 오류가 발생했습니다.")
+
+
+@router.post("/user/ai-settings", summary="개인 AI 에이전트 설정 업데이트")
+async def update_user_ai_settings(
+    req: AISettingsUpdateRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    사용자가 직접 조정한 개인 AI 가중치 및 입찰Persona 설정을 저장합니다.
+    """
+    try:
+        total = req.relevance_weight + req.capacity_weight + req.credit_weight
+        if abs(total - 1.0) > 0.01:
+            if total == 0:
+                req.relevance_weight = 0.35
+                req.capacity_weight = 0.35
+                req.credit_weight = 0.30
+            else:
+                req.relevance_weight = round(req.relevance_weight / total, 3)
+                req.capacity_weight = round(req.capacity_weight / total, 3)
+                req.credit_weight = round(req.credit_weight / total, 3)
+
+        settings_dict = {
+            "bid_target": req.bid_target,
+            "relevance_weight": req.relevance_weight,
+            "capacity_weight": req.capacity_weight,
+            "credit_weight": req.credit_weight,
+            "ai_persona": req.ai_persona,
+            "custom_keywords": req.custom_keywords,
+        }
+        success = db.save_user_ai_settings(username, settings_dict)
+        if not success:
+            raise HTTPException(status_code=500, detail="AI 설정을 데이터베이스에 저장하지 못했습니다.")
+        
+        return {
+            "message": "나의 AI 에이전트 설정이 업데이트되었습니다.",
+            "settings": settings_dict
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("개인 AI 설정 저장 실패 [유저: %s]: %s", username, e)
+        raise HTTPException(status_code=500, detail="설정 저장 중 서버 오류가 발생했습니다.")
 

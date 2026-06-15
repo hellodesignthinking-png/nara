@@ -8,6 +8,7 @@
 
 import logging
 import re
+from typing import Optional
 from src.utils.formatters import safe_float
 
 logger = logging.getLogger(__name__)
@@ -153,7 +154,7 @@ class BizMatcher:
     # 공개 API
     # ══════════════════════════════════════════════
 
-    def calculate_match_score(self, business_profile: dict, bid: dict) -> dict:
+    def calculate_match_score(self, business_profile: dict, bid: dict, ai_settings: Optional[dict] = None) -> dict:
         """
         사업자와 공고의 매칭 점수를 계산합니다.
 
@@ -170,13 +171,18 @@ class BizMatcher:
                     'budget': {'score': 100, 'weight': 0.15, 'detail': '...'},
                     'region': {'score': 50, 'weight': 0.15, 'detail': '...'},
                     'experience': {'score': 30, 'weight': 0.15, 'detail': '...'},
+                    'credit_sanction_adjust': {'score': 2.0, 'weight': 1.0, 'detail': '...'},
                 },
                 'recommendation': '참여 적극 권장' | '참여 검토' | '참여 부적합'
             }
         """
         if not business_profile or not bid:
             logger.warning("빈 business_profile 또는 bid가 전달됨")
-            return 0.0
+            return {
+                'total_score': 0.0,
+                'breakdown': {},
+                'recommendation': '데이터 누락',
+            }
 
         try:
             breakdown = {}
@@ -206,12 +212,81 @@ class BizMatcher:
                 business_profile, bid
             )
 
+            # 개인 AI 설정에 따른 가중치 덮어쓰기
+            if ai_settings:
+                rel_w = ai_settings.get("relevance_weight", 0.35)
+                cap_w = ai_settings.get("capacity_weight", 0.35)
+                
+                total_w = rel_w + cap_w
+                if total_w > 0:
+                    rel_norm = rel_w / total_w
+                    cap_norm = cap_w / total_w
+                else:
+                    rel_norm = 0.5
+                    cap_norm = 0.5
+                
+                # relevance_weight 쪼개기 (기본 비율 30 : 25 : 20)
+                breakdown['business_type']['weight'] = rel_norm * 0.40
+                breakdown['license']['weight'] = rel_norm * 0.333
+                breakdown['region']['weight'] = rel_norm * 0.267
+                
+                # capacity_weight 쪼개기 (기본 비율 15 : 10)
+                breakdown['budget']['weight'] = cap_norm * 0.60
+                breakdown['experience']['weight'] = cap_norm * 0.40
+
             # 종합 점수 계산 (가중 평균)
             total_score = sum(
                 breakdown[key]['score'] * breakdown[key]['weight']
                 for key in breakdown
             )
-            total_score = round(total_score, 1)
+
+            # 6. 신인도 및 적격심사 가감점 적용 (정량 평가 보정)
+            adjustment_score = 0.0
+            adjustment_details = []
+
+            # 6-1. 신용평가등급 보정
+            credit_rating = business_profile.get("credit_rating", "BBB")
+            if credit_rating:
+                credit_rating_upper = credit_rating.upper()
+                if credit_rating_upper in ["AAA", "AA+", "AA", "AA-", "A+", "A", "A-"]:
+                    adjustment_score += 2.0
+                    adjustment_details.append(f"우수 신용등급({credit_rating_upper}) 가산 (+2.0)")
+                elif credit_rating_upper in ["B+", "B", "B-", "CCC+", "C"]:
+                    adjustment_score -= 5.0
+                    adjustment_details.append(f"취약 신용등급({credit_rating_upper}) 감점 (-5.0)")
+
+            # 6-2. 우대 기업 유형 보정 (여성기업, 장애인기업, 사회적협동조합 등)
+            company_type = business_profile.get("company_type", "")
+            if company_type:
+                has_benefit = False
+                for kw in ["여성", "장애인", "사회적", "협동조합", "스타트업", "창업"]:
+                    if kw in company_type:
+                        has_benefit = True
+                        break
+                if has_benefit:
+                    adjustment_score += 3.0
+                    adjustment_details.append(f"기업우대 가산 (+3.0)")
+
+            # 6-3. 부정당업자 제재이력 감점
+            if business_profile.get("has_sanctions", False):
+                adjustment_score -= 10.0
+                adjustment_details.append("부정당업자 처분이력 감점 (-10.0)")
+
+            # 신용 가중치에 따른 가감점 배수 조절
+            if ai_settings:
+                cred_w = ai_settings.get("credit_weight", 0.30)
+                adjustment_score = adjustment_score * (cred_w / 0.30)
+
+            total_score += adjustment_score
+            # 최소 0점, 최대 100점 제한
+            total_score = max(0.0, min(100.0, round(total_score, 1)))
+
+            # 신인도 평가 항목 breakdown에 명시
+            breakdown['credit_sanction_adjust'] = {
+                'score': adjustment_score,
+                'weight': 1.0,
+                'detail': ', '.join(adjustment_details) if adjustment_details else '특이사항 없음'
+            }
 
             # 종합 권고 생성
             recommendation = self._generate_recommendation(total_score, breakdown)
@@ -229,13 +304,14 @@ class BizMatcher:
                 'recommendation': '매칭 점수 계산 실패',
             }
 
-    def find_best_match(self, businesses: list[dict], bid: dict) -> list[dict]:
+    def find_best_match(self, businesses: list[dict], bid: dict, ai_settings: Optional[dict] = None) -> list[dict]:
         """
         여러 사업자 중 해당 공고에 가장 적합한 사업자를 순위별로 반환합니다.
 
         Args:
             businesses: 사업자 프로필 목록
             bid: 공고 정보
+            ai_settings: 개인 AI 에이전트 설정
 
         Returns:
             [{'business': {...}, 'score': 85.0, 'breakdown': {...}, 'recommendation': '...'}, ...]
@@ -243,7 +319,7 @@ class BizMatcher:
         """
         results = []
         for biz in businesses:
-            match_result = self.calculate_match_score(biz, bid)
+            match_result = self.calculate_match_score(biz, bid, ai_settings)
             results.append({
                 'business': biz,
                 'score': match_result['total_score'],
@@ -255,13 +331,14 @@ class BizMatcher:
         results.sort(key=lambda x: x['score'], reverse=True)
         return results
 
-    def match_all_bids(self, businesses: list[dict], bids: list[dict]) -> list[dict]:
+    def match_all_bids(self, businesses: list[dict], bids: list[dict], ai_settings: Optional[dict] = None) -> list[dict]:
         """
         모든 공고에 대해 모든 사업자 매칭을 수행합니다.
 
         Args:
             businesses: 사업자 프로필 목록
             bids: 공고 목록
+            ai_settings: 개인 AI 에이전트 설정
 
         Returns:
             [
@@ -275,7 +352,7 @@ class BizMatcher:
         """
         results = []
         for bid in bids:
-            all_matches = self.find_best_match(businesses, bid)
+            all_matches = self.find_best_match(businesses, bid, ai_settings)
             best_match = all_matches[0] if all_matches else None
 
             results.append({
@@ -630,16 +707,20 @@ class BizMatcher:
 
         단순 점수 기준 외에 치명적 결격 사유도 확인합니다:
         - 필수 자격 미보유 → 무조건 '참여 부적합'
-        - 예산이 크게 벗어남 → '참여 검토' 이하
+        - 부정당업자 제재 이력이 있으면 경고 포함
         """
         # 치명적 결격 사유 확인
         license_score = breakdown.get('license', {}).get('score', 100)
         if license_score == 0:
             return '참여 부적합 (필수 자격 미보유)'
 
+        # 제재이력 여부 확인 (신인도 보정에 -10점 감점이 있는 경우)
+        adjust_detail = breakdown.get('credit_sanction_adjust', {}).get('detail', '')
+        has_sanctions = '부정당업자' in adjust_detail
+
         # 종합 점수 기반 판단
         if total_score >= 70:
-            return '참여 적극 권장'
+            return '참여 적극 권장' if not has_sanctions else '참여 검토 (제재이력 주의)'
         elif total_score >= 45:
             return '참여 검토'
         else:
