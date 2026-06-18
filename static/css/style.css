@@ -66,6 +66,7 @@
     --warning-color: #f59e0b;
     --danger-color: #ef4444;
     --success-color: #22c55e;
+    --bg-light: rgba(255, 255, 255, 0.04);
 }
 
 /* Skip navigation link for accessibility */
@@ -5696,6 +5697,7 @@ textarea:focus-visible {
     --bg-hover: #f0f2f5;
     --bg-input: #f8f9fc;
     --bg-sidebar: #ffffff;
+    --bg-light: #f1f5f9;
 
     /* Text */
     --text-primary: #1a1d23;
@@ -9758,4 +9760,20 @@ input[type="range"].neon-slider::-webkit-slider-thumb:hover {
     .admin-nav-tab { padding: 8px 12px; font-size: 0.78rem; }
     .admin-apikeys-grid { grid-template-columns: 1fr; }
     .admin-section-header { flex-direction: column; align-items: flex-start; }
+}
+
+/* ── 라이트 테마 수집 채널 필터 개선 (밝은 배경 및 검정 폰트 시인성 확보) ───────────────── */
+[data-theme="light"] .collect-platform-filters {
+    background: #f1f5f9 !important;
+    border: 1px dashed rgba(99, 102, 241, 0.3) !important;
+    color: #1e293b !important;
+}
+[data-theme="light"] .collect-platform-filters label {
+    color: #1e293b !important;
+}
+[data-theme="light"] .collect-platform-filters label:hover {
+    color: var(--accent-indigo) !important;
+}
+[data-theme="light"] .collect-platform-filters span {
+    color: #64748b !important;
 }
