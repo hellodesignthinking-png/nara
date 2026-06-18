@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260618v6">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260618v7">
 </head>
 <body>
     <a href="#main-content" class="skip-nav">메인 콘텐츠로 건너뛰기</a>
@@ -138,23 +138,26 @@
                 <button class="btn btn-gradient btn-sm" onclick="navigate('businesses')">🏢 회사 등록하러 가기 &rarr;</button>
             </div>
 
-            <!-- 환영 헤더 + 빠른 액션 -->
+            <!-- 환영 헤더 + 빠른 액션 (Behance 프리미엄 스타일 리뉴얼) -->
             <div class="dashboard-hero">
-                <div class="hero-content">
+                <!-- 상단: 인사말 및 퀵 액션 버튼 -->
+                <div class="hero-main-row">
                     <div class="hero-text">
                         <h1 class="hero-title">안녕하세요 👋</h1>
                         <p class="hero-subtitle" id="dashboard-date">오늘의 현황을 확인하세요</p>
-                        <p class="hero-guide" id="hero-guide">① 사업자 등록 → ② 공고 수집 → ③ AI 분석 → ④ 입찰 참여</p>
+                        <div class="hero-guide-wrap">
+                            <p class="hero-guide" id="hero-guide">① 사업자 등록 → ② 공고 수집 → ③ AI 분석 → ④ 입찰 참여</p>
+                        </div>
                     </div>
                     <div class="hero-actions">
-                        <button class="hero-btn hero-btn-primary" onclick="collectBids()">
+                        <button class="hero-btn hero-btn-primary" onclick="collectBids()" title="나의 관심 키워드로 실시간 공고를 수집합니다">
                             <span class="hero-btn-icon">📋</span>
                             <div>
                                 <strong>공고 수집</strong>
                                 <small>키워드 기반 실시간 수집</small>
                             </div>
                         </button>
-                        <button class="hero-btn hero-btn-gradient" onclick="runAnalysis()">
+                        <button class="hero-btn hero-btn-gradient" onclick="runAnalysis()" title="수집된 공고들을 내 비즈니스 프로필과 매칭하여 적격성을 평가합니다">
                             <span class="hero-btn-icon">🎯</span>
                             <div>
                                 <strong>참여 가능 분석</strong>
@@ -162,21 +165,21 @@
                             </div>
                         </button>
                     </div>
-                    <!-- 히어로 요약 위젯 -->
-                    <div class="hero-summary-widgets">
-                        <div class="hero-widget" id="hero-fav-summary">
-                            <span class="hero-widget-icon">⭐</span>
-                            <div>
-                                <div class="hero-widget-label">관심공고</div>
-                                <div class="hero-widget-val" id="hero-fav-count">0건</div>
-                            </div>
+                </div>
+                <!-- 하단: 관심공고 및 다음 액션 요약 카드 그리드 -->
+                <div class="hero-summary-widgets">
+                    <div class="hero-widget" id="hero-fav-summary" title="관심 공고 리스트로 이동합니다">
+                        <span class="hero-widget-icon">⭐</span>
+                        <div class="hero-widget-info">
+                            <div class="hero-widget-label">관심공고</div>
+                            <div class="hero-widget-val" id="hero-fav-count">0건</div>
                         </div>
-                        <div class="hero-widget" id="hero-next-action">
-                            <span class="hero-widget-icon">📌</span>
-                            <div>
-                                <div class="hero-widget-label">다음 액션</div>
-                                <div class="hero-widget-val" id="hero-next-text">공고를 수집해보세요</div>
-                            </div>
+                    </div>
+                    <div class="hero-widget" id="hero-next-action" title="가장 가까운 마감 공고의 수행 체크리스트로 이동합니다">
+                        <span class="hero-widget-icon">📌</span>
+                        <div class="hero-widget-info">
+                            <div class="hero-widget-label">다음 액션</div>
+                            <div class="hero-widget-val" id="hero-next-text">공고를 수집해보세요</div>
                         </div>
                     </div>
                 </div>

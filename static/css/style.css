@@ -3187,31 +3187,33 @@ a:hover { text-decoration: underline; }
 /* ──────────────────────────────────────────────
    대시보드 히어로 헤더
    ────────────────────────────────────────────── */
+/* ── 대시보드 히어로 리뉴얼 (Behance 프리미엄 스타일) ── */
 .dashboard-hero {
-    margin-bottom: 24px;
-    padding: 28px 32px;
-    background: linear-gradient(135deg, rgba(99,102,241,0.1) 0%, rgba(139,92,246,0.08) 50%, rgba(6,182,212,0.06) 100%);
-    border: 1px solid rgba(99,102,241,0.15);
-    border-radius: 20px;
+    margin-bottom: 28px;
+    padding: 32px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(139, 92, 246, 0.08) 50%, rgba(6, 182, 212, 0.06) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.18);
+    border-radius: 24px;
     position: relative;
     overflow: hidden;
-}
-.dashboard-hero::before {
-    content: '';
-    position: absolute;
-    top: -50%; right: -20%;
-    width: 300px; height: 300px;
-    background: radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%);
-    pointer-events: none;
-}
-.hero-content {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
     gap: 24px;
-    position: relative;
-    z-index: 1;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.05);
 }
+
+.hero-main-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 32px;
+    width: 100%;
+}
+
+.hero-text {
+    flex: 1;
+}
+
 .hero-title {
     font-size: 1.6rem;
     margin: 0 0 4px;
@@ -3220,28 +3222,92 @@ a:hover { text-decoration: underline; }
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
+
 .hero-subtitle {
     color: var(--text-secondary);
     font-size: 0.9rem;
     margin: 0;
 }
+
+.hero-guide-wrap {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    display: inline-block;
+    max-width: 100%;
+}
+
+.hero-guide {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    margin: 0;
+    line-height: 1.5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* 온보딩 가이드 단계별 칩 */
+.onboard-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 20px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: all 0.2s ease;
+}
+.onboard-step.done {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+    border-color: rgba(16, 185, 129, 0.2);
+}
+.onboard-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 50%;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+.onboard-step.done .onboard-num {
+    background: #10b981;
+    color: #fff;
+}
+.onboard-arrow {
+    color: rgba(255,255,255,0.2);
+    font-weight: 700;
+}
+
 .hero-actions {
     display: flex;
-    gap: 12px;
+    gap: 16px;
     flex-shrink: 0;
 }
+
 .hero-btn {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 20px;
-    border-radius: 14px;
-    border: 1px solid rgba(99,102,241,0.2);
+    gap: 14px;
+    padding: 16px 24px;
+    border-radius: 16px;
+    border: 1px solid rgba(99, 102, 241, 0.25);
     cursor: pointer;
-    transition: all 0.25s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     text-align: left;
     color: var(--text-primary);
-    background: var(--bg-card);
+    background: rgba(17, 24, 39, 0.7);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 .hero-btn strong {
     display: block;
@@ -3256,6 +3322,63 @@ a:hover { text-decoration: underline; }
 .hero-btn-icon {
     font-size: 1.6rem;
 }
+
+/* 히어로 요약 위젯 그리드 */
+.hero-summary-widgets {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 16px;
+    width: 100%;
+}
+
+.hero-widget {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 24px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    transition: all 0.25s ease;
+}
+.hero-widget:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(99, 102, 241, 0.25);
+    transform: translateY(-1px);
+}
+
+.hero-widget-icon {
+    font-size: 1.6rem;
+    padding: 10px;
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.hero-widget-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.hero-widget-label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.hero-widget-val {
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .hero-btn-primary:hover {
     background: rgba(99,102,241,0.12);
     border-color: var(--accent-indigo);
@@ -5873,18 +5996,62 @@ textarea:focus-visible {
 
 /* 대시보드 히어로 라이트 */
 [data-theme="light"] .dashboard-hero {
-    background:
-        radial-gradient(ellipse at 20% 30%, rgba(99,102,241,0.08) 0%, transparent 50%),
-        radial-gradient(ellipse at 70% 60%, rgba(139,92,246,0.06) 0%, transparent 50%),
-        radial-gradient(ellipse at 50% 80%, rgba(6,182,212,0.05) 0%, transparent 50%),
-        linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(241,245,249,0.9) 100%);
-    border-color: rgba(99,102,241,0.10);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.05) 50%, rgba(6, 182, 212, 0.04) 100%) !important;
+    border-color: rgba(99, 102, 241, 0.12) !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.8) !important;
 }
 [data-theme="light"] .hero-title {
-    background: linear-gradient(135deg, #1a1d23, #4f46e5);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    background: linear-gradient(135deg, #1e293b, #4f46e5) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+[data-theme="light"] .hero-guide-wrap {
+    background: rgba(0, 0, 0, 0.02) !important;
+    border-color: rgba(0, 0, 0, 0.04) !important;
+}
+[data-theme="light"] .onboard-step {
+    background: rgba(0,0,0,0.03) !important;
+    border-color: rgba(0,0,0,0.05) !important;
+    color: #475569 !important;
+}
+[data-theme="light"] .onboard-step.done {
+    background: rgba(16, 185, 129, 0.08) !important;
+    color: #059669 !important;
+    border-color: rgba(16, 185, 129, 0.15) !important;
+}
+[data-theme="light"] .onboard-num {
+    background: rgba(0,0,0,0.06) !important;
+}
+[data-theme="light"] .onboard-step.done .onboard-num {
+    background: #10b981 !important;
+    color: #fff !important;
+}
+[data-theme="light"] .onboard-arrow {
+    color: rgba(0,0,0,0.15) !important;
+}
+[data-theme="light"] .hero-btn {
+    background: #ffffff !important;
+    border-color: rgba(99, 102, 241, 0.15) !important;
+    color: #1e293b !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.03) !important;
+}
+[data-theme="light"] .hero-btn:hover {
+    border-color: var(--accent-indigo) !important;
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.15) !important;
+}
+[data-theme="light"] .hero-widget {
+    background: #ffffff !important;
+    border-color: rgba(99, 102, 241, 0.10) !important;
+}
+[data-theme="light"] .hero-widget:hover {
+    border-color: rgba(99, 102, 241, 0.25) !important;
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.05) !important;
+}
+[data-theme="light"] .hero-widget-icon {
+    background: rgba(99, 102, 241, 0.05) !important;
+}
+[data-theme="light"] .hero-widget-val {
+    color: #1e293b !important;
 }
 
 /* 데이터 테이블 라이트 */
