@@ -8,14 +8,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260618v4">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260618v5">
 </head>
 <body>
     <a href="#main-content" class="skip-nav">메인 콘텐츠로 건너뛰기</a>
 
     <!-- ─── 사이드바 ─── -->
     <nav id="sidebar" role="navigation" aria-label="메인 네비게이션">
-        <div class="sidebar-header">
+        <div class="sidebar-header" onclick="navigate('landing')" style="cursor:pointer" title="서비스 소개 (랜딩페이지)로 이동">
             <div class="logo">
                 <img src="/static/images/bolt-nara-logo.png" alt="볼트나라" class="logo-icon-img" style="width:38px;height:38px;border-radius:10px;object-fit:cover;">
                 <div class="logo-text">
@@ -989,8 +989,9 @@
                     <a href="#metrics" onclick="event.preventDefault(); document.getElementById('metrics').scrollIntoView({behavior:'smooth'})">신뢰 지표</a>
                 </nav>
                 <div class="gnb-actions">
-                    <button class="btn btn-ghost btn-sm" onclick="openAuthModal('login')">로그인</button>
-                    <button class="btn btn-gradient btn-sm" onclick="openAuthModal('register')">시작하기</button>
+                    <button class="btn btn-ghost btn-sm landing-guest-only" onclick="openAuthModal('login')">로그인</button>
+                    <button class="btn btn-gradient btn-sm landing-guest-only" onclick="openAuthModal('register')">시작하기</button>
+                    <button class="btn btn-gradient btn-sm landing-user-only" onclick="navigate('dashboard')" style="display:none">📊 서비스 바로가기</button>
                 </div>
             </header>
 
@@ -1009,8 +1010,9 @@
                             자격 부족 시 최적의 컨소시엄 협업 파트너를 실시간 매칭하여 낙찰 가능성을 수십 배 끌어올리는 차세대 B2B 조달 매칭 솔루션입니다.
                         </p>
                         <div class="hero-cta-group">
-                            <button class="btn btn-gradient btn-lg" onclick="openAuthModal('register')" style="border-radius:12px;font-size:0.95rem;padding:16px 28px">🚀 무료로 시작하기</button>
-                            <button class="btn btn-outline btn-lg" onclick="openAuthModal('login')" style="border-radius:12px;font-size:0.95rem;padding:16px 28px;background:transparent;color:var(--text-primary);border:1px solid var(--border)">🔒 기존 계정 로그인</button>
+                            <button class="btn btn-gradient btn-lg landing-guest-only" onclick="openAuthModal('register')" style="border-radius:12px;font-size:0.95rem;padding:16px 28px">🚀 무료로 시작하기</button>
+                            <button class="btn btn-outline btn-lg landing-guest-only" onclick="openAuthModal('login')" style="border-radius:12px;font-size:0.95rem;padding:16px 28px;background:transparent;color:var(--text-primary);border:1px solid var(--border)">🔒 기존 계정 로그인</button>
+                            <button class="btn btn-gradient btn-lg landing-user-only" onclick="navigate('dashboard')" style="display:none;border-radius:12px;font-size:0.95rem;padding:16px 28px">📊 내 대시보드로 이동</button>
                         </div>
                         
                         <!-- 신뢰성 지표 그리드 -->
@@ -2582,6 +2584,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=20260618aa"></script>
+    <script src="/static/js/app.js?v=20260618ab"></script>
 </body>
 </html>

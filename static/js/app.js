@@ -1310,10 +1310,7 @@ function navigate(view) {
     if (!_currentUser && view !== 'landing') {
         view = 'landing';
     }
-    // 로그인 상태일 때 랜딩 페이지로 이동하면 대시보드로 우회
-    if (_currentUser && view === 'landing') {
-        view = 'dashboard';
-    }
+    // 로그인 상태라도 랜딩 페이지로 접속 가능하도록 우회 로직 제거
 
     state.currentView = view;
 
@@ -6713,6 +6710,10 @@ async function checkLoginStatus() {
                 if (loggedOutEl) loggedOutEl.style.display = 'none';
                 if (loggedInEl) loggedInEl.style.display = 'block';
                 if (usernameEl) usernameEl.textContent = _currentUser;
+
+                // 랜딩페이지 내 로그인 전용/비로그인 전용 버튼 토글
+                document.querySelectorAll('.landing-guest-only').forEach(el => el.style.display = 'none');
+                document.querySelectorAll('.landing-user-only').forEach(el => el.style.display = 'inline-block');
                 
                 await loadFavoritesFromServer();
                 await loadUserCompanies();
@@ -6743,6 +6744,10 @@ function _clearAuthUI() {
     const loggedInEl = document.getElementById('auth-logged-in');
     if (loggedOutEl) loggedOutEl.style.display = 'block';
     if (loggedInEl) loggedInEl.style.display = 'none';
+
+    // 랜딩페이지 내 로그인 전용/비로그인 전용 버튼 토글 (비로그인 상태로 복구)
+    document.querySelectorAll('.landing-guest-only').forEach(el => el.style.display = 'inline-block');
+    document.querySelectorAll('.landing-user-only').forEach(el => el.style.display = 'none');
     localStorage.removeItem('activeCompanyBizId');
     const container = document.getElementById('active-company-container');
     if (container) container.style.display = 'none';
@@ -6758,10 +6763,10 @@ function _clearAuthUI() {
 function updateSidebarMenu() {
     const isLoggedIn = !!_currentUser;
     
-    // 1. 랜딩 메뉴 제어 (로그인 전에는 보이고 로그인 후에는 숨김)
+    // 1. 랜딩 메뉴 제어 (로그인 후에도 항상 노출되도록 변경)
     const menuLanding = document.getElementById('menu-landing');
     if (menuLanding) {
-        menuLanding.style.display = isLoggedIn ? 'none' : 'block';
+        menuLanding.style.display = 'block';
     }
     
     // 2. 다른 일반 메뉴들 (locked 상태 제어)
