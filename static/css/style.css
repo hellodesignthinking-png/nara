@@ -5997,6 +5997,210 @@ textarea:focus-visible {
     color: #334155;
 }
 
+/* ══════════════════════════════════════════════════════
+   🌤️ 라이트 테마 가독성 전면 보완 패치 v2
+   — 배경 vs 폰트 대비 문제 일괄 수정
+   ══════════════════════════════════════════════════════ */
+
+/* ── 공고 상세 하단 그리드 ─────────────────────────── */
+[data-theme="light"] .bid-detail-content {
+    background: rgba(248, 250, 252, 0.97) !important;
+    border: 1px solid rgba(99, 102, 241, 0.1) !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04) !important;
+}
+[data-theme="light"] .bid-detail-label {
+    color: #64748b !important;
+}
+[data-theme="light"] .bid-detail-value {
+    color: #1e293b !important;
+    font-weight: 500;
+}
+[data-theme="light"] .bid-detail-actions {
+    border-top-color: rgba(99, 102, 241, 0.1) !important;
+}
+[data-theme="light"] .bid-detail-item {
+    background: transparent !important;
+}
+
+/* ── 데이터 테이블 셀 ────────────────────────────────── */
+[data-theme="light"] .data-table tbody tr {
+    background: #ffffff;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+    color: #1e293b;
+}
+[data-theme="light"] .data-table tbody tr:nth-child(even) {
+    background: #f8fafc;
+}
+[data-theme="light"] .data-table td {
+    color: #1e293b !important;
+    border-bottom-color: rgba(226, 232, 240, 0.5);
+}
+[data-theme="light"] .data-table th {
+    color: #475569 !important;
+    background: linear-gradient(135deg, #f1f5f9, #e8edf5) !important;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.1) !important;
+}
+[data-theme="light"] .table-container {
+    background: #ffffff;
+    border: 1px solid rgba(99, 102, 241, 0.08);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+}
+
+/* ── 테이블 내 텍스트 클래스 ────────────────────────── */
+[data-theme="light"] .td-title  { color: #0f172a !important; }
+[data-theme="light"] .td-org    { color: #475569 !important; }
+[data-theme="light"] .td-budget { color: #1e293b !important; font-weight: 600; }
+[data-theme="light"] .td-date   { color: #64748b !important; }
+[data-theme="light"] .td-category { color: #6366f1 !important; }
+
+/* ── 카드 공통 ──────────────────────────────────────── */
+[data-theme="light"] .card,
+[data-theme="light"] .glass-card,
+[data-theme="light"] .section-card,
+[data-theme="light"] .info-card {
+    background: #ffffff !important;
+    border: 1px solid rgba(99, 102, 241, 0.1) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04) !important;
+    color: #1e293b !important;
+}
+[data-theme="light"] .card-header,
+[data-theme="light"] .section-header {
+    color: #0f172a !important;
+    border-bottom-color: rgba(99, 102, 241, 0.08) !important;
+    background: #f8fafc !important;
+}
+[data-theme="light"] .card-title,
+[data-theme="light"] .section-title { color: #0f172a !important; }
+[data-theme="light"] .card-subtitle,
+[data-theme="light"] .section-subtitle { color: #64748b !important; }
+
+/* ── 모달 & 오버레이 ─────────────────────────────────── */
+[data-theme="light"] .modal-content,
+[data-theme="light"] .modal-body,
+[data-theme="light"] .popup-content {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    border: 1px solid rgba(99, 102, 241, 0.12) !important;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.12) !important;
+}
+[data-theme="light"] .modal-header {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.1) !important;
+}
+[data-theme="light"] .modal-footer {
+    background: #f8fafc !important;
+    border-top: 1px solid rgba(99, 102, 241, 0.1) !important;
+}
+[data-theme="light"] .modal-title { color: #0f172a !important; }
+
+/* ── 폼 요소 ─────────────────────────────────────────── */
+[data-theme="light"] .form-group label,
+[data-theme="light"] .form-label { color: #334155 !important; font-weight: 500; }
+[data-theme="light"] input[type="text"],
+[data-theme="light"] input[type="email"],
+[data-theme="light"] input[type="password"],
+[data-theme="light"] input[type="number"],
+[data-theme="light"] input[type="search"],
+[data-theme="light"] textarea,
+[data-theme="light"] select,
+[data-theme="light"] .form-input,
+[data-theme="light"] .form-select,
+[data-theme="light"] .form-control {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    border-color: rgba(99, 102, 241, 0.2) !important;
+}
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder { color: #94a3b8 !important; }
+[data-theme="light"] .form-hint,
+[data-theme="light"] .input-hint { color: #94a3b8 !important; }
+
+/* ── 뱃지 & 태그 ────────────────────────────────────── */
+[data-theme="light"] .badge,
+[data-theme="light"] .status-badge {
+    background: rgba(99, 102, 241, 0.08) !important;
+    color: #4f46e5 !important;
+    border: 1px solid rgba(99, 102, 241, 0.15) !important;
+}
+[data-theme="light"] .badge-success { background: rgba(16,185,129,0.08) !important; color: #059669 !important; border-color: rgba(16,185,129,0.2) !important; }
+[data-theme="light"] .badge-warning { background: rgba(245,158,11,0.08) !important; color: #d97706 !important; border-color: rgba(245,158,11,0.2) !important; }
+[data-theme="light"] .badge-danger  { background: rgba(239,68,68,0.08)  !important; color: #dc2626 !important; border-color: rgba(239,68,68,0.2)  !important; }
+
+/* ── 사이드바 메뉴 텍스트 ───────────────────────────── */
+[data-theme="light"] .menu-item span,
+[data-theme="light"] .menu-label { color: #475569 !important; }
+[data-theme="light"] .menu-item.active span,
+[data-theme="light"] .menu-item.active .menu-label { color: #4f46e5 !important; }
+[data-theme="light"] .sidebar-version { color: #94a3b8 !important; }
+
+/* ── 툴팁 & 드롭다운 ────────────────────────────────── */
+[data-theme="light"] .dropdown-menu {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    border: 1px solid rgba(99, 102, 241, 0.12) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
+}
+[data-theme="light"] .dropdown-item { color: #334155 !important; }
+[data-theme="light"] .dropdown-item:hover {
+    background: rgba(99, 102, 241, 0.06) !important;
+    color: #4f46e5 !important;
+}
+
+/* ── 제목/본문 계층 공통 ────────────────────────────── */
+[data-theme="light"] h1, [data-theme="light"] h2,
+[data-theme="light"] h3, [data-theme="light"] h4,
+[data-theme="light"] h5, [data-theme="light"] h6 { color: #0f172a; }
+[data-theme="light"] small,
+[data-theme="light"] .text-sm { color: #64748b !important; }
+[data-theme="light"] .text-muted { color: #94a3b8 !important; }
+[data-theme="light"] strong { color: #0f172a !important; }
+
+/* ── 스크롤바 ────────────────────────────────────────── */
+[data-theme="light"] ::-webkit-scrollbar-track { background: #f1f5f9; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.25); border-radius: 4px; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.45); }
+
+/* ── 구분선 ──────────────────────────────────────────── */
+[data-theme="light"] hr,
+[data-theme="light"] .divider { border-color: rgba(99, 102, 241, 0.1) !important; }
+
+/* ── 공고 행 hover ──────────────────────────────────── */
+[data-theme="light"] .bid-row-toggle:hover {
+    background: rgba(99, 102, 241, 0.04) !important;
+}
+[data-theme="light"] .bid-row-toggle:hover .td-title { color: #4f46e5 !important; }
+
+/* ── 빈 상태 메시지 ─────────────────────────────────── */
+[data-theme="light"] .empty-state,
+[data-theme="light"] .empty-row td { color: #94a3b8 !important; }
+
+/* ── 공지/알림 패널 ─────────────────────────────────── */
+[data-theme="light"] .notice-panel,
+[data-theme="light"] .alert-panel,
+[data-theme="light"] .info-panel {
+    background: #f8fafc !important;
+    color: #1e293b !important;
+    border-left: 3px solid #6366f1 !important;
+}
+
+/* ── 탭 UI ───────────────────────────────────────────── */
+[data-theme="light"] .tab-nav { border-bottom-color: rgba(99,102,241,0.12) !important; }
+[data-theme="light"] .tab-btn { color: #64748b !important; }
+[data-theme="light"] .tab-btn.active {
+    color: #4f46e5 !important;
+    border-bottom-color: #6366f1 !important;
+}
+[data-theme="light"] .tab-btn:hover { color: #4f46e5 !important; }
+
+/* ── 코드 블록 ───────────────────────────────────────── */
+[data-theme="light"] code,
+[data-theme="light"] pre {
+    background: #f1f5f9 !important;
+    color: #334155 !important;
+    border: 1px solid rgba(99,102,241,0.1) !important;
+}
+
 /* 실시간 시뮬레이터 라이트 테마 대응 */
 [data-theme="light"] .interactive-pricing-console {
     background: #f8fafc !important;
