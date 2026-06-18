@@ -267,15 +267,21 @@ app = FastAPI(
 # 교차 출처 요청을 허용합니다.
 # ──────────────────────────────────────────────
 
-ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:8000,http://localhost:3000,https://beige-rats-ring.loca.lt").split(",")
+CORS_ORIGINS_RAW = os.getenv("CORS_ORIGINS", "http://localhost:8000,http://localhost:3000")
+# '*' 로 설정하면 모든 오리진 허용 (Render 대시보드에서 CORS_ORIGINS=* 설정 시)
+if CORS_ORIGINS_RAW.strip() == "*":
+    ALLOWED_ORIGINS = ["*"]
+else:
+    ALLOWED_ORIGINS = [o.strip() for o in CORS_ORIGINS_RAW.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,  # 환경변수로 허용 출처 제어
-    allow_origin_regex=r"https://.*\.(loca\.lt|trycloudflare\.com)",
+    allow_origins=ALLOWED_ORIGINS,
+    # Render.com, trycloudflare.com, loca.lt 등 클라우드 도메인 자동 허용
+    allow_origin_regex=r"https://(.*\.onrender\.com|.*\.trycloudflare\.com|.*\.loca\.lt|.*\.fly\.dev)",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization", "X-Active-Company"],
 )
 
 # API Key 인증 미들웨어

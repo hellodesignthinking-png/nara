@@ -10,10 +10,14 @@ import base64
 import json
 import hmac
 import hashlib
+import os
 import time
 import logging
 from datetime import datetime
 from typing import Optional
+
+# 클라우드 운영 환경 자동 감지 (Render.com은 RENDER 환경변수를 자동 주입)
+IS_PRODUCTION = bool(os.getenv("RENDER") or os.getenv("IS_PRODUCTION"))
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from pydantic import BaseModel, EmailStr
@@ -174,15 +178,17 @@ async def login(request: UserLoginRequest, response: Response, db: DatabaseManag
         
     token = create_jwt({"sub": username})
     
-    # HttpOnly 쿠키 설정 (개발 환경: HTTP에서 동작하도록 samesite=lax, secure=False)
+    # HttpOnly 쿠키 설정
+    # - 운영(HTTPS): secure=True, samesite=none  → 크로스 도메인 쿠키 허용
+    # - 개발(HTTP):  secure=False, samesite=lax  → 로컬 HTTP 동작
     response.set_cookie(
         key="access_token",
         value=token,
         httponly=True,
         max_age=TOKEN_EXPIRE_SECONDS,
         expires=TOKEN_EXPIRE_SECONDS,
-        samesite="lax",
-        secure=False,
+        samesite="none" if IS_PRODUCTION else "lax",
+        secure=IS_PRODUCTION,
         path="/",
     )
     
@@ -194,7 +200,12 @@ async def logout(response: Response):
     """
     HttpOnly 쿠키로 발급된 JWT 토큰을 만료시켜 로그아웃을 처리합니다.
     """
-    response.delete_cookie(key="access_token", path="/", samesite="lax")
+    response.delete_cookie(
+        key="access_token",
+        path="/",
+        samesite="none" if IS_PRODUCTION else "lax",
+        secure=IS_PRODUCTION,
+    )
     return {"message": "로그아웃되었습니다."}
 
 @router.get("/me", summary="현재 로그인 유저 정보 조회")

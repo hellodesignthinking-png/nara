@@ -1,5 +1,6 @@
 # Render.com 배포 설정 (Blueprint)
 # https://render.com/docs/blueprint-spec
+# GitHub push 시 자동 재배포됩니다.
 
 services:
   - type: web
@@ -7,31 +8,54 @@ services:
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
-    disk:
-      name: nara-data
-      mountPath: /app/data
-      sizeGB: 1
+    # ✅ Supabase PostgreSQL을 사용하므로 disk 마운트 불필요
+    # (disk는 SQLite 사용 시에만 필요)
     envVars:
+      # ── 서버 설정 ──────────────────────────────
       - key: PORT
         value: "8000"
+      - key: IS_PRODUCTION
+        value: "true"
+      - key: CORS_ORIGINS
+        value: "*"
+
+      # ── 스케줄러 ───────────────────────────────
       - key: SCHEDULER_ENABLED
         value: "true"
       - key: SCHEDULE_HOUR
         value: "8"
       - key: SCHEDULE_MINUTE
         value: "0"
-      # 아래 환경변수는 Render 대시보드에서 직접 설정하세요
-      - key: DATA_GO_KR_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
+
+      # ── LLM 설정 ──────────────────────────────
       - key: LLM_ENGINE
         value: "gemini"
+      - key: GEMINI_MODEL
+        value: "gemini-2.5-flash"
+
+      # ── 아래 환경변수는 Render 대시보드에서 직접 입력하세요 ──
+      # Render Dashboard > Environment > Add Environment Variable
+
+      - key: SUPABASE_DB_URL
+        sync: false
+
+      - key: DATA_GO_KR_API_KEY
+        sync: false
+
+      - key: GEMINI_API_KEY
+        sync: false
+
       - key: OPENAI_API_KEY
         sync: false
+
       - key: NAVER_CLIENT_ID
         sync: false
+
       - key: NAVER_CLIENT_SECRET
         sync: false
-      - key: CORS_ORIGINS
-        value: "*"
+
+      - key: KEYWORDS
+        value: "AI,인공지능,데이터,마케팅,컨설팅,SW개발,플랫폼,시스템,용역"
+
+      - key: MIN_RELEVANCE_SCORE
+        value: "30"
