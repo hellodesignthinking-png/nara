@@ -108,7 +108,7 @@ class UniversalBidCollector(BaseCollector):
                 logger.error("UniversalCollector: 서울문화재단 수집 실패: %s", e)
 
         # 5. 한국콘텐츠진흥원 (KOCCA)
-        if 'kocca' in target_platforms:
+        if collect_all or 'kocca' in target_platforms:
             try:
                 logger.info("UniversalCollector: 콘텐츠진흥원(KOCCA) 공고 수집 중...")
                 kocca_bids = self.culture_collector.collect_kocca(start_date, end_date)
@@ -118,7 +118,7 @@ class UniversalBidCollector(BaseCollector):
                 logger.error("UniversalCollector: 콘텐츠진흥원 수집 실패: %s", e)
 
         # 6. e나라도움 / 보조금24
-        if 'e_naradoum' in target_platforms:
+        if collect_all or 'e_naradoum' in target_platforms:
             try:
                 logger.info("UniversalCollector: e나라도움 보조금 공모 수집 중...")
                 enara_bids = self.culture_collector.collect_e_naradoum(start_date, end_date)
@@ -148,7 +148,7 @@ class UniversalBidCollector(BaseCollector):
                 logger.error("UniversalCollector: 공예디자인진흥원 수집 실패: %s", e)
 
         # 9. 한국관광공사
-        if 'visitkorea' in target_platforms:
+        if collect_all or 'visitkorea' in target_platforms:
             try:
                 logger.info("UniversalCollector: 한국관광공사 공고 수집 중...")
                 kto_bids = self.culture_collector.collect_visitkorea(start_date, end_date)
@@ -158,7 +158,7 @@ class UniversalBidCollector(BaseCollector):
                 logger.error("UniversalCollector: 한국관광공사 수집 실패: %s", e)
 
         # 10. LH 한국토지주택공사
-        if 'lh' in target_platforms:
+        if collect_all or 'lh' in target_platforms:
             try:
                 logger.info("UniversalCollector: LH 전자조달 공고 수집 중...")
                 lh_bids = self.culture_collector.collect_lh(start_date, end_date)
@@ -168,7 +168,7 @@ class UniversalBidCollector(BaseCollector):
                 logger.error("UniversalCollector: LH 전자조달 수집 실패: %s", e)
 
         # 11. 한국연구재단 (NRF)
-        if 'nrf' in target_platforms:
+        if collect_all or 'nrf' in target_platforms:
             try:
                 logger.info("UniversalCollector: 한국연구재단(NRF) 공고 수집 중...")
                 nrf_bids = self.culture_collector.collect_nrf(start_date, end_date)
@@ -178,4 +178,3 @@ class UniversalBidCollector(BaseCollector):
                 logger.error("UniversalCollector: 한국연구재단 수집 실패: %s", e)
 
         return all_bids
-

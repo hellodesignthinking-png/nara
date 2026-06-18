@@ -98,23 +98,26 @@ async def scheduled_analysis_job() -> dict:
     all_bids = []
     seen_nos = set()
 
-    # ── 1단계: 오늘 전체 공고 광범위 수집 (공유 캐시용) ──────────────
+    # ── 1단계: 최근 3일 전체 공고 광범위 수집 (공유 캐시용) ──────────────
+    #    Render 무료 플랜은 스핀다운으로 스케줄을 놓칠 수 있으므로
+    #    최근 3일 수집으로 누락 방지
     try:
         collector = UniversalBidCollector(config)
-        start_dt = kst_now.strftime("%Y%m%d")
-        end_dt = kst_now.strftime("%Y%m%d")
+        from datetime import timedelta as td
+        start_3d = (kst_now - td(days=2)).strftime("%Y%m%d")
+        end_today = kst_now.strftime("%Y%m%d")
 
-        logger.info("📥 오늘 전체 공고 수집 중 (공유 캐시)...")
+        logger.info("📥 최근 3일 전체 공고 수집 중 (%s ~ %s)...", start_3d, end_today)
         today_bids = await asyncio.to_thread(
-            collector.collect_all_sources, start_dt, end_dt, []
+            collector.collect_all_sources, start_3d, end_today, []
         )
         for b in today_bids:
             if b.bid_ntce_no not in seen_nos:
                 seen_nos.add(b.bid_ntce_no)
                 all_bids.append(b)
 
-        logger.info("📋 오늘 전체 공고 수집: %d건", len(today_bids))
-        result_summary["collected"] = len(today_bids)
+        logger.info("📋 최근 3일 전체 공고 수집: %d건 (중복 제거 후 %d건)", len(today_bids), len(all_bids))
+        result_summary["collected"] = len(all_bids)
 
     except Exception as e:
         logger.warning("전체 공고 수집 실패 (키워드 수집으로 계속): %s", e)

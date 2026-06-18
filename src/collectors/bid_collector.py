@@ -24,7 +24,7 @@ BID_API_URL = (
     "https://apis.data.go.kr/1230000/"
     "ad/BidPublicInfoService/getBidPblancListInfoServc"
 )
-DEFAULT_NUM_OF_ROWS = 100  # 한 페이지당 최대 건수
+DEFAULT_NUM_OF_ROWS = 999  # 한 페이지당 최대 건수 (API 허용 최대)
 MAX_PAGES = 100  # 최대 페이지 수 (무한 루프 방지)
 
 
@@ -50,20 +50,27 @@ class BidCollector(BaseCollector):
             config: Config 객체 (data_go_kr_api_key 포함)
         """
         super().__init__(config.data_go_kr_api_key)
-        self.page_delay = 0.3  # 페이지 간 대기 시간(초)
+        self.page_delay = 0.15  # 페이지 간 대기 시간(초)
 
-    def collect_today_bids(self) -> list[BidAnnouncement]:
+    def collect_today_bids(self, days: int = 3) -> list[BidAnnouncement]:
         """
-        오늘 등록된 용역 입찰공고를 수집합니다.
+        최근 N일간 등록된 전체 용역 입찰공고를 수집합니다.
+
+        Args:
+            days: 수집할 기간 (기본 3일 — 공유 캐시 DB 누락 방지)
 
         Returns:
-            오늘자 BidAnnouncement 리스트
+            최근 N일간 BidAnnouncement 리스트
         """
         today = datetime.now(tz=ZoneInfo("Asia/Seoul"))
-        start_date = today.strftime("%Y%m%d") + "0000"
+        start_dt = today - timedelta(days=days - 1)
+        start_date = start_dt.strftime("%Y%m%d") + "0000"
         end_date = today.strftime("%Y%m%d") + "2359"
 
-        logger.info("오늘자 입찰공고 수집 시작: %s", today.strftime("%Y-%m-%d"))
+        logger.info(
+            "전체 입찰공고 수집 시작: %s ~ %s (최근 %d일)",
+            start_dt.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d"), days
+        )
 
         params = {
             "ServiceKey": self.api_key,
@@ -77,7 +84,7 @@ class BidCollector(BaseCollector):
         }
 
         bids = self._fetch_all_pages(params)
-        logger.info("오늘자 입찰공고 수집 완료: %d건", len(bids))
+        logger.info("전체 입찰공고 수집 완료: %d건 (최근 %d일)", len(bids), days)
         return bids
 
     def collect_bids_by_date(

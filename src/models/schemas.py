@@ -218,6 +218,16 @@ class BidAnnouncement:
     @classmethod
     def from_dict(cls, data: dict) -> "BidAnnouncement":
         """딕셔너리에서 BidAnnouncement 객체를 생성합니다."""
+        # 카테고리: 여러 API 필드에서 추출 (우선순위 체인)
+        category = (
+            data.get("category")
+            or data.get("industryCdNm")        # 업종분류명
+            or data.get("ntceKindNm")          # 공고종류명 (용역, 물품, 공사 등)
+            or data.get("prdctClsfcNoNm")      # 물품분류명
+            or data.get("cntrctCnstwkTyNm")    # 계약공사유형
+            or data.get("bidClsfcNm")          # 입찰분류명
+            or None
+        )
         return cls(
             bid_ntce_no=data.get("bid_ntce_no", data.get("bidNtceNo", "")),
             bid_ntce_ord=data.get("bid_ntce_ord", data.get("bidNtceOrd")),
@@ -227,7 +237,7 @@ class BidAnnouncement:
             budget=data.get("budget", data.get("presmptPrce")),
             bid_begin_dt=data.get("bid_begin_dt", data.get("bidBeginDt")),
             bid_close_dt=data.get("bid_close_dt", data.get("bidClseDt")),
-            category=data.get("category", data.get("industryCdNm")),
+            category=category,
             bid_method=data.get("bid_method", data.get("bidMethdNm")),
             contract_method=data.get("contract_method", data.get("cntrctMthdNm")),
             region=data.get("region", data.get("rgstTyNm")),
