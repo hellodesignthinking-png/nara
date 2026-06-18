@@ -9565,3 +9565,180 @@ input[type="range"].neon-slider::-webkit-slider-thumb:hover {
     background: currentColor;
     animation: blinkLed 0.8s infinite steps(2, start);
 }
+
+/* ══════════════════════════════════════════════════════
+   🛡️ 관리자 대시보드 전용 스타일
+   ══════════════════════════════════════════════════════ */
+
+/* ── 탭 내비게이션 ───────────────────────────────────── */
+.admin-nav-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+    padding: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+}
+.admin-nav-tab {
+    padding: 10px 20px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    font-family: inherit;
+}
+.admin-nav-tab:hover {
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--text-primary);
+}
+.admin-nav-tab.active {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+}
+
+/* ── 섹션 헤더 ───────────────────────────────────────── */
+.admin-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.admin-section-header h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+.admin-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ── API 키 카드 그리드 ───────────────────────────────── */
+.admin-apikeys-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+}
+.admin-apikey-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+    transition: all 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.admin-apikey-card:hover {
+    border-color: rgba(99, 102, 241, 0.35);
+    box-shadow: 0 6px 24px rgba(99, 102, 241, 0.1);
+    transform: translateY(-2px);
+}
+.admin-apikey-card--ai {
+    border-color: rgba(139, 92, 246, 0.25);
+    background: linear-gradient(135deg, var(--bg-card), rgba(139, 92, 246, 0.06));
+}
+.admin-apikey-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.admin-apikey-icon {
+    font-size: 1.6rem;
+    width: 46px;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(99, 102, 241, 0.1);
+    border-radius: 12px;
+    flex-shrink: 0;
+}
+.admin-apikey-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.admin-apikey-desc {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.admin-apikey-status {
+    margin-left: auto;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.admin-apikey-masked {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    letter-spacing: 0.03em;
+}
+
+/* ── 라이트 테마 대응 ────────────────────────────────── */
+[data-theme="light"] .admin-nav-tabs {
+    background: #f8fafc;
+    border-color: rgba(99, 102, 241, 0.1);
+}
+[data-theme="light"] .admin-nav-tab {
+    color: #475569;
+}
+[data-theme="light"] .admin-nav-tab:hover {
+    background: rgba(99, 102, 241, 0.06);
+    color: #4f46e5;
+}
+[data-theme="light"] .admin-apikey-card {
+    background: #ffffff;
+    border-color: rgba(99, 102, 241, 0.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+[data-theme="light"] .admin-apikey-card:hover {
+    border-color: rgba(99, 102, 241, 0.25);
+    box-shadow: 0 6px 20px rgba(99,102,241,0.08);
+}
+[data-theme="light"] .admin-apikey-card--ai {
+    background: linear-gradient(135deg, #ffffff, rgba(139,92,246,0.03));
+    border-color: rgba(139,92,246,0.15);
+}
+[data-theme="light"] .admin-apikey-icon {
+    background: rgba(99, 102, 241, 0.07);
+}
+[data-theme="light"] .admin-apikey-name { color: #0f172a; }
+[data-theme="light"] .admin-apikey-desc { color: #94a3b8; }
+[data-theme="light"] .admin-apikey-masked {
+    background: #f8fafc;
+    border-color: rgba(99,102,241,0.08);
+    color: #64748b;
+}
+[data-theme="light"] .admin-section-header h3 { color: #0f172a; }
+[data-theme="light"] .admin-nav-tab.active {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+}
+
+/* ── 반응형 ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .admin-nav-tabs { gap: 4px; padding: 4px; }
+    .admin-nav-tab { padding: 8px 12px; font-size: 0.78rem; }
+    .admin-apikeys-grid { grid-template-columns: 1fr; }
+    .admin-section-header { flex-direction: column; align-items: flex-start; }
+}

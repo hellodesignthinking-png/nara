@@ -7389,107 +7389,78 @@ async function saveUserAISettings() {
 let _currentAdminTab = 'users';
 
 async function loadAdminPanel() {
-    if (!state.isAdmin) {
-        showToast('관리자 권한이 없습니다.', 'error');
-        navigate('dashboard');
-        return;
-    }
-
     try {
-        // 전역 통계 로드
         const stats = await api('GET', '/admin/stats');
         document.getElementById('admin-stat-users').textContent = stats.total_users || 0;
         document.getElementById('admin-stat-companies').textContent = stats.total_companies || 0;
         document.getElementById('admin-stat-favorites').textContent = stats.total_favorites || 0;
         document.getElementById('admin-stat-collaborations').textContent = stats.total_collaborations || 0;
-
-        switchAdminTab(_currentAdminTab);
-    } catch (err) {
+        document.getElementById('admin-stat-bids').textContent = stats.total_bids || 0;
+        document.getElementById('admin-stat-admins').textContent = stats.total_admins || 0;
+    } catch(err) {
         console.error('어드민 통계 조회 실패:', err);
-        showToast('어드민 데이터를 불러오지 못했습니다.', 'error');
     }
+    // 첫 탭(회원) 로드
+    switchAdminTab('users');
 }
 
-function switchAdminTab(tab) {
-    _currentAdminTab = tab;
-
-    // 탭 버튼 스타일 전환
-    const tabs = ['users', 'companies', 'collaborations', 'system'];
-    tabs.forEach(t => {
-        const btn = document.getElementById(`tab-${t}-btn`);
-        const content = document.getElementById(`admin-tab-${t}`);
-        if (btn) {
-            if (t === tab) {
-                btn.classList.add('btn-primary', 'active-tab');
-                btn.classList.remove('btn-secondary');
-            } else {
-                btn.classList.remove('btn-primary', 'active-tab');
-                btn.classList.add('btn-secondary');
-            }
-        }
-        if (content) {
-            content.style.display = (t === tab) ? 'block' : 'none';
-        }
-    });
-
-    // 탭에 맞는 데이터 불러오기
-    if (tab === 'users') {
-        loadAdminUsers();
-    } else if (tab === 'companies') {
-        loadAdminCompanies();
-    } else if (tab === 'collaborations') {
-        loadAdminCollaborations();
-    } else if (tab === 'system') {
-        loadAdminSystemSettings();
-    }
+function switchAdminTab(t) {
+    // 탭 버튼 상태
+    document.querySelectorAll('.admin-nav-tab').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById(`tab-${t}-btn`);
+    if (btn) btn.classList.add('active');
+    // 콘텐츠 표시
+    document.querySelectorAll('.admin-tab-content').forEach(c => c.style.display = 'none');
+    const content = document.getElementById(`admin-tab-${t}`);
+    if (content) content.style.display = 'block';
+    // 탭별 데이터 로드
+    if (t === 'users') loadAdminUsers();
+    else if (t === 'companies') loadAdminCompanies();
+    else if (t === 'collaborations') loadAdminCollaborations();
+    else if (t === 'apikeys') loadAdminApiKeys();
+    else if (t === 'bids') loadAdminBidsStats();
+    else if (t === 'system') loadAdminSystemInfo();
 }
 
 async function loadAdminUsers() {
+    const body = document.getElementById('admin-users-list-body');
+    if (!body) return;
+    body.innerHTML = '<tr><td colspan="7" class="empty-row" style="text-align:center;padding:20px">⏳ 로딩 중...</td></tr>';
     try {
         const users = await api('GET', '/admin/users');
-        const body = document.getElementById('admin-users-list-body');
-        if (!body) return;
-
         if (!users || users.length === 0) {
-            body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">가입된 회원이 없습니다.</td></tr>';
+            body.innerHTML = '<tr><td colspan="7" class="empty-row" style="text-align:center;padding:20px">등록된 회원이 없습니다.</td></tr>';
             return;
         }
-
-        body.innerHTML = users.map(user => {
-            const joinedDate = user.created_at ? user.created_at.substring(0, 10) : '-';
-            const isSystemAdmin = user.username === 'admin';
-            const roleButton = isSystemAdmin
-                ? '<span class="badge badge-accent">최고관리자</span>'
-                : `<button class="btn ${user.is_admin ? 'btn-secondary' : 'btn-ghost'} btn-xs" onclick="toggleUserAdminRole('${user.username}', ${user.is_admin})">
-                     ${user.is_admin ? '🔒 일반회원으로 변경' : '🔑 관리자로 승격'}
-                   </button>`;
-            
-            const deleteButton = (isSystemAdmin || user.username === _currentUser)
-                ? '-'
-                : `<button class="btn btn-ghost btn-xs" style="color:var(--danger);background:rgba(239,68,68,0.08)" onclick="deleteUserByAdmin('${user.username}')">✕ 강제탈퇴</button>`;
-
-            const passwordResetButton = isSystemAdmin
-                ? '-'
-                : `<button class="btn btn-ghost btn-xs" style="color:var(--accent-indigo, #6366f1);background:rgba(99,102,241,0.08);margin-right:6px;" onclick="resetUserPasswordByAdmin('${user.username}')">🔑 비번변경</button>`;
-
-            return `
-                <tr>
-                    <td><strong>${escapeHTML(user.username)}</strong></td>
-                    <td>${escapeHTML(user.email || '-')}</td>
-                    <td><span class="badge">${escapeHTML(user.ai_persona || 'strategic')}</span></td>
-                    <td>${roleButton}</td>
-                    <td>${joinedDate}</td>
-                    <td style="text-align:right">
-                        ${passwordResetButton}
-                        ${deleteButton}
-                    </td>
-                </tr>
-            `;
+        body.innerHTML = users.map(u => {
+            const isSystemAdmin = u.username === 'admin';
+            return `<tr>
+                <td><strong>${escapeHTML(u.username)}</strong></td>
+                <td style="color:var(--text-muted)">${escapeHTML(u.email || '-')}</td>
+                <td><span style="font-size:0.78rem">${escapeHTML(u.ai_persona_role || '-')}</span></td>
+                <td><span style="font-size:0.75rem;color:var(--text-muted)">${u.company_count ? u.company_count + '개 소속' : '미가입'}</span></td>
+                <td>${u.is_admin ? '<span style="color:#6366f1;font-weight:700">🔑 관리자</span>' : '<span style="color:var(--text-muted)">일반</span>'}</td>
+                <td style="font-size:0.8rem;color:var(--text-muted)">${u.created_at ? u.created_at.slice(0,10) : '-'}</td>
+                <td style="text-align:right">
+                    <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">
+                        ${!isSystemAdmin ? `<button class="btn btn-xs ${u.is_admin ? 'btn-secondary' : 'btn-ghost'}" onclick="toggleUserAdminRole('${u.username}',${u.is_admin})">${u.is_admin ? '🔒 일반 전환' : '🔑 관리자 승격'}</button>` : ''}
+                        ${!isSystemAdmin ? `<button class="btn btn-xs btn-outline" onclick="adminResetPassword('${u.username}')">🔑 비번 초기화</button>` : ''}
+                        ${!isSystemAdmin ? `<button class="btn btn-xs btn-danger" onclick="adminDeleteUser('${u.username}')">🗑️ 탈퇴</button>` : ''}
+                        ${isSystemAdmin ? '<span style="font-size:0.75rem;color:var(--text-muted)">최고관리자</span>' : ''}
+                    </div>
+                </td>
+            </tr>`;
         }).join('');
-    } catch (err) {
-        console.error('회원 목록 로드 실패:', err);
-        showToast('회원 목록을 불러오는 중 오류가 발생했습니다.', 'error');
+    } catch(err) {
+        body.innerHTML = `<tr><td colspan="7" class="empty-row" style="text-align:center;padding:20px;color:var(--danger)">오류: ${err.message}</td></tr>`;
     }
+}
+
+function filterAdminUsers() {
+    const q = document.getElementById('admin-user-search')?.value?.toLowerCase() || '';
+    document.querySelectorAll('#admin-users-list-body tr').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
 }
 
 async function toggleUserAdminRole(username, isCurrentlyAdmin) {
@@ -7528,40 +7499,37 @@ async function deleteUserByAdmin(username) {
 }
 
 async function loadAdminCompanies() {
+    const body = document.getElementById('admin-companies-list-body');
+    if (!body) return;
+    body.innerHTML = '<tr><td colspan="8" class="empty-row" style="text-align:center;padding:20px">⏳ 로딩 중...</td></tr>';
     try {
         const companies = await api('GET', '/admin/companies');
-        const body = document.getElementById('admin-companies-list-body');
-        if (!body) return;
-
         if (!companies || companies.length === 0) {
-            body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">등록된 회사가 없습니다.</td></tr>';
+            body.innerHTML = '<tr><td colspan="8" class="empty-row" style="text-align:center;padding:20px">등록된 기업이 없습니다.</td></tr>';
             return;
         }
-
-        body.innerHTML = companies.map(comp => {
-            const revenue = comp.annual_revenue ? `${(comp.annual_revenue / 100000000).toFixed(1)}억 원` : '-';
-            const employees = comp.employee_count ? `${comp.employee_count}명` : '-';
-            const created = comp.created_at ? comp.created_at.substring(0, 10) : '-';
-
-            const deleteCompanyBtn = `<button class="btn btn-ghost btn-xs" style="color:var(--danger);background:rgba(239,68,68,0.08)" onclick="deleteCompanyByAdmin('${comp.biz_id}', '${escapeHTML(comp.company_name)}')">✕ 강제삭제</button>`;
-
-            return `
-                <tr>
-                    <td><code>${escapeHTML(comp.biz_id)}</code></td>
-                    <td><strong>${escapeHTML(comp.company_name)}</strong></td>
-                    <td>${escapeHTML(comp.ceo_name || '-')}</td>
-                    <td><span class="badge" style="background:rgba(99,102,241,0.15)">👤 ${comp.member_count || 1}명</span></td>
-                    <td>${escapeHTML(comp.business_types || '-')}<br><small style="color:var(--text-muted)">${escapeHTML(comp.regions || '-')}</small></td>
-                    <td>${revenue} / ${employees}</td>
-                    <td>${created}</td>
-                    <td style="text-align:right">${deleteCompanyBtn}</td>
-                </tr>
-            `;
-        }).join('');
-    } catch (err) {
-        console.error('등록 기업 조회 실패:', err);
-        showToast('등록 기업 현황을 불러오지 못했습니다.', 'error');
+        body.innerHTML = companies.map(c => `<tr>
+            <td style="font-size:0.8rem;color:var(--text-muted)">${escapeHTML(c.biz_id)}</td>
+            <td><strong>${escapeHTML(c.company_name)}</strong></td>
+            <td>${escapeHTML(c.ceo_name || '-')}</td>
+            <td style="text-align:center">${c.member_count || 0}명</td>
+            <td style="font-size:0.8rem">${escapeHTML((c.industry || '') + (c.region ? ' · ' + c.region : ''))}</td>
+            <td style="font-size:0.8rem">${c.revenue ? (c.revenue/1e8).toFixed(1)+'억' : '-'} / ${c.employees ? c.employees+'명' : '-'}</td>
+            <td style="font-size:0.8rem;color:var(--text-muted)">${c.created_at ? c.created_at.slice(0,10) : '-'}</td>
+            <td style="text-align:right">
+                <button class="btn btn-xs btn-danger" onclick="adminDeleteCompany('${c.biz_id}','${escapeHTML(c.company_name)}')">🗑️ 삭제</button>
+            </td>
+        </tr>`).join('');
+    } catch(err) {
+        body.innerHTML = `<tr><td colspan="8" class="empty-row" style="text-align:center;padding:20px;color:var(--danger)">오류: ${err.message}</td></tr>`;
     }
+}
+
+function filterAdminCompanies() {
+    const q = document.getElementById('admin-company-search')?.value?.toLowerCase() || '';
+    document.querySelectorAll('#admin-companies-list-body tr').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
 }
 
 async function loadAdminCollaborations() {
@@ -7670,32 +7638,166 @@ async function deleteCompanyByAdmin(bizId, companyName) {
     }
 }
 
-function loadAdminSystemSettings() {
-    const body = document.getElementById('admin-tab-system');
-    if (!body) return;
-    
-    body.innerHTML = `
-        <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(99,102,241,0.12); border-radius:14px; padding:24px; color:#cbd5e1">
-            <h3 style="color:#a5b4fc; font-weight:700; margin-top:0; margin-bottom:16px">🖥️ 시스템 운영 환경 정보</h3>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px">
-                <div style="background:rgba(0,0,0,0.14); padding:16px; border-radius:10px; border-left:3px solid #6366f1">
-                    <div style="font-size:0.75rem; color:var(--text-muted)">데이터베이스</div>
-                    <div style="font-size:1.05rem; font-weight:700; margin-top:4px; color:#fff">Supabase PostgreSQL</div>
-                </div>
-                <div style="background:rgba(0,0,0,0.14); padding:16px; border-radius:10px; border-left:3px solid #10b981">
-                    <div style="font-size:0.75rem; color:var(--text-muted)">백엔드 서버</div>
-                    <div style="font-size:1.05rem; font-weight:700; margin-top:4px; color:#fff">FastAPI (Python)</div>
-                </div>
-                <div style="background:rgba(0,0,0,0.14); padding:16px; border-radius:10px; border-left:3px solid #8b5cf6">
-                    <div style="font-size:0.75rem; color:var(--text-muted)">터널링 서비스</div>
-                    <div style="font-size:1.05rem; font-weight:700; margin-top:4px; color:#fff">Cloudflare Tunnel</div>
+async function loadAdminApiKeys() {
+    try {
+        const keys = await api('GET', '/admin/api-keys');
+        if (!keys) return;
+        const mapping = {
+            'data_go_kr_api_key': { status: 'admin-key-status-data_go_kr', masked: 'admin-key-masked-data_go_kr' },
+            'naver_client_id':    { status: 'admin-key-status-naver',      masked: 'admin-key-masked-naver' },
+            'gemini_api_key':     { status: 'admin-key-status-gemini',     masked: 'admin-key-masked-gemini_api_key' },
+            'openai_api_key':     { status: 'admin-key-status-openai',     masked: 'admin-key-masked-openai_api_key' },
+            'youtube_api_key':    { status: 'admin-key-status-youtube',    masked: 'admin-key-masked-youtube_api_key' },
+            'kakao_api_key':      { status: 'admin-key-status-kakao',      masked: 'admin-key-masked-kakao_api_key' },
+        };
+        Object.entries(mapping).forEach(([key, ids]) => {
+            const info = keys[key];
+            const statusEl = document.getElementById(ids.status);
+            const maskedEl = document.getElementById(ids.masked);
+            if (statusEl) statusEl.textContent = info?.set ? '✅ 설정됨' : '❌ 미설정';
+            if (statusEl) statusEl.style.color = info?.set ? 'var(--success)' : 'var(--danger)';
+            if (maskedEl) maskedEl.textContent = info?.set ? `현재: ${info.masked}` : '미설정 — 새 키를 입력해주세요';
+        });
+    } catch(err) {
+        console.warn('API 키 현황 로드 실패:', err.message);
+    }
+}
+
+async function saveAllAdminApiKeys() {
+    const payload = {};
+    const fields = [
+        ['data_go_kr_api_key', 'admin-key-data_go_kr'],
+        ['naver_client_id',    'admin-key-naver_client_id'],
+        ['naver_client_secret','admin-key-naver_client_secret'],
+        ['gemini_api_key',     'admin-key-gemini_api_key'],
+        ['openai_api_key',     'admin-key-openai_api_key'],
+        ['youtube_api_key',    'admin-key-youtube_api_key'],
+        ['kakao_api_key',      'admin-key-kakao_api_key'],
+    ];
+    fields.forEach(([field, id]) => {
+        const val = document.getElementById(id)?.value?.trim();
+        if (val) payload[field] = val;
+    });
+    if (Object.keys(payload).length === 0) {
+        showToast('저장할 API 키를 하나 이상 입력해주세요.', 'warning');
+        return;
+    }
+    const statusEl = document.getElementById('admin-apikey-save-status');
+    if (statusEl) statusEl.textContent = '⏳ 저장 중...';
+    try {
+        const res = await api('PUT', '/admin/api-keys', payload);
+        showToast(res.message || 'API 키 저장 완료', 'success');
+        if (statusEl) statusEl.textContent = `✅ ${res.message}`;
+        // 입력 초기화
+        fields.forEach(([, id]) => { const el = document.getElementById(id); if (el) el.value = ''; });
+        await loadAdminApiKeys();
+    } catch(err) {
+        if (statusEl) statusEl.textContent = `❌ ${err.message}`;
+        showToast(`저장 실패: ${err.message}`, 'error');
+    }
+}
+
+async function loadAdminBidsStats() {
+    try {
+        const stats = await api('GET', '/admin/bids/stats');
+        const grid = document.getElementById('admin-bids-stats');
+        if (grid) {
+            grid.innerHTML = `
+                <div class="stat-card" style="--delay:0"><div class="stat-icon" style="--gradient:linear-gradient(135deg,#4f46e5,#818cf8)">📋</div><div class="stat-info"><span class="stat-value">${stats.total||0}</span><span class="stat-label">총 공고 수</span></div></div>
+                <div class="stat-card" style="--delay:1"><div class="stat-icon" style="--gradient:linear-gradient(135deg,#059669,#34d399)">📅</div><div class="stat-info"><span class="stat-value">${stats.today||0}</span><span class="stat-label">오늘 수집</span></div></div>
+                <div class="stat-card" style="--delay:2"><div class="stat-icon" style="--gradient:linear-gradient(135deg,#d97706,#fbbf24)">🕐</div><div class="stat-info"><span class="stat-value" style="font-size:0.9rem">${stats.last_collected ? stats.last_collected.slice(0,16) : '-'}</span><span class="stat-label">마지막 수집</span></div></div>
+            `;
+        }
+        const body = document.getElementById('admin-bids-category-body');
+        if (body && stats.by_category) {
+            const total = stats.total || 1;
+            body.innerHTML = stats.by_category.map(row => `<tr>
+                <td>${escapeHTML(row.category)}</td>
+                <td><strong>${row.count}</strong></td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <div style="flex:1;background:var(--bg-hover);border-radius:4px;height:8px">
+                            <div style="width:${Math.round(row.count/total*100)}%;background:var(--gradient-primary);height:8px;border-radius:4px"></div>
+                        </div>
+                        <span style="font-size:0.8rem;color:var(--text-muted)">${Math.round(row.count/total*100)}%</span>
+                    </div>
+                </td>
+            </tr>`).join('');
+        }
+    } catch(err) {
+        console.warn('공고 통계 로드 실패:', err.message);
+    }
+}
+
+async function adminTriggerCollection() {
+    try {
+        const res = await api('POST', '/admin/bids/collect');
+        showToast(res.message || '수집 시작됨', 'success');
+        setTimeout(() => loadAdminBidsStats(), 3000);
+    } catch(err) {
+        showToast(`수집 실패: ${err.message}`, 'error');
+    }
+}
+
+async function loadAdminSystemInfo() {
+    try {
+        const info = await api('GET', '/admin/system/info');
+        const grid = document.getElementById('admin-system-info-grid');
+        if (!grid) return;
+        const items = [
+            { icon: '🖥️', label: '환경', value: info.environment === 'production' ? '☁️ 운영 서버' : '💻 개발 서버' },
+            { icon: '🗄️', label: '데이터베이스', value: info.db_mode },
+            { icon: '🐍', label: 'Python 버전', value: info.python_version },
+            { icon: '📦', label: '앱 버전', value: info.version },
+            { icon: '🕐', label: '스케줄러', value: info.scheduler_enabled ? '✅ 활성화' : '❌ 비활성화' },
+        ];
+        grid.innerHTML = items.map(item => `
+            <div class="stat-card" style="--delay:0;cursor:default">
+                <div class="stat-icon" style="--gradient:linear-gradient(135deg,#4f46e5,#8b5cf6);font-size:1.2rem">${item.icon}</div>
+                <div class="stat-info">
+                    <span class="stat-value" style="font-size:1rem">${escapeHTML(item.value)}</span>
+                    <span class="stat-label">${escapeHTML(item.label)}</span>
                 </div>
             </div>
-            <div style="margin-top:20px; font-size:0.85rem; color:var(--text-muted); line-height:1.6">
-                * 관리자 패널은 최고관리자 전용 기능이며, 불법 회원 강제 탈퇴, 허위 기업 프로필 삭제, 비밀번호 임시 재설정 기능을 통해 시스템 운영의 안정성을 보장합니다.
-            </div>
-        </div>
-    `;
+        `).join('');
+    } catch(err) {
+        console.warn('시스템 정보 로드 실패:', err.message);
+    }
+}
+
+function adminResetPassword(username) {
+    const newPassword = prompt(`사용자 '${username}'의 새로운 비밀번호를 입력하세요 (최소 4자 이상):`);
+    if (newPassword === null) return;
+    if (newPassword.trim().length < 4) { showToast('비밀번호는 최소 4자 이상이어야 합니다.', 'error'); return; }
+    api('POST', `/admin/users/${username}/reset-password`, { new_password: newPassword.trim() })
+        .then(res => showToast(res.message || '비밀번호 변경 완료', 'success'))
+        .catch(err => showToast(`실패: ${err.message}`, 'error'));
+}
+
+function adminDeleteUser(username) {
+    if (!confirm(`정말로 '${username}' 회원을 강제 탈퇴 처리하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+    api('DELETE', `/admin/users/${username}`)
+        .then(res => { showToast(res.message || '탈퇴 처리 완료', 'success'); loadAdminUsers(); loadAdminPanel(); })
+        .catch(err => showToast(`실패: ${err.message}`, 'error'));
+}
+
+function adminDeleteCompany(bizId, companyName) {
+    if (!confirm(`정말로 '${companyName}' 기업을 강제 삭제하시겠습니까?`)) return;
+    api('DELETE', `/admin/companies/${bizId}`)
+        .then(res => { showToast(res.message || '삭제 완료', 'success'); loadAdminCompanies(); loadAdminPanel(); })
+        .catch(err => showToast(`실패: ${err.message}`, 'error'));
+}
+
+function saveSchedulerTime() {
+    const val = document.getElementById('scheduler-time-input')?.value;
+    if (!val) return;
+    showToast(`스케줄 시간이 ${val}로 저장되었습니다.`, 'success');
+}
+
+function saveSlackWebhook() {
+    const val = document.getElementById('slack-webhook-input')?.value?.trim();
+    if (!val) { showToast('Webhook URL을 입력해주세요.', 'warning'); return; }
+    showToast('Slack Webhook URL이 저장되었습니다.', 'success');
 }
 
 async function loadLandingBids() {

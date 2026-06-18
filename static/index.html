@@ -1220,97 +1220,124 @@
         <section id="view-admin" class="view">
             <div class="view-header">
                 <div>
-                    <h1 class="view-title">🛡️ 관리자 관리</h1>
-                    <p class="view-subtitle">시스템 사용자, 기업 프로필 및 다중 협업 연계 통계 모니터링</p>
+                    <h1 class="view-title">🛡️ 관리자 대시보드</h1>
+                    <p class="view-subtitle">플랫폼 전체 운영 · 회원 · 회사 · API · 시스템 통합 관리</p>
+                </div>
+                <div class="view-actions">
+                    <button class="btn btn-sm btn-outline" onclick="loadAdminPanel()">🔄 새로고침</button>
                 </div>
             </div>
 
-            <!-- 관리자 종합 통계 그리드 -->
-            <div class="stats-grid" style="margin-bottom: 24px;">
-                <div class="stat-card" style="--delay: 0">
-                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #4f46e5, #818cf8)">👥</div>
+            <!-- 종합 통계 그리드 -->
+            <div class="stats-grid" style="margin-bottom:28px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+                <div class="stat-card" style="--delay:0">
+                    <div class="stat-icon" style="--gradient:linear-gradient(135deg,#4f46e5,#818cf8)">👥</div>
                     <div class="stat-info">
                         <span class="stat-value" id="admin-stat-users">0</span>
                         <span class="stat-label">총 가입 회원</span>
                     </div>
                 </div>
-                <div class="stat-card" style="--delay: 1">
-                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #0891b2, #22d3ee)">🏢</div>
+                <div class="stat-card" style="--delay:1">
+                    <div class="stat-icon" style="--gradient:linear-gradient(135deg,#0891b2,#22d3ee)">🏢</div>
                     <div class="stat-info">
                         <span class="stat-value" id="admin-stat-companies">0</span>
-                        <span class="stat-label">등록 기업 수</span>
+                        <span class="stat-label">등록 기업</span>
                     </div>
                 </div>
-                <div class="stat-card" style="--delay: 2">
-                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #059669, #34d399)">⭐</div>
+                <div class="stat-card" style="--delay:2">
+                    <div class="stat-icon" style="--gradient:linear-gradient(135deg,#059669,#34d399)">📋</div>
                     <div class="stat-info">
-                        <span class="stat-value" id="admin-stat-favorites">0</span>
-                        <span class="stat-label">총 관심 등록 건수</span>
+                        <span class="stat-value" id="admin-stat-bids">0</span>
+                        <span class="stat-label">총 공고 수</span>
                     </div>
                 </div>
-                <div class="stat-card" style="--delay: 3">
-                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #dc2626, #f87171)">🤝</div>
+                <div class="stat-card" style="--delay:3">
+                    <div class="stat-icon" style="--gradient:linear-gradient(135deg,#dc2626,#f87171)">🤝</div>
                     <div class="stat-info">
                         <span class="stat-value" id="admin-stat-collaborations">0</span>
-                        <span class="stat-label">진행 중인 협업 건수</span>
+                        <span class="stat-label">진행 협업</span>
+                    </div>
+                </div>
+                <div class="stat-card" style="--delay:4">
+                    <div class="stat-icon" style="--gradient:linear-gradient(135deg,#d97706,#fbbf24)">⭐</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="admin-stat-favorites">0</span>
+                        <span class="stat-label">관심 등록</span>
+                    </div>
+                </div>
+                <div class="stat-card" style="--delay:5">
+                    <div class="stat-icon" style="--gradient:linear-gradient(135deg,#7c3aed,#a78bfa)">🔑</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="admin-stat-admins">0</span>
+                        <span class="stat-label">관리자 수</span>
                     </div>
                 </div>
             </div>
 
-            <!-- 탭 메뉴 -->
-            <div class="admin-tabs" style="display:flex; gap:8px; margin-bottom:20px; border-bottom:1px solid var(--border); padding-bottom:10px">
-                <button class="btn btn-primary active-tab" id="tab-users-btn" onclick="switchAdminTab('users')">👥 회원 관리</button>
-                <button class="btn btn-secondary" id="tab-companies-btn" onclick="switchAdminTab('companies')">🏢 등록 기업 현황</button>
-                <button class="btn btn-secondary" id="tab-collaborations-btn" onclick="switchAdminTab('collaborations')">🤝 공동 입찰 협업 흐름</button>
-                <button class="btn btn-secondary" id="tab-system-btn" onclick="switchAdminTab('system')">⚙️ 시스템 설정</button>
+            <!-- 탭 내비게이션 -->
+            <div class="admin-nav-tabs">
+                <button class="admin-nav-tab active" id="tab-users-btn" onclick="switchAdminTab('users')">👥 회원 관리</button>
+                <button class="admin-nav-tab" id="tab-companies-btn" onclick="switchAdminTab('companies')">🏢 기업 관리</button>
+                <button class="admin-nav-tab" id="tab-collaborations-btn" onclick="switchAdminTab('collaborations')">🤝 협업 현황</button>
+                <button class="admin-nav-tab" id="tab-apikeys-btn" onclick="switchAdminTab('apikeys')">🔑 API 키 관리</button>
+                <button class="admin-nav-tab" id="tab-bids-btn" onclick="switchAdminTab('bids')">📋 공고 현황</button>
+                <button class="admin-nav-tab" id="tab-system-btn" onclick="switchAdminTab('system')">⚙️ 시스템</button>
             </div>
 
-            <!-- 회원 관리 탭 영역 -->
+            <!-- ▶ 회원 관리 탭 -->
             <div class="admin-tab-content" id="admin-tab-users">
+                <div class="admin-section-header">
+                    <h3>👥 전체 회원 현황</h3>
+                    <div class="admin-search-bar">
+                        <input type="text" id="admin-user-search" class="form-input" placeholder="사용자 ID 또는 이메일 검색..." oninput="filterAdminUsers()" style="width:260px">
+                    </div>
+                </div>
                 <div class="table-container">
-                    <table class="data-table">
+                    <table class="data-table" id="admin-users-table">
                         <thead>
                             <tr>
                                 <th>사용자 ID</th>
                                 <th>이메일</th>
                                 <th>AI 페르소나</th>
-                                <th>관리자 여부</th>
+                                <th>가입 경로</th>
+                                <th>관리자</th>
                                 <th>가입일</th>
                                 <th style="text-align:right">작업</th>
                             </tr>
                         </thead>
-                        <tbody id="admin-users-list-body">
-                            <!-- JavaScript 동적 생성 -->
-                        </tbody>
+                        <tbody id="admin-users-list-body"></tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- 기업 관리 탭 영역 -->
+            <!-- ▶ 기업 관리 탭 -->
             <div class="admin-tab-content" id="admin-tab-companies" style="display:none">
+                <div class="admin-section-header">
+                    <h3>🏢 등록 기업 현황</h3>
+                    <input type="text" id="admin-company-search" class="form-input" placeholder="회사명 또는 사업자번호 검색..." oninput="filterAdminCompanies()" style="width:260px">
+                </div>
                 <div class="table-container">
-                    <table class="data-table">
+                    <table class="data-table" id="admin-companies-table">
                         <thead>
                             <tr>
                                 <th>사업자번호</th>
                                 <th>회사명</th>
                                 <th>대표자</th>
                                 <th>소속 회원</th>
-                                <th>업종/지역</th>
-                                <th>매출액 / 임직원</th>
+                                <th>업종 / 지역</th>
+                                <th>매출 / 임직원</th>
                                 <th>등록일</th>
                                 <th style="text-align:right">관리</th>
                             </tr>
                         </thead>
-                        <tbody id="admin-companies-list-body">
-                            <!-- JavaScript 동적 생성 -->
-                        </tbody>
+                        <tbody id="admin-companies-list-body"></tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- 협업 관리 탭 영역 -->
+            <!-- ▶ 협업 현황 탭 -->
             <div class="admin-tab-content" id="admin-tab-collaborations" style="display:none">
+                <div class="admin-section-header"><h3>🤝 공동 입찰 협업 현황</h3></div>
                 <div class="table-container">
                     <table class="data-table">
                         <thead>
@@ -1319,33 +1346,146 @@
                                 <th>공고명</th>
                                 <th>예산규모</th>
                                 <th>마감일</th>
-                                <th>관심 등록 회원 리스트 (역할 및 협업 상태)</th>
+                                <th>참여 회원 (역할/상태)</th>
                             </tr>
                         </thead>
-                        <tbody id="admin-collaborations-list-body">
-                            <!-- JavaScript 동적 생성 -->
-                        </tbody>
+                        <tbody id="admin-collaborations-list-body"></tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- 시스템 설정 탭 -->
-            <div class="admin-tab-content" id="admin-tab-system" style="display:none">
-                <div class="settings-section" style="padding:20px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:14px;margin-bottom:16px">
-                    <h2 style="font-size:1rem;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px">&#128273; API 키 관리 <span style="font-size:0.72rem;padding:2px 8px;background:rgba(239,68,68,0.12);color:#f87171;border-radius:10px">관리자 전용</span></h2>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:16px">
-                        <div><label style="display:block;font-size:0.78rem;font-weight:600;margin-bottom:4px;color:var(--text-muted)">data.go.kr API 키</label><input type="password" id="admin-api-key-data-go-kr" class="form-input" placeholder="API 키..." autocomplete="off"></div>
-                        <div><label style="display:block;font-size:0.78rem;font-weight:600;margin-bottom:4px;color:var(--text-muted)">Naver Client ID</label><input type="password" id="admin-api-key-naver-id" class="form-input" placeholder="Client ID..." autocomplete="off"></div>
-                        <div><label style="display:block;font-size:0.78rem;font-weight:600;margin-bottom:4px;color:var(--text-muted)">Naver Client Secret</label><input type="password" id="admin-api-key-naver-secret" class="form-input" placeholder="Client Secret..." autocomplete="off"></div>
-                        <div><label style="display:block;font-size:0.78rem;font-weight:600;margin-bottom:4px;color:var(--text-muted)">YouTube API 키</label><input type="password" id="admin-api-key-youtube" class="form-input" placeholder="YouTube API Key..." autocomplete="off"></div>
-                        <div><label style="display:block;font-size:0.78rem;font-weight:600;margin-bottom:4px;color:var(--text-muted)">Kakao API 키</label><input type="password" id="admin-api-key-kakao" class="form-input" placeholder="Kakao REST API Key..." autocomplete="off"></div>
+            <!-- ▶ API 키 관리 탭 -->
+            <div class="admin-tab-content" id="admin-tab-apikeys" style="display:none">
+                <div class="admin-apikeys-grid">
+
+                    <!-- 공공 데이터 API -->
+                    <div class="admin-apikey-card">
+                        <div class="admin-apikey-card-header">
+                            <span class="admin-apikey-icon">🏛️</span>
+                            <div>
+                                <div class="admin-apikey-name">공공 데이터 포털</div>
+                                <div class="admin-apikey-desc">data.go.kr — 공고 수집 핵심</div>
+                            </div>
+                            <span class="admin-apikey-status" id="admin-key-status-data_go_kr">⚪ 확인 중</span>
+                        </div>
+                        <input type="password" id="admin-key-data_go_kr" class="form-input" placeholder="새 API 키 입력..." autocomplete="off">
+                        <div class="admin-apikey-masked" id="admin-key-masked-data_go_kr">현재값 로딩 중...</div>
                     </div>
-                    <div style="display:flex;gap:8px">
-                        <button class="btn btn-primary" onclick="saveAdminApiKeys()">&#128190; API 키 저장</button>
-                        <button class="btn btn-outline btn-sm" onclick="loadAdminSystemSettings()">&#128260; 현재 값 로드</button>
+
+                    <!-- 네이버 검색 API -->
+                    <div class="admin-apikey-card">
+                        <div class="admin-apikey-card-header">
+                            <span class="admin-apikey-icon">🔍</span>
+                            <div>
+                                <div class="admin-apikey-name">네이버 검색 API</div>
+                                <div class="admin-apikey-desc">뉴스 수집 · 시장 트렌드 분석</div>
+                            </div>
+                            <span class="admin-apikey-status" id="admin-key-status-naver">⚪ 확인 중</span>
+                        </div>
+                        <input type="password" id="admin-key-naver_client_id" class="form-input" placeholder="Client ID..." autocomplete="off" style="margin-bottom:6px">
+                        <input type="password" id="admin-key-naver_client_secret" class="form-input" placeholder="Client Secret..." autocomplete="off">
+                        <div class="admin-apikey-masked" id="admin-key-masked-naver">현재값 로딩 중...</div>
                     </div>
-                    <div id="admin-system-status" style="margin-top:12px;font-size:0.82rem;color:var(--text-muted)"></div>
+
+                    <!-- Google Gemini AI -->
+                    <div class="admin-apikey-card admin-apikey-card--ai">
+                        <div class="admin-apikey-card-header">
+                            <span class="admin-apikey-icon">🤖</span>
+                            <div>
+                                <div class="admin-apikey-name">Google Gemini AI</div>
+                                <div class="admin-apikey-desc">AI 전략 분석 · 제안서 생성 (주 AI)</div>
+                            </div>
+                            <span class="admin-apikey-status" id="admin-key-status-gemini">⚪ 확인 중</span>
+                        </div>
+                        <input type="password" id="admin-key-gemini_api_key" class="form-input" placeholder="AIza... 형식의 Gemini API 키" autocomplete="off">
+                        <div class="admin-apikey-masked" id="admin-key-masked-gemini_api_key">현재값 로딩 중...</div>
+                    </div>
+
+                    <!-- OpenAI -->
+                    <div class="admin-apikey-card admin-apikey-card--ai">
+                        <div class="admin-apikey-card-header">
+                            <span class="admin-apikey-icon">✨</span>
+                            <div>
+                                <div class="admin-apikey-name">OpenAI GPT</div>
+                                <div class="admin-apikey-desc">GPT-4 · 보조 AI 분석</div>
+                            </div>
+                            <span class="admin-apikey-status" id="admin-key-status-openai">⚪ 확인 중</span>
+                        </div>
+                        <input type="password" id="admin-key-openai_api_key" class="form-input" placeholder="sk-... 형식의 OpenAI API 키" autocomplete="off">
+                        <div class="admin-apikey-masked" id="admin-key-masked-openai_api_key">현재값 로딩 중...</div>
+                    </div>
+
+                    <!-- YouTube -->
+                    <div class="admin-apikey-card">
+                        <div class="admin-apikey-card-header">
+                            <span class="admin-apikey-icon">▶️</span>
+                            <div>
+                                <div class="admin-apikey-name">YouTube Data API</div>
+                                <div class="admin-apikey-desc">교육 동영상 수집</div>
+                            </div>
+                            <span class="admin-apikey-status" id="admin-key-status-youtube">⚪ 확인 중</span>
+                        </div>
+                        <input type="password" id="admin-key-youtube_api_key" class="form-input" placeholder="YouTube API Key..." autocomplete="off">
+                        <div class="admin-apikey-masked" id="admin-key-masked-youtube_api_key">현재값 로딩 중...</div>
+                    </div>
+
+                    <!-- Kakao -->
+                    <div class="admin-apikey-card">
+                        <div class="admin-apikey-card-header">
+                            <span class="admin-apikey-icon">💬</span>
+                            <div>
+                                <div class="admin-apikey-name">Kakao API</div>
+                                <div class="admin-apikey-desc">카카오 지도 · 주소 검색</div>
+                            </div>
+                            <span class="admin-apikey-status" id="admin-key-status-kakao">⚪ 확인 중</span>
+                        </div>
+                        <input type="password" id="admin-key-kakao_api_key" class="form-input" placeholder="Kakao REST API Key..." autocomplete="off">
+                        <div class="admin-apikey-masked" id="admin-key-masked-kakao_api_key">현재값 로딩 중...</div>
+                    </div>
+
                 </div>
+
+                <div style="margin-top:24px;display:flex;gap:12px;align-items:center">
+                    <button class="btn btn-primary" onclick="saveAllAdminApiKeys()" style="min-width:140px">💾 API 키 전체 저장</button>
+                    <button class="btn btn-outline" onclick="loadAdminApiKeys()">🔄 현재 상태 새로고침</button>
+                    <span id="admin-apikey-save-status" style="font-size:0.82rem;color:var(--text-muted)"></span>
+                </div>
+            </div>
+
+            <!-- ▶ 공고 현황 탭 -->
+            <div class="admin-tab-content" id="admin-tab-bids" style="display:none">
+                <div class="admin-section-header">
+                    <h3>📋 공고 수집 현황</h3>
+                    <button class="btn btn-sm btn-primary" onclick="adminTriggerCollection()">▶ 수집 즉시 실행</button>
+                </div>
+                <div id="admin-bids-stats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px"></div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead><tr><th>카테고리</th><th>공고 수</th><th>비율</th></tr></thead>
+                        <tbody id="admin-bids-category-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ▶ 시스템 탭 -->
+            <div class="admin-tab-content" id="admin-tab-system" style="display:none">
+                <div id="admin-system-info-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:24px"></div>
+                <div class="admin-section-header"><h3>⚙️ 스케줄러 / 알림 설정</h3></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+                    <div class="ps-section" style="padding:20px">
+                        <div class="ps-section-header" style="margin-bottom:16px"><h4>🕐 자동 수집 스케줄</h4></div>
+                        <label class="form-label">수집 시각 (HH:MM)</label>
+                        <input type="time" id="scheduler-time-input" class="form-input" value="08:00" style="margin-bottom:12px">
+                        <button class="btn btn-primary btn-sm" onclick="saveSchedulerTime()">저장</button>
+                    </div>
+                    <div class="ps-section" style="padding:20px">
+                        <div class="ps-section-header" style="margin-bottom:16px"><h4>🔔 Slack 알림</h4></div>
+                        <label class="form-label">Slack Webhook URL</label>
+                        <input type="text" id="slack-webhook-input" class="form-input" placeholder="https://hooks.slack.com/..." style="margin-bottom:12px">
+                        <button class="btn btn-primary btn-sm" onclick="saveSlackWebhook()">저장</button>
+                    </div>
+                </div>
+                <div id="admin-system-status" style="font-size:0.82rem;color:var(--text-muted)"></div>
             </div>
         </section>
 
