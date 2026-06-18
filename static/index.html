@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NARA Analyzer - 나라장터 용역 자동 분석</title>
+    <title>볼트나라 BOLT NARA - 입찰공고 AI 자동 분석 플랫폼</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -17,10 +17,10 @@
     <nav id="sidebar" role="navigation" aria-label="메인 네비게이션">
         <div class="sidebar-header">
             <div class="logo">
-                <span class="logo-icon">🏛️</span>
+                <img src="/static/images/bolt-nara-logo.png" alt="볼트나라" class="logo-icon-img" style="width:38px;height:38px;border-radius:10px;object-fit:cover;">
                 <div class="logo-text">
-                    <span class="logo-title">NARA</span>
-                    <span class="logo-subtitle">Analyzer</span>
+                    <span class="logo-title">BOLT</span>
+                    <span class="logo-subtitle">NARA</span>
                 </div>
             </div>
         </div>
@@ -271,20 +271,6 @@
                 </div>
             </div>
 
-            <!-- 📺 추천 입찰/조달 교육 동영상 -->
-            <div class="youtube-education-panel" style="margin-top:20px;padding:20px;background:rgba(255,255,255,0.02);border-radius:16px;border:1px solid rgba(255,255,255,0.08)">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-                    <div>
-                        <h3 style="margin:0;font-size:1.1rem;display:flex;align-items:center;gap:6px;color:var(--text)">
-                            <span>📺</span> 추천 입찰/조달 교육 동영상
-                        </h3>
-                        <span style="font-size:0.75rem;color:var(--text-muted)">실무에 도움이 되는 입찰 및 제안서 작성 가이드</span>
-                    </div>
-                </div>
-                <div id="youtube-video-list" class="youtube-video-slider">
-                    <!-- 동적 생성 -->
-                </div>
-            </div>
 
             <!-- ⭐ 입찰 파이프라인 -->
             <div class="fav-pipeline-summary" id="fav-pipeline-summary" style="display:none">
@@ -994,8 +980,8 @@
             <!-- 🌐 GNB 탑바 모의 구현 (전문 사이트 느낌 극대화) -->
             <header class="landing-gnb">
                 <div class="gnb-logo">
-                    <span class="gnb-logo-icon">🏛️</span>
-                    <span class="gnb-logo-text">NARA Analyzer</span>
+                    <img src="/static/images/bolt-nara-logo.png" alt="볼트나라" style="width:32px;height:32px;border-radius:8px;">
+                    <span class="gnb-logo-text">BOLT NARA</span>
                 </div>
                 <nav class="gnb-links">
                     <a href="#features" onclick="event.preventDefault(); document.getElementById('features').scrollIntoView({behavior:'smooth'})">주요기능</a>
@@ -1019,7 +1005,7 @@
                             수주율을 극대화하다.
                         </h1>
                         <p class="landing-main-desc">
-                            NARA Analyzer는 나라장터의 방대한 공고 데이터를 실시간 수집 및 AI 진단하고, 
+                            볼트나라(BOLT NARA)는 나라장터의 방대한 공고 데이터를 실시간 수집 및 AI 진단하고, 
                             자격 부족 시 최적의 컨소시엄 협업 파트너를 실시간 매칭하여 낙찰 가능성을 수십 배 끌어올리는 차세대 B2B 조달 매칭 솔루션입니다.
                         </p>
                         <div class="hero-cta-group">
@@ -1122,7 +1108,7 @@
                 <!-- 🌟 핵심 특징 섹션 (Features Detail Block) -->
                 <div class="landing-features-detail" id="features">
                     <h2 class="section-title-premium">Platform Core Value</h2>
-                    <p class="section-subtitle-premium">조달 성공을 완성하는 NARA Analyzer만의 핵심 엔터프라이즈 기능</p>
+                    <p class="section-subtitle-premium">조달 성공을 완성하는 볼트나라만의 핵심 엔터프라이즈 기능</p>
                     
                     <div class="feature-detail-grid">
                         <!-- 블록 1 -->
@@ -2318,7 +2304,7 @@
             <div class="strategy-modal-header" style="background:var(--gradient-primary); color:#fff; padding: 24px 20px 16px; display:flex; justify-content:space-between; align-items:flex-start">
                 <div>
                     <h2 id="auth-modal-title" style="color:#fff; font-size: 1.3rem; font-weight: 700; margin:0">🔒 로그인</h2>
-                    <p id="auth-modal-subtitle" style="color:rgba(255,255,255,0.85); font-size:0.8rem; margin:6px 0 0 0; line-height:1.4">NARA Analyzer 이용을 위해 로그인해 주세요.</p>
+                    <p id="auth-modal-subtitle" style="color:rgba(255,255,255,0.85); font-size:0.8rem; margin:6px 0 0 0; line-height:1.4">볼트나라 이용을 위해 로그인해 주세요.</p>
                 </div>
                 <button class="close-btn" onclick="closeAuthModal()" style="color:#fff; font-size: 1.5rem; background:none; border:none; cursor:pointer; padding:0; line-height:1">&times;</button>
             </div>

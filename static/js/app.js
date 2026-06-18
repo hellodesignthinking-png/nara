@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════
- * NARA Analyzer — SPA Application Logic
+ * BOLT NARA (볼트나라) — SPA Application Logic
  * ═══════════════════════════════════════════════
  */
 
@@ -1129,7 +1129,7 @@ function shareFavSummary() {
     const favs = getFavorites();
     if (favs.length === 0) { showToast('공유할 관심공고가 없습니다.', 'info'); return; }
 
-    const lines = ['📋 NARA Analyzer 관심공고 요약', `📅 ${new Date().toLocaleDateString('ko-KR')}`, ''];
+    const lines = ['📋 볼트나라 관심공고 요약', `📅 ${new Date().toLocaleDateString('ko-KR')}`, ''];
     favs.forEach((f, i) => {
         const st = FAV_STATUSES[f.status]?.label || f.status;
         const budget = displayBudget(f.budget);
@@ -6592,7 +6592,7 @@ function toggleAuthForm(event, type) {
     if (type === 'login') {
         if (loginForm) loginForm.style.display = 'flex';
         if (title) title.textContent = '🔒 로그인';
-        if (subtitle) subtitle.textContent = 'NARA Analyzer 이용을 위해 로그인해 주세요.';
+        if (subtitle) subtitle.textContent = '볼트나라 이용을 위해 로그인해 주세요.';
     } else if (type === 'register') {
         if (registerForm) registerForm.style.display = 'flex';
         if (title) title.textContent = '📝 회원가입';
