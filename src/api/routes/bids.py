@@ -137,20 +137,106 @@ async def debug_collect():
 # ──────────────────────────────────────────────
 
 
-@router.get("/bids", summary="공고 목록 조회")
+@router.get("/bids/cache/stats", summary="공고 캐시 현황 조회")
+async def get_bids_cache_stats(db: DatabaseManager = Depends(get_db)):
+    """
+    공유 공고 DB 캐시 현황을 반환합니다.
+    총 공고 수, 오늘 수집 수, 마지막 수집 시각, 카테고리별 통계
+    """
+    try:
+        conn = db._ensure_connection()
+        ph = "%s" if db.is_postgres else "?"
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        total = conn.execute("SELECT COUNT(*) FROM bid_announcements").fetchone()[0]
+        today_count = conn.execute(
+            f"SELECT COUNT(*) FROM bid_announcements WHERE collected_at >= {ph}", (today,)
+        ).fetchone()[0]
+
+        last_row = conn.execute(
+            "SELECT MAX(collected_at) FROM bid_announcements"
+        ).fetchone()
+        last_collected = last_row[0] if last_row else None
+
+        # 카테고리별 통계
+        try:
+            cat_rows = conn.execute(
+                "SELECT category, COUNT(*) FROM bid_announcements GROUP BY category ORDER BY COUNT(*) DESC LIMIT 10"
+            ).fetchall()
+            by_category = [{"category": r[0] or "미분류", "count": r[1]} for r in cat_rows]
+        except Exception:
+            by_category = []
+
+        # 최근 7일 일별 수집 현황
+        try:
+            if db.is_postgres:
+                daily_rows = conn.execute(
+                    "SELECT DATE(collected_at::timestamp) as day, COUNT(*) FROM bid_announcements "
+                    "WHERE collected_at >= NOW() - INTERVAL '7 days' GROUP BY day ORDER BY day"
+                ).fetchall()
+            else:
+                daily_rows = conn.execute(
+                    "SELECT DATE(collected_at) as day, COUNT(*) FROM bid_announcements "
+                    "WHERE collected_at >= DATE('now', '-7 days') GROUP BY day ORDER BY day"
+                ).fetchall()
+            daily = [{"date": str(r[0]), "count": r[1]} for r in daily_rows]
+        except Exception:
+            daily = []
+
+        return {
+            "total": total,
+            "today": today_count,
+            "last_collected": last_collected,
+            "by_category": by_category,
+            "daily_7days": daily,
+            "cache_note": "모든 사용자가 공유하는 공고 캐시 DB입니다. 새 공고 검색 시 자동으로 여기에 저장됩니다."
+        }
+    except Exception as e:
+        logger.error("캐시 현황 조회 실패: %s", e)
+        raise HTTPException(status_code=500, detail="캐시 현황 조회 실패")
+
+
+@router.get("/bids", summary="공고 목록 조회 (DB 캐시 우선)")
 async def get_bids(
     keyword: Optional[str] = Query(None, description="공고명 검색 키워드"),
     org_name: Optional[str] = Query(None, description="발주기관명 검색"),
     limit: int = Query(50, ge=1, le=500, description="최대 반환 건수"),
+    smart_fetch: bool = Query(False, description="True면 DB 결과 부족 시 API 수집 후 저장"),
     db: DatabaseManager = Depends(get_db),
 ):
     """
-    DB에 저장된 입찰공고 목록을 검색합니다.
+    DB 캐시에서 공고를 조회합니다.
 
-    keyword, org_name으로 필터링하고 limit으로 반환 건수를 제한합니다.
+    - 기본: DB에서만 조회 (빠름)
+    - smart_fetch=true: DB 결과가 부족하면 API 수집 후 DB에 저장하고 반환
     """
     try:
         bids = db.search_bids(keyword=keyword, org_name=org_name, limit=limit)
+
+        # 스마트 페치: DB에 결과가 없거나 부족하면 API 수집 후 저장
+        if smart_fetch and keyword and len(bids) < 5:
+            logger.info("DB 캐시 부족(%d건) → API 수집 시작 (키워드: %s)", len(bids), keyword)
+            try:
+                config = load_config()
+                collector = UniversalBidCollector(config)
+                from datetime import datetime, timedelta
+                from zoneinfo import ZoneInfo
+                kst_now = datetime.now(tz=ZoneInfo("Asia/Seoul"))
+                start_dt = (kst_now - timedelta(days=30)).strftime("%Y%m%d")
+                end_dt = kst_now.strftime("%Y%m%d")
+                raw_bids = await asyncio.to_thread(
+                    collector.collect_all_sources, start_dt, end_dt, [], keyword
+                )
+                new_bids = [b for b in raw_bids if keyword.lower() in (b.title or '').lower()]
+                if new_bids:
+                    saved = db.save_bids(new_bids)
+                    logger.info("스마트 페치: %d건 수집 → %d건 신규 저장 (키워드: %s)", len(new_bids), saved, keyword)
+                    # 저장 후 다시 DB에서 조회
+                    bids = db.search_bids(keyword=keyword, org_name=org_name, limit=limit)
+            except Exception as fetch_err:
+                logger.warning("스마트 페치 수집 실패 (DB 결과 반환): %s", fetch_err)
+
         return [_bid_to_api_dict(b) for b in bids]
     except HTTPException:
         raise

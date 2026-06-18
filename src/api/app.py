@@ -62,87 +62,135 @@ scheduler = None
 
 async def scheduled_analysis_job() -> dict:
     """
-    매일 자동 실행되는 분석 파이프라인
+    매일 자동 실행되는 분석 파이프라인 (공유 캐시 채우기 포함)
 
-    1. 저장된 관심 키워드로 나라장터 공고 수집
-    2. 등록된 사업자와 매칭 분석
+    1. 오늘 전체 공고 수집 → 공유 DB 캐시에 저장 (모든 사용자 혜택)
+    2. 저장된 관심 키워드로 추가 수집
     3. Slack 알림 전송
 
     Returns:
         실행 결과 요약 dict
     """
     import asyncio
-    import json
     from src.collectors.bid_collector import BidCollector
+    from src.collectors.universal_collector import UniversalBidCollector
     from src.reporters.slack_reporter import SlackReporter
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
 
     config = load_config()
     result_summary = {
         "collected": 0,
+        "saved": 0,
+        "keyword_collected": 0,
         "analyzed": 0,
         "notified": False,
     }
 
-    # settings.json에서 설정 로드 (한 번만 읽기)
     user_settings = _load_settings()
     saved_keywords = user_settings.get("keywords") or config.keywords or []
     exclude_keywords = user_settings.get("exclude_keywords") or []
 
-    # 1단계: 키워드 기반 공고 수집
-    try:
-        collector = BidCollector(config)
+    kst_now = datetime.now(tz=ZoneInfo("Asia/Seoul"))
+    today_str = kst_now.strftime("%Y-%m-%d")
+    logger.info("🌅 아침 자동 수집 시작 [%s] — 공유 캐시 갱신", today_str)
 
-        all_bids = []
-        seen_nos = set()
+    all_bids = []
+    seen_nos = set()
+
+    # ── 1단계: 오늘 전체 공고 광범위 수집 (공유 캐시용) ──────────────
+    try:
+        collector = UniversalBidCollector(config)
+        start_dt = kst_now.strftime("%Y%m%d")
+        end_dt = kst_now.strftime("%Y%m%d")
+
+        logger.info("📥 오늘 전체 공고 수집 중 (공유 캐시)...")
+        today_bids = await asyncio.to_thread(
+            collector.collect_all_sources, start_dt, end_dt, []
+        )
+        for b in today_bids:
+            if b.bid_ntce_no not in seen_nos:
+                seen_nos.add(b.bid_ntce_no)
+                all_bids.append(b)
+
+        logger.info("📋 오늘 전체 공고 수집: %d건", len(today_bids))
+        result_summary["collected"] = len(today_bids)
+
+    except Exception as e:
+        logger.warning("전체 공고 수집 실패 (키워드 수집으로 계속): %s", e)
+        result_summary["collect_all_error"] = str(e)
+
+    # ── 2단계: 관심 키워드 기반 추가 수집 ───────────────────────────
+    try:
+        kw_collector = BidCollector(config)
 
         if saved_keywords:
             for kw in saved_keywords:
                 try:
                     kw_bids = await asyncio.to_thread(
-                        collector.collect_bids_by_keyword, kw, 7
+                        kw_collector.collect_bids_by_keyword, kw, 7
                     )
+                    added = 0
                     for b in kw_bids:
                         if b.bid_ntce_no not in seen_nos:
                             seen_nos.add(b.bid_ntce_no)
                             all_bids.append(b)
-                    logger.info("📋 스케줄 수집 키워드 '%s' → %d건", kw, len(kw_bids))
+                            added += 1
+                    logger.info("🔍 키워드 '%s' → %d건 (신규 %d건)", kw, len(kw_bids), added)
+                    result_summary["keyword_collected"] += len(kw_bids)
                 except Exception as kw_err:
                     logger.warning("키워드 '%s' 수집 실패: %s", kw, kw_err)
-        else:
-            all_bids = await asyncio.to_thread(collector.collect_today_bids)
 
-        # 제외 키워드 필터링
-        if exclude_keywords:
-            all_bids = [
-                b for b in all_bids
-                if not any(ek in (b.title or '') for ek in exclude_keywords)
-            ]
-
-        result_summary["collected"] = len(all_bids)
-        logger.info("📋 스케줄 수집 완료: %d건 (키워드: %s)", len(all_bids), saved_keywords)
-
-        # DB에 저장
-        db = DatabaseManager(config.db_path)
-        db.connect()
-        try:
-            db.save_bids(all_bids)
-        finally:
-            db.close()
     except Exception as e:
-        logger.error("스케줄 수집 실패: %s", e)
-        result_summary["collect_error"] = str(e)
+        logger.error("키워드 수집 실패: %s", e)
+        result_summary["keyword_error"] = str(e)
 
-    # 2단계: Slack 알림
+    # ── 3단계: 제외 키워드 필터링 ─────────────────────────────────────
+    if exclude_keywords:
+        before = len(all_bids)
+        all_bids = [
+            b for b in all_bids
+            if not any(ek.lower() in (b.title or '').lower() for ek in exclude_keywords)
+        ]
+        logger.info("🚫 제외 키워드 필터: %d건 → %d건", before, len(all_bids))
+
+    # ── 4단계: DB에 저장 (공유 캐시) ──────────────────────────────────
+    try:
+        # app_state에서 공유 DB 사용
+        from src.api import app_state
+        if app_state.db:
+            saved_count = app_state.db.save_bids(all_bids)
+        else:
+            db = DatabaseManager(config.db_path)
+            db.connect()
+            try:
+                saved_count = db.save_bids(all_bids)
+            finally:
+                db.close()
+
+        result_summary["saved"] = saved_count
+        logger.info(
+            "✅ 아침 수집 완료: 전체 %d건 수집, %d건 신규 저장 (공유 캐시 갱신)",
+            len(all_bids), saved_count
+        )
+    except Exception as e:
+        logger.error("DB 저장 실패: %s", e)
+        result_summary["save_error"] = str(e)
+
+    # ── 5단계: Slack 알림 ─────────────────────────────────────────────
     try:
         slack_url = os.getenv("SLACK_WEBHOOK_URL", "")
-        # 이미 읽은 user_settings에서 Slack URL 확인
         slack_url = user_settings.get("slack_webhook_url", "") or slack_url
 
-        if slack_url and result_summary["collected"] > 0:
+        if slack_url and len(all_bids) > 0:
             slack = SlackReporter(webhook_url=slack_url)
             slack.send_alert(
-                title="스케줄 수집 완료",
-                message=f"📋 스케줄 수집 완료: {result_summary['collected']}건 수집",
+                title="🌅 나라장터 오늘 공고 수집 완료",
+                message=(
+                    f"📋 총 {len(all_bids)}건 수집, {result_summary.get('saved', 0)}건 신규 저장\n"
+                    f"🔍 키워드 수집: {result_summary.get('keyword_collected', 0)}건\n"
+                    f"📅 수집일: {today_str}"
+                ),
             )
             result_summary["notified"] = True
             logger.info("📨 Slack 알림 전송 완료")

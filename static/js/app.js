@@ -2212,9 +2212,9 @@ function filterBids() {
         renderBids(localFiltered);
         updateCount(localFiltered.length, state.bids.length);
 
-        // 서버 검색 (DB 전체에서 LIKE 검색)
+        // 서버 검색 (DB 전체에서 LIKE 검색, 부족 시 API 자동 수집)
         try {
-            let serverBids = await api('GET', `/bids?keyword=${encodeURIComponent(query)}&limit=100`);
+            let serverBids = await api('GET', `/bids?keyword=${encodeURIComponent(query)}&limit=100&smart_fetch=true`);
             if (serverBids && serverBids.length > localFiltered.length) {
                 // 서버 결과에 relevance_score, matched_keywords 기본값 추가
                 serverBids = serverBids.map(b => ({
@@ -2278,7 +2278,30 @@ async function collectByKeyword() {
         return;
     }
 
-    showLoading(`'${keyword}' 키워드로 공고 검색 및 수집 중...`, '최근 30일 공고를 직접 수집합니다');
+    // ── 1단계: DB 캐시 먼저 확인 (빠름) ──────────────────────────
+    showLoading(`'${keyword}' 검색 중 (DB 캐시 확인)...`, '기존 수집된 공고를 먼저 검색합니다');
+    try {
+        const cached = await api('GET', `/bids?keyword=${encodeURIComponent(keyword)}&limit=200`);
+        if (cached && cached.length >= 5) {
+            // DB 캐시에 충분한 결과 있음 → 바로 표시
+            state.bids = cached.map(b => ({ ...b, relevance_score: b.relevance_score || 0, matched_keywords: b.matched_keywords || [] }));
+            renderBids(state.bids);
+            hideLoading();
+            showToast(`⚡ 캐시에서 '${keyword}' 공고 ${cached.length}건 즉시 로드 (추가 수집은 백그라운드에서 진행)`, 'success');
+
+            // ── 백그라운드에서 최신 공고 추가 수집 (비동기) ──────
+            api('POST', '/bids/collect', { keyword, platforms }).then(result => {
+                const saved = result?.saved || 0;
+                if (saved > 0) {
+                    showToast(`🆕 ${saved}건 신규 공고가 추가 저장되었습니다. 검색을 다시 해보세요.`, 'info');
+                }
+            }).catch(() => {});
+            return;
+        }
+    } catch (e) { /* DB 조회 실패 시 직접 수집으로 진행 */ }
+
+    // ── 2단계: DB 캐시 부족 → API 직접 수집 후 저장 ──────────────
+    showLoading(`'${keyword}' 키워드로 공고 수집 중...`, '최근 30일 공고를 직접 수집하고 저장합니다');
     try {
         updateLoadingText(`🔍 '${keyword}' 키워드로 공고 수집 중...`, '선택된 채널에서 공고 수집 중입니다');
         const result = await api('POST', '/bids/collect', { keyword, platforms });
@@ -2289,7 +2312,7 @@ async function collectByKeyword() {
         updateLoadingText('📋 수집된 공고 목록 갱신 중...', `${count}건 수집 완료, 목록을 업데이트합니다`);
         try {
             const bids = await api('GET', `/bids?keyword=${encodeURIComponent(keyword)}&limit=200`);
-            state.bids = bids || [];
+            state.bids = (bids || []).map(b => ({ ...b, relevance_score: b.relevance_score || 0, matched_keywords: b.matched_keywords || [] }));
             renderBids(state.bids);
         } catch (e) {
             console.warn('수집 후 목록 갱신 실패', e);
@@ -2297,7 +2320,7 @@ async function collectByKeyword() {
         }
 
         hideLoading();
-        showToast(`🌐 '${keyword}' 검색 결과: ${count}건 수집, ${saved}건 신규 저장`, 'success');
+        showToast(`🌐 '${keyword}' 검색 결과: ${count}건 수집, ${saved}건 신규 저장 (공유 캐시에 저장됨)`, 'success');
     } catch (err) {
         hideLoading();
         showToast(`수집 실패: ${err.message}`, 'error');
