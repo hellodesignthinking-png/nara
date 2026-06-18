@@ -49,3 +49,7 @@ email-validator>=2.0.0
 
 # PostgreSQL 연동
 psycopg2-binary>=2.9.0
+
+# HTML 파싱 (문화 공고 수집기 등)
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
