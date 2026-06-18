@@ -16,7 +16,7 @@ from fastapi import APIRouter, Body, HTTPException, Depends
 from src.config import load_config, reload_config
 from src.models.database import DatabaseManager
 
-from ._helpers import _load_settings, _save_settings, get_db, get_current_user
+from ._helpers import _load_settings, _save_settings, get_db, get_current_user, get_admin_user
 from ._models import (
     KeywordsUpdateRequest,
     RelevanceUpdateRequest,
@@ -151,7 +151,7 @@ async def update_relevance(request: RelevanceUpdateRequest):
 
 
 @router.put("/settings/api-keys", summary="API 키 업데이트")
-async def update_api_keys(request: dict = Body(...)):
+async def update_api_keys(request: dict = Body(...), admin: str = Depends(get_admin_user)):
     """
     API 키를 업데이트합니다. .env 파일과 settings.json에 동시 저장합니다.
 
@@ -170,6 +170,9 @@ async def update_api_keys(request: dict = Body(...)):
             "openai_api_key": "OPENAI_API_KEY",
             "gemini_api_key": "GEMINI_API_KEY",
             "llm_engine": "LLM_ENGINE",
+            "youtube_api_key": "YOUTUBE_API_KEY",
+            "kakao_api_key": "KAKAO_API_KEY",
+            "google_analytics_id": "GOOGLE_ANALYTICS_ID",
         }
 
         # .env 파일 읽기
@@ -266,6 +269,18 @@ async def get_api_keys_masked():
                 "set": True,
                 "masked": getattr(config, 'llm_engine', 'openai'),
             },
+            "youtube_api_key": {
+                "set": bool(getattr(config, 'youtube_api_key', '')),
+                "masked": mask(getattr(config, 'youtube_api_key', '')),
+            },
+            "kakao_api_key": {
+                "set": bool(getattr(config, 'kakao_api_key', '')),
+                "masked": mask(getattr(config, 'kakao_api_key', '')),
+            },
+            "google_analytics_id": {
+                "set": bool(getattr(config, 'google_analytics_id', '')),
+                "masked": getattr(config, 'google_analytics_id', ''),
+            },
         }
     except HTTPException:
         raise
@@ -295,7 +310,7 @@ async def get_scheduler_status():
 
 
 @router.post("/scheduler/run-now", summary="즉시 실행")
-async def scheduler_run_now():
+async def scheduler_run_now(admin: str = Depends(get_admin_user)):
     """스케줄에 관계없이 분석 파이프라인을 즉시 실행합니다."""
     try:
         from src.api.app_state import scheduler
@@ -311,7 +326,7 @@ async def scheduler_run_now():
 
 
 @router.put("/scheduler/time", summary="스케줄 시각 변경")
-async def update_scheduler_time(request: ScheduleUpdateRequest):
+async def update_scheduler_time(request: ScheduleUpdateRequest, admin: str = Depends(get_admin_user)):
     """자동 실행 시각을 변경합니다."""
     try:
         from src.api.app_state import scheduler
@@ -337,7 +352,7 @@ async def update_scheduler_time(request: ScheduleUpdateRequest):
 
 
 @router.post("/scheduler/start", summary="스케줄러 시작")
-async def start_scheduler():
+async def start_scheduler(admin: str = Depends(get_admin_user)):
     """중지된 스케줄러를 다시 시작합니다."""
     try:
         from src.api.app_state import scheduler, scheduled_analysis_job
@@ -355,7 +370,7 @@ async def start_scheduler():
 
 
 @router.post("/scheduler/stop", summary="스케줄러 중지")
-async def stop_scheduler():
+async def stop_scheduler(admin: str = Depends(get_admin_user)):
     """자동 스케줄러를 중지합니다."""
     try:
         from src.api.app_state import scheduler
@@ -376,7 +391,7 @@ async def stop_scheduler():
 
 
 @router.post("/slack/test", summary="Slack 테스트 메시지")
-async def test_slack():
+async def test_slack(admin: str = Depends(get_admin_user)):
     """현재 설정된 Slack 웹훅으로 테스트 메시지를 전송합니다."""
 
     webhook_url = os.getenv("SLACK_WEBHOOK_URL", "")
@@ -408,7 +423,7 @@ async def test_slack():
 
 
 @router.put("/settings/slack", summary="Slack 웹훅 URL 설정")
-async def update_slack_webhook(request: SlackWebhookRequest):
+async def update_slack_webhook(request: SlackWebhookRequest, admin: str = Depends(get_admin_user)):
     """Slack Incoming Webhook URL을 저장합니다."""
     try:
         settings = _load_settings()
@@ -506,6 +521,31 @@ async def test_api_key(request: ApiKeyTestRequest):
                     except Exception:
                         err_msg = f"HTTP {res.status_code}"
                     return {"success": False, "message": f"Gemini 연결 실패: {err_msg}"}
+
+        elif name == "youtube":
+            # YouTube Data API v3 연결 테스트
+            url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&q=test&maxResults=1&key={key}"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.get(url)
+                if res.status_code == 200:
+                    return {"success": True, "message": "YouTube Data API 연결 성공!"}
+                else:
+                    try:
+                        err_msg = res.json().get("error", {}).get("message", f"HTTP {res.status_code}")
+                    except Exception:
+                        err_msg = f"HTTP {res.status_code}"
+                    return {"success": False, "message": f"YouTube 연결 실패: {err_msg}"}
+
+        elif name == "kakao":
+            # 카카오 지도 API 연결 테스트
+            url = "https://dapi.kakao.com/v2/local/search/keyword.json?query=서울시청"
+            headers = {"Authorization": f"KakaoAK {key}"}
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.get(url, headers=headers)
+                if res.status_code == 200:
+                    return {"success": True, "message": "카카오 지도 API 연결 성공!"}
+                else:
+                    return {"success": False, "message": f"카카오 연결 실패: HTTP {res.status_code}"}
 
         else:
             return {"success": False, "message": "알 수 없는 API 이름입니다."}

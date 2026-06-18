@@ -30,6 +30,7 @@ except ImportError:
 from ._helpers import (
     get_db,
     get_active_company,
+    get_optional_active_company,
     get_current_user,
     _analysis_to_api_dict,
     _bid_to_matcher_dict,
@@ -50,7 +51,7 @@ router = APIRouter(tags=["analyses"])
 
 @router.post("/analyze", summary="참여 가능 공고 분석")
 async def run_full_analysis(
-    active_biz_id: str = Depends(get_active_company),
+    active_biz_id: Optional[str] = Depends(get_optional_active_company),
     username: str = Depends(get_current_user),
     db: DatabaseManager = Depends(get_db)
 ):
@@ -88,7 +89,7 @@ async def run_full_analysis(
 
         # ── 2단계: 사업자 로드 ──
         logger.info("🏢 분석: 2단계 - 사업자 프로필 로드 (%s)", active_biz_id)
-        biz_profile = db.get_business(active_biz_id)
+        biz_profile = db.get_business(active_biz_id) if active_biz_id else None
         ai_settings = db.get_user_ai_settings(username)
 
         if not biz_profile:
@@ -239,7 +240,7 @@ async def run_full_analysis(
 async def get_analyses(
     bid_ntce_no: Optional[str] = Query(None, description="공고번호 필터"),
     biz_id: Optional[str] = Query(None, description="사업자번호 필터"),
-    active_biz_id: str = Depends(get_active_company),
+    active_biz_id: str = Depends(get_optional_active_company),
     db: DatabaseManager = Depends(get_db),
 ):
     """
@@ -248,6 +249,8 @@ async def get_analyses(
     bid_ntce_no 또는 biz_id로 필터링할 수 있습니다.
     필터가 없으면 활성화된 회사의 최근 분석 결과 전체를 반환합니다.
     """
+    if not active_biz_id:
+        return []
     try:
         # 안전한 격리: 다른 회사 데이터를 요청 시 권한 체크 또는 강제 교체
         target_biz_id = biz_id if biz_id else active_biz_id
@@ -487,6 +490,94 @@ async def get_analysis_detail(analysis_id: int, db: DatabaseManager = Depends(ge
     except Exception as e:
         logger.error("분석 결과 상세 조회 실패: %s", e)
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
+
+
+@router.get("/analyses/{analysis_id}/full", summary="분석 결과 전체 조회 (AI 요약 포함)")
+async def get_analysis_full(analysis_id: int, db: DatabaseManager = Depends(get_db)):
+    """
+    분석 결과 ID로 전체 정보를 조회합니다.
+    strategy_report, summary, competitors 등 모든 필드를 파싱된 형태로 반환합니다.
+    프론트엔드의 AI 요약 버튼이 호출하는 엔드포인트입니다.
+    """
+    try:
+        conn = db.get_connection()
+        cursor = conn.execute(
+            "SELECT * FROM analysis_results WHERE id = ?",
+            (analysis_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail=f"분석 결과를 찾을 수 없습니다: ID={analysis_id}",
+            )
+
+        result = AnalysisResult.from_dict(dict(row))
+        api_dict = _analysis_to_api_dict(result)
+
+        # strategy_report가 JSON 문자열이면 파싱하여 반환
+        if api_dict.get("strategy_report"):
+            try:
+                api_dict["strategy_report"] = json.loads(api_dict["strategy_report"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # 연관된 입찰공고 정보를 함께 반환
+        bid_no = api_dict.get("bid_ntce_no")
+        if bid_no:
+            bid_cursor = conn.execute(
+                "SELECT * FROM bid_announcements WHERE bid_ntce_no = ?",
+                (bid_no,),
+            )
+            bid_row = bid_cursor.fetchone()
+            if bid_row:
+                from src.models.schemas import BidAnnouncement
+                from ._helpers import _bid_to_api_dict
+                bid_obj = BidAnnouncement.from_dict(dict(bid_row))
+                api_dict["bid_detail"] = _bid_to_api_dict(bid_obj)
+
+        # 연관된 사업자 정보를 함께 반환
+        biz_id = api_dict.get("biz_id")
+        if biz_id:
+            biz_cursor = conn.execute(
+                "SELECT company_name FROM business_profiles WHERE biz_id = ?",
+                (biz_id,),
+            )
+            biz_row = biz_cursor.fetchone()
+            if biz_row:
+                api_dict["company_name"] = biz_row["company_name"]
+
+        api_dict["analysis_summary"] = _generate_analysis_summary(api_dict)
+
+        return api_dict
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("분석 결과 전체 조회 실패: %s", e)
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
+
+
+def _generate_analysis_summary(analysis: dict) -> str:
+    """분석 결과 데이터에서 사람이 읽을 수 있는 AI 요약을 자동 생성합니다."""
+    parts = []
+    
+    score = analysis.get("match_score") or analysis.get("relevance_score") or 0
+    if score >= 70:
+        parts.append(f"✅ 높은 매칭도({score:.0f}점)로 적극 참여가 권장됩니다.")
+    elif score >= 45:
+        parts.append(f"⚠️ 보통 수준의 매칭도({score:.0f}점)로, 보완 사항을 확인한 후 참여를 검토하세요.")
+    else:
+        parts.append(f"❌ 낮은 매칭도({score:.0f}점)로 신중한 검토가 필요합니다.")
+    
+    summary = analysis.get("summary")
+    if summary:
+        parts.append(f"📋 요약: {summary}")
+    
+    competitors = analysis.get("competitors")
+    if competitors and isinstance(competitors, list) and len(competitors) > 0:
+        parts.append(f"🏢 주요 경쟁사: {', '.join(str(c) for c in competitors[:3])}")
+    
+    return " | ".join(parts) if parts else "분석 결과를 불러왔습니다."
 
 
 @router.delete("/analyses/{analysis_id}", summary="분석 결과 삭제")

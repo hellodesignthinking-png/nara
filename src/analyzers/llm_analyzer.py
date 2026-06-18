@@ -717,7 +717,7 @@ JSON 구조:
             return self._generate_fallback_strategy(bid or {}, business_profile or {})
 
     # ══════════════════════════════════════════════
-    # Fallback (더미 결과)
+    # Fallback (API 키 미설정 안내)
     # ══════════════════════════════════════════════
 
     def _generate_fallback_analysis(self, bid: dict) -> dict:
@@ -733,24 +733,23 @@ JSON 구조:
         deadline = bid.get('deadline', bid.get('bidClseDt', ''))
 
         summary_lines = [
-            f"본 사업은 {org}에서 발주한 '{title}'입니다.",
-            f"추정가격은 {budget}이며, 입찰 마감일은 {deadline}입니다.",
-            "상세 AI 분석을 위해서는 Gemini 또는 OpenAI API 키 설정이 필요합니다.",
+            "⚠️ AI 분석 API 키(OpenAI 또는 Gemini)가 설정되지 않았습니다.",
+            "설정 페이지에서 API 키를 입력해 주세요.",
+            f"본 사업은 {org}에서 발주한 '{title}'입니다." if org else f"'{title}' 사업입니다.",
+            f"추정가격: {budget}, 마감일: {deadline}" if budget or deadline else "",
         ]
 
         return {
-            'summary': '\n'.join(summary_lines),
+            'summary': '\n'.join(line for line in summary_lines if line),
             'requirements': [
-                '(AI 분석 비활성화) 공고 원문을 직접 확인하세요.',
-                '제안요청서(RFP)를 다운로드하여 세부 요구사항을 파악하세요.',
+                '⚠️ AI 분석이 비활성화 상태입니다. 공고 원문을 직접 확인하세요.',
             ],
             'qualifications': [
-                '(AI 분석 비활성화) 참가 자격 조건을 공고 원문에서 확인하세요.',
+                '⚠️ AI 분석이 비활성화 상태입니다. 참가 자격 조건을 공고 원문에서 확인하세요.',
             ],
-            'budget_assessment': f'추정가격 {budget} (상세 분석은 AI 활성화 필요)',
+            'budget_assessment': f'추정가격 {budget} — AI 분석 활성화 시 상세 평가가 제공됩니다.',
             'risks': [
                 'AI 분석이 비활성화되어 자동 리스크 분석이 불가합니다.',
-                '공고 원문과 RFP를 직접 검토하여 리스크를 파악하세요.',
             ],
             'analysis_source': 'fallback',
         }
@@ -775,7 +774,7 @@ JSON 구조:
                 '제안서 작성 일정 수립',
                 '현장설명회 참석 여부 확인',
             ],
-            'overall_recommendation': 'AI 분석이 비활성화되어 자동 전략 수립이 제한됩니다. GEMINI_API_KEY 또는 OPENAI_API_KEY를 설정하세요.',
+            'overall_recommendation': '⚠️ AI 분석 API 키(OpenAI 또는 Gemini)가 설정되지 않았습니다. 설정 페이지에서 API 키를 입력해 주세요.',
             'scorecard_feedback': '정량 평가 시뮬레이션 피드백은 AI 활성화 시 제공됩니다.',
             'win_themes': [],
             'compliance_matrix': [],

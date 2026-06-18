@@ -41,6 +41,15 @@ class Config:
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
 
+    # YouTube Data API v3
+    youtube_api_key: str = ""
+
+    # 카카오 지도 API
+    kakao_api_key: str = ""
+
+    # Google Analytics
+    google_analytics_id: str = ""
+
     # LLM 엔진 선택 (openai / gemini)
     llm_engine: Literal["openai", "gemini"] = "gemini"
 
@@ -167,6 +176,9 @@ def load_config(force_reload: bool = False) -> Config:
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4o"),
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
             gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+            youtube_api_key=os.getenv("YOUTUBE_API_KEY", ""),
+            kakao_api_key=os.getenv("KAKAO_API_KEY", ""),
+            google_analytics_id=os.getenv("GOOGLE_ANALYTICS_ID", ""),
             llm_engine=os.getenv("LLM_ENGINE", "gemini"),
             smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
             smtp_port=_safe_int(os.getenv("SMTP_PORT", "587"), 587),

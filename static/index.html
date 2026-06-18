@@ -64,6 +64,18 @@
                 <span class="menu-icon" aria-hidden="true">🤖</span>
                 <span class="menu-label">나의 AI 에이전트</span>
             </li>
+            <li class="menu-item" data-view="policies" tabindex="0" role="menuitem" onclick="navigate('policies')">
+                <span class="menu-icon">🏛️</span>
+                <span class="menu-label">지자체 정책</span>
+            </li>
+            <li class="menu-item" data-view="proposals" tabindex="0" role="menuitem" onclick="navigate('proposals')">
+                <span class="menu-icon" aria-hidden="true">📄</span>
+                <span class="menu-label">기획/제안 공유실</span>
+            </li>
+            <li class="menu-item" data-view="partners" tabindex="0" role="menuitem" onclick="navigate('partners')">
+                <span class="menu-icon" aria-hidden="true">🤝</span>
+                <span class="menu-label">협업 파트너 찾기</span>
+            </li>
             <li class="menu-item" data-view="admin" id="menu-admin" tabindex="0" role="menuitem" onclick="navigate('admin')" style="display:none">
                 <span class="menu-icon" aria-hidden="true">🛡️</span>
                 <span class="menu-label">관리자 관리</span>
@@ -78,8 +90,11 @@
                 </div>
                 <!-- 로그인 상태 -->
                 <div id="auth-logged-in" style="display: none; background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                    <div style="font-size: 0.8rem; margin-bottom: 6px; color: var(--text-secondary); display:flex; align-items:center; gap:4px; justify-content:center">
-                        <span>👤</span> <strong id="auth-username" style="color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px">사용자</strong>님
+                    <div style="font-size: 0.8rem; margin-bottom: 6px; color: var(--text-secondary); display:flex; align-items:center; gap:4px; justify-content:space-between">
+                        <div style="display:flex;align-items:center;gap:4px;overflow:hidden">
+                            <span>👤</span> <strong id="auth-username" style="color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px">사용자</strong>님
+                        </div>
+                        <button onclick="openProfileEditModal()" title="내 프로필 수정" style="background:none;border:none;color:rgba(148,163,184,0.7);cursor:pointer;font-size:0.9rem;padding:2px 4px;border-radius:4px;flex-shrink:0" onmouseover="this.style.color='#a5b4fc'" onmouseout="this.style.color='rgba(148,163,184,0.7)'">⚙️</button>
                     </div>
                     <div id="active-company-container" style="margin-bottom: 8px;">
                         <select id="active-company-select" onchange="handleCompanySwitch(this.value)" style="width: 100%; font-size: 0.75rem; padding: 6px; border-radius: 4px; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; outline: none;">
@@ -96,6 +111,7 @@
                 <span class="footer-dot" id="footer-status-dot"></span>
                 <span class="footer-text" id="footer-status-text">연결 확인 중...</span>
             </div>
+            <div id="sidebar-clock" style="text-align:center;font-size:0.72rem;color:rgba(148,163,184,0.5);padding:4px 0 8px;font-family:monospace"></div>
         </div>
     </nav>
 
@@ -145,6 +161,23 @@
                                 <small>사업자 매칭 + 전략 평가</small>
                             </div>
                         </button>
+                    </div>
+                    <!-- 히어로 요약 위젯 -->
+                    <div class="hero-summary-widgets">
+                        <div class="hero-widget" id="hero-fav-summary">
+                            <span class="hero-widget-icon">⭐</span>
+                            <div>
+                                <div class="hero-widget-label">관심공고</div>
+                                <div class="hero-widget-val" id="hero-fav-count">0건</div>
+                            </div>
+                        </div>
+                        <div class="hero-widget" id="hero-next-action">
+                            <span class="hero-widget-icon">📌</span>
+                            <div>
+                                <div class="hero-widget-label">다음 액션</div>
+                                <div class="hero-widget-val" id="hero-next-text">공고를 수집해보세요</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -238,6 +271,21 @@
                 </div>
             </div>
 
+            <!-- 📺 추천 입찰/조달 교육 동영상 -->
+            <div class="youtube-education-panel" style="margin-top:20px;padding:20px;background:rgba(255,255,255,0.02);border-radius:16px;border:1px solid rgba(255,255,255,0.08)">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+                    <div>
+                        <h3 style="margin:0;font-size:1.1rem;display:flex;align-items:center;gap:6px;color:var(--text)">
+                            <span>📺</span> 추천 입찰/조달 교육 동영상
+                        </h3>
+                        <span style="font-size:0.75rem;color:var(--text-muted)">실무에 도움이 되는 입찰 및 제안서 작성 가이드</span>
+                    </div>
+                </div>
+                <div id="youtube-video-list" class="youtube-video-slider">
+                    <!-- 동적 생성 -->
+                </div>
+            </div>
+
             <!-- ⭐ 입찰 파이프라인 -->
             <div class="fav-pipeline-summary" id="fav-pipeline-summary" style="display:none">
                 <div class="pipeline-summary-header">
@@ -312,6 +360,7 @@
             <!-- 📋 오늘의 추천 공고 브리핑 (TOP 10 통합) -->
             <!-- top10-list는 숨김 처리되어 데이터 로드용으로만 사용 -->
             <div id="top10-list" style="display:none"></div>
+            <div id="top10-desc" style="display:none"></div>
 
             <!-- 차트 + 분석 2컬럼 -->
             <div class="dashboard-main-grid">
@@ -473,6 +522,7 @@
                     </tbody>
                 </table>
             </div>
+            <div id="bids-pagination" style="display:flex;justify-content:center;gap:8px;margin-top:16px;flex-wrap:wrap"></div>
             <!-- ⚖️ 공고 비교함 플로팅 바 -->
             <div id="compare-shelf" class="compare-shelf">
                 <div class="compare-shelf-content">
@@ -540,6 +590,17 @@
             <!-- 칸반 보드 뷰 (기본 숨김) -->
             <div class="favorites-kanban-view" id="favorites-kanban-body" style="display:none">
                 <!-- JS에서 컬럼별 동적 렌더링 -->
+            </div>
+            <!-- 파이프라인 프로그레스 바 -->
+            <div id="fav-pipeline-progress-wrap" style="display:none;margin-top:12px;padding:14px 18px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:12px">
+                <div style="display:flex;gap:3px;height:8px;border-radius:4px;overflow:hidden;margin-bottom:8px">
+                    <div id="fav-progress-reviewing" style="height:100%;background:#6366f1;transition:width 0.4s ease"></div>
+                    <div id="fav-progress-proceeding" style="height:100%;background:#06b6d4;transition:width 0.4s ease"></div>
+                    <div id="fav-progress-partnered" style="height:100%;background:#8b5cf6;transition:width 0.4s ease"></div>
+                    <div id="fav-progress-completed" style="height:100%;background:#10b981;transition:width 0.4s ease"></div>
+                    <div id="fav-progress-abandoned" style="height:100%;background:#ef4444;transition:width 0.4s ease"></div>
+                </div>
+                <div id="fav-pipeline-progress-summary" style="font-size:0.75rem;color:var(--text-muted);text-align:center"></div>
             </div>
         </section>
 
@@ -1201,6 +1262,7 @@
                 <button class="btn btn-primary active-tab" id="tab-users-btn" onclick="switchAdminTab('users')">👥 회원 관리</button>
                 <button class="btn btn-secondary" id="tab-companies-btn" onclick="switchAdminTab('companies')">🏢 등록 기업 현황</button>
                 <button class="btn btn-secondary" id="tab-collaborations-btn" onclick="switchAdminTab('collaborations')">🤝 공동 입찰 협업 흐름</button>
+                <button class="btn btn-secondary" id="tab-system-btn" onclick="switchAdminTab('system')">⚙️ 시스템 설정</button>
             </div>
 
             <!-- 회원 관리 탭 영역 -->
@@ -1237,6 +1299,7 @@
                                 <th>업종/지역</th>
                                 <th>매출액 / 임직원</th>
                                 <th>등록일</th>
+                                <th style="text-align:right">관리</th>
                             </tr>
                         </thead>
                         <tbody id="admin-companies-list-body">
@@ -1264,6 +1327,179 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            <!-- 시스템 설정 탭 -->
+            <div class="admin-tab-content" id="admin-tab-system" style="display:none">
+                <div class="settings-section" style="padding:20px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:14px;margin-bottom:16px">
+                    <h2 style="font-size:1rem;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px">&#128273; API 키 관리 <span style="font-size:0.72rem;padding:2px 8px;background:rgba(239,68,68,0.12);color:#f87171;border-radius:10px">관리자 전용</span></h2>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:16px">
+                        <div><label style="display:block;font-size:0.78rem;font-weight:600;margin-bottom:4px;color:var(--text-muted)">data.go.kr API 키</label><input type="password" id="admin-api-key-data-go-kr" class="form-input" placeholder="API 키..." autocomplete="off"></div>
+                        <div><label style="display:block;font-size:0.78rem;font-weight:600;margin-bottom:4px;color:var(--text-muted)">Naver Client ID</label><input type="password" id="admin-api-key-naver-id" class="form-input" placeholder="Client ID..." autocomplete="off"></div>
+                        <div><label style="display:block;font-size:0.78rem;font-weight:600;margin-bottom:4px;color:var(--text-muted)">Naver Client Secret</label><input type="password" id="admin-api-key-naver-secret" class="form-input" placeholder="Client Secret..." autocomplete="off"></div>
+                        <div><label style="display:block;font-size:0.78rem;font-weight:600;margin-bottom:4px;color:var(--text-muted)">YouTube API 키</label><input type="password" id="admin-api-key-youtube" class="form-input" placeholder="YouTube API Key..." autocomplete="off"></div>
+                        <div><label style="display:block;font-size:0.78rem;font-weight:600;margin-bottom:4px;color:var(--text-muted)">Kakao API 키</label><input type="password" id="admin-api-key-kakao" class="form-input" placeholder="Kakao REST API Key..." autocomplete="off"></div>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" onclick="saveAdminApiKeys()">&#128190; API 키 저장</button>
+                        <button class="btn btn-outline btn-sm" onclick="loadAdminSystemSettings()">&#128260; 현재 값 로드</button>
+                    </div>
+                    <div id="admin-system-status" style="margin-top:12px;font-size:0.82rem;color:var(--text-muted)"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════ 지자체 정책 분석 뷰 ════════ -->
+        <section id="view-policies" class="view">
+            <div class="view-header">
+                <div>
+                    <h1 class="view-title">🏛️ 지자체 정책 분석</h1>
+                    <p class="view-subtitle">지역 공공 정책 및 사업 공모를 분석하여 새로운 입찰 기회를 발굴합니다</p>
+                </div>
+                <div class="view-actions">
+                    <button class="btn btn-sm btn-outline" onclick="collectPolicies()">📥 정책 수집</button>
+                    <button class="btn btn-sm btn-gradient" onclick="analyzePolicies()">🤖 AI 분석</button>
+                </div>
+            </div>
+
+            <!-- 통계 카드 -->
+            <div id="policies-stats" class="stat-cards-grid" style="margin-bottom:20px">
+                <div class="stat-card" style="--delay:0"><div class="stat-icon">🏛️</div><div class="stat-info"><div class="stat-label">수집된 정책</div><div class="stat-value" id="stat-policy-total">--</div></div></div>
+                <div class="stat-card" style="--delay:1"><div class="stat-icon">💰</div><div class="stat-info"><div class="stat-label">총 예산</div><div class="stat-value" id="stat-policy-budget">--</div></div></div>
+                <div class="stat-card" style="--delay:2"><div class="stat-icon">🎯</div><div class="stat-info"><div class="stat-label">평균 관련도</div><div class="stat-value" id="stat-policy-relevance">--</div></div></div>
+            </div>
+            <div id="policies-region-chart" style="margin-bottom:16px;display:none"></div>
+
+            <!-- 필터 -->
+            <div class="filter-row" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">
+                <input type="text" id="policy-search" class="form-input" placeholder="🔍 정책명, 지역 검색..." style="max-width:280px" oninput="filterPolicies()">
+                <select id="policy-category-filter" class="form-input" style="max-width:180px" onchange="filterPolicies()">
+                    <option value="">전체 분야</option>
+                    <option value="문화">문화</option>
+                    <option value="체육">체육</option>
+                    <option value="관광">관광</option>
+                    <option value="IT">IT/디지털</option>
+                    <option value="복지">복지</option>
+                    <option value="환경">환경</option>
+                </select>
+                <select id="policy-region-filter" class="form-input" style="max-width:180px" onchange="filterPolicies()">
+                    <option value="">전체 지역</option>
+                    <option value="서울특별시">서울</option>
+                    <option value="경기도">경기</option>
+                    <option value="부산광역시">부산</option>
+                    <option value="인천광역시">인천</option>
+                    <option value="대구광역시">대구</option>
+                    <option value="광주광역시">광주</option>
+                    <option value="대전광역시">대전</option>
+                    <option value="강원특별자치도">강원</option>
+                    <option value="경상남도">경남</option>
+                    <option value="경상북도">경북</option>
+                    <option value="전라남도">전남</option>
+                    <option value="전라북도">전북</option>
+                    <option value="충청남도">충남</option>
+                    <option value="충청북도">충북</option>
+                    <option value="제주특별자치도">제주</option>
+                </select>
+            </div>
+
+            <!-- 정책 목록 그리드 -->
+            <div id="policies-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px">
+                <div style="padding:40px;text-align:center;color:var(--text-muted);grid-column:1/-1">정책 수집 버튼을 눌러 데이터를 불러오세요</div>
+            </div>
+
+            <!-- 페이지네이션 -->
+            <div id="policies-pagination" style="display:flex;justify-content:center;gap:8px;margin-top:20px;flex-wrap:wrap"></div>
+        </section>
+
+        <!-- ════════ 🤝 협업 파트너 찾기 뷰 ════════ -->
+        <section id="view-partners" class="view">
+            <div class="view-header">
+                <div>
+                    <h1 class="view-title">🤝 협업 파트너 찾기</h1>
+                    <p class="view-subtitle">공개 동의된 회원사 정보를 탐색하고, 사업 공동수급을 위한 맞춤형 협업 제안을 교환합니다</p>
+                </div>
+            </div>
+
+            <!-- 🏢 탭 메뉴 (파트너 검색 / 제안 관리) -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                <button class="btn btn-sm btn-primary tab-btn active" onclick="switchPartnerTab('search')" id="partner-tab-search" style="font-size: 0.8rem; font-weight: 600; padding: 6px 12px;">🔍 파트너사 검색</button>
+                <button class="btn btn-sm btn-ghost tab-btn" onclick="switchPartnerTab('proposals')" id="partner-tab-proposals" style="font-size: 0.8rem; font-weight: 600; padding: 6px 12px;">📩 협업 제안 관리</button>
+            </div>
+
+            <!-- 탭 1: 파트너사 검색 영역 -->
+            <div id="partner-section-search" style="display: block;">
+                <!-- 검색 필터바 -->
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:20px; flex-wrap:wrap">
+                    <div style="display:flex; gap:10px; width:100%; max-width:480px">
+                        <input type="text" id="partner-search-input" class="form-input" placeholder="🔍 회사명, 업종, 보유 면허, 키워드 검색..." oninput="searchPartners()">
+                    </div>
+                </div>
+
+                <!-- 파트너 카드 그리드 -->
+                <div id="partners-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px">
+                    <!-- Javascript 동적 로드 -->
+                </div>
+            </div>
+
+            <!-- 탭 2: 협업 제안 관리 영역 -->
+            <div id="partner-section-proposals" style="display: none;">
+                <div style="margin-bottom: 16px; display:flex; gap:12px; align-items:center">
+                    <label for="partner-active-biz-select" style="font-weight:700; color:var(--text-primary); margin-bottom:0">🏢 소속 회사 선택:</label>
+                    <select id="partner-active-biz-select" class="api-key-input" style="width:240px; padding:6px 10px" onchange="loadActivePartnerProposals()">
+                        <!-- Javascript 동적 로드 -->
+                    </select>
+                </div>
+
+                <!-- 수신 제안 / 송신 제안 -->
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(450px, 1fr)); gap:20px; margin-top:20px">
+                    <!-- 수신 제안 목록 -->
+                    <div class="card" style="padding:20px; background:var(--bg-card); border:1px solid var(--border)">
+                        <h3 style="margin-top:0; border-bottom:1px solid var(--border); padding-bottom:10px; color:#a5b4fc">📥 수신한 협업 제안 목록</h3>
+                        <div id="received-proposals-list" style="display:flex; flex-direction:column; gap:12px">
+                            <!-- Javascript -->
+                        </div>
+                    </div>
+
+                    <!-- 송신 제안 목록 -->
+                    <div class="card" style="padding:20px; background:var(--bg-card); border:1px solid var(--border)">
+                        <h3 style="margin-top:0; border-bottom:1px solid var(--border); padding-bottom:10px; color:#a78bfa">📤 발송한 협업 제안 목록</h3>
+                        <div id="sent-proposals-list" style="display:flex; flex-direction:column; gap:12px">
+                            <!-- Javascript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════ 📄 기획/제안 공유실 뷰 ════════ -->
+        <section id="view-proposals" class="view">
+            <div class="view-header">
+                <div>
+                    <h1 class="view-title">📄 기획/제안 공유실</h1>
+                    <p class="view-subtitle">성공적인 사업 참여를 위한 기획서, 제안서, 입찰 양식 템플릿을 공유하고 협업합니다</p>
+                </div>
+                <div class="view-actions">
+                    <button class="btn btn-gradient" onclick="openProposalWriteModal()">📝 자료 공유하기</button>
+                </div>
+            </div>
+
+            <!-- 검색 및 필터 -->
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:20px; flex-wrap:wrap">
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-sm btn-primary active-tab" id="p-tab-all" onclick="filterProposalCategory('all')">전체</button>
+                    <button class="btn btn-sm btn-secondary" id="p-tab-proposal" onclick="filterProposalCategory('제안서')">제안서</button>
+                    <button class="btn btn-sm btn-secondary" id="p-tab-plan" onclick="filterProposalCategory('기획서')">기획서</button>
+                    <button class="btn btn-sm btn-secondary" id="p-tab-template" onclick="filterProposalCategory('템플릿')">템플릿</button>
+                    <button class="btn btn-sm btn-secondary" id="p-tab-etc" onclick="filterProposalCategory('기타')">기타</button>
+                </div>
+                <div style="display:flex; gap:10px; width:min(100%, 320px)">
+                    <input type="text" id="proposal-search-input" class="form-input" placeholder="🔍 제목, 내용 검색..." oninput="searchProposals()">
+                </div>
+            </div>
+
+            <!-- 자료 카드 그리드 -->
+            <div id="proposals-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(285px, 1fr)); gap:16px">
+                <!-- JavaScript 동적 생성 -->
             </div>
         </section>
 
@@ -1499,9 +1735,29 @@
                             <input type="text" id="form-company-type" placeholder="예: 여성기업, 사회적기업 (쉼표 구분)">
                         </div>
                     </div>
-                    <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:8px;margin-bottom:16px">
+                    <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:8px;margin-bottom:12px">
                         <input type="checkbox" id="form-has-sanctions" style="width:16px;height:16px;cursor:pointer">
                         <label for="form-has-sanctions" style="cursor:pointer;font-weight:600;margin-bottom:0">최근 2년 내 부정당업자 제재 이력이 있음 (감점 요인)</label>
+                    </div>
+                    <div class="form-group">
+                        <label for="form-website-url">홈페이지 URL</label>
+                        <input type="url" id="form-website-url" placeholder="https://example.com">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="form-intro-file-url">회사소개서 다운로드 경로 (Google Drive, Dropbox 등)</label>
+                            <input type="url" id="form-intro-file-url" placeholder="https://drive.google.com/...">
+                        </div>
+                        <div class="form-group">
+                            <label for="form-social-links">소셜 네트워크 링크 (LinkedIn, Blog 등)</label>
+                            <input type="text" id="form-social-links" placeholder="LinkedIn 또는 블로그 URL">
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;border:1px dashed rgba(99,102,241,0.3);padding:10px;border-radius:8px;background:rgba(99,102,241,0.03)">
+                        <input type="checkbox" id="form-is-shared" style="width:16px;height:16px;cursor:pointer" checked>
+                        <label for="form-is-shared" style="cursor:pointer;font-weight:700;color:#a5b4fc;margin-bottom:0">🤝 다른 회원사들과 회사 정보(업종, 면허, 지역 등)를 공유하고 협업 파트너 추천을 허용합니다.</label>
                     </div>
 
                     <!-- 태그 인풋들 -->
@@ -1774,6 +2030,7 @@
                         <input type="text" id="fav-partner-role" class="fav-detail-input" placeholder="역할" style="flex:1;min-width:70px">
                         <input type="text" id="fav-partner-contact" class="fav-detail-input" placeholder="담당자/연락처" style="flex:1.5;min-width:90px">
                         <input type="number" id="fav-partner-share" class="fav-detail-input" placeholder="배분%" style="flex:0.6;min-width:60px" min="0" max="100">
+                        <input type="number" id="fav-partner-exp" class="fav-detail-input" placeholder="실적(억)" style="flex:0.8;min-width:60px" min="0">
                         <button class="btn btn-sm btn-accent" onclick="addFavPartner()">+ 추가</button>
                     </div>
                     <div id="fav-partner-suggest"></div>
@@ -1821,6 +2078,45 @@
                                     <strong id="sim-eval-score" style="font-size:0.85rem;color:var(--success, #10b981)">+0.0 점</strong>
                                 </div>
                                 <div id="sim-eval-result-badge" class="badge" style="width:100%;text-align:center;padding:6px;font-size:0.78rem;margin-top:4px;border-radius:6px;background:rgba(245,158,11,0.1);color:#f59e0b">실적 입력 필요</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 🧮 공동도급(컨소시엄) 실적 충족도 시뮬레이터 -->
+                    <div id="consortium-synergy-simulator" class="consortium-simulator-box" style="margin-top:16px;padding:16px;background:var(--bg-input, rgba(255,255,255,0.01));border-radius:12px;border:1px solid var(--border);display:none">
+                        <h4 style="margin:0 0 10px 0;font-size:0.88rem;display:flex;align-items:center;gap:6px;color:var(--text)">
+                            <span>🧮</span> 컨소시엄 실적 시뮬레이터
+                        </h4>
+                        <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:12px;line-height:1.4">
+                            공고 예산 대비 자사 및 파트너사의 실적 합산 충족도를 실시간 평가합니다.
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:10px">
+                            <div style="display:flex;justify-content:space-between;font-size:0.78rem">
+                                <span style="color:var(--text-secondary)">자사 인정 실적:</span>
+                                <strong id="synergy-own-exp" style="color:var(--text)">0억 원 (지분 100%)</strong>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;font-size:0.78rem">
+                                <span style="color:var(--text-secondary)">파트너사 인정 실적 합산:</span>
+                                <strong id="synergy-partner-exp" style="color:var(--text)">+ 0억 원</strong>
+                            </div>
+                            <div style="border-top:1px dashed var(--border);padding-top:10px;margin-top:6px;display:flex;flex-direction:column;gap:8px">
+                                <div style="display:flex;justify-content:space-between;align-items:center">
+                                    <span style="font-size:0.78rem;color:var(--text-secondary)">합산 인정 실적계:</span>
+                                    <strong id="synergy-total-exp" style="font-size:0.85rem;color:var(--accent-indigo, #6366f1)">0억 원</strong>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center">
+                                    <span style="font-size:0.78rem;color:var(--text-secondary)">공고 예산 대비 충족율:</span>
+                                    <strong id="synergy-satisfaction-rate" style="font-size:0.85rem;color:var(--success, #10b981)">0%</strong>
+                                </div>
+                                <div class="progress-bar-wrap" style="height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;margin-top:4px">
+                                    <div id="synergy-progress-bar" style="width:0%;height:100%;background:var(--accent-indigo, #6366f1);transition:width 0.3s ease"></div>
+                                </div>
+                                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
+                                    <span id="synergy-status-badge" class="badge badge-danger" style="font-size:0.72rem;padding:2px 8px;border-radius:4px">실적 부족</span>
+                                </div>
+                                <div id="synergy-recommendation-text" style="font-size:0.74rem;line-height:1.4;margin-top:4px">
+                                    🔴 실적이 부족합니다. 파트너사를 추가하여 보완하세요.
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1902,6 +2198,11 @@
                     <div style="text-align:center; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
                         아직 계정이 없으신가요? <a href="#" onclick="toggleAuthForm(event, 'register')" style="color:var(--accent-indigo, #6366f1); font-weight:600; text-decoration:underline;">회원가입하기</a>
                     </div>
+                    <div style="text-align:center; margin-top:10px; font-size:0.78rem; display:flex; justify-content:center; gap:12px;">
+                        <a href="#" onclick="toggleAuthForm(event, 'find-username')" style="color:var(--text-secondary); text-decoration:none;">🔍 아이디 찾기</a>
+                        <span style="color:rgba(255,255,255,0.2)">|</span>
+                        <a href="#" onclick="toggleAuthForm(event, 'reset-password')" style="color:var(--text-secondary); text-decoration:none;">🔑 비밀번호 재설정</a>
+                    </div>
                 </form>
 
                 <!-- 회원가입 폼 -->
@@ -1927,10 +2228,234 @@
                         이미 계정이 있으신가요? <a href="#" onclick="toggleAuthForm(event, 'login')" style="color:var(--accent-indigo, #6366f1); font-weight:600; text-decoration:underline;">로그인하기</a>
                     </div>
                 </form>
+
+                <!-- 아이디 찾기 폼 -->
+                <form id="auth-find-username-form" onsubmit="handleFindUsernameSubmit(event)" style="display: none; flex-direction: column; gap: 14px;">
+                    <div>
+                        <label for="find-email" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">가입 시 등록한 이메일 주소</label>
+                        <input type="email" id="find-email" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="example@domain.com">
+                    </div>
+                    <button type="submit" class="btn btn-prepare" style="width:100%; font-size:0.9rem; padding:12px; margin-top:10px; border-radius:8px">🔍 아이디 찾기</button>
+                    <div id="find-username-result" style="display:none; padding:12px; border-radius:8px; background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.2); text-align:center; font-size:0.85rem; color:#a5b4fc; font-weight:700;"></div>
+                    <div style="text-align:center; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
+                        <a href="#" onclick="toggleAuthForm(event, 'login')" style="color:var(--accent-indigo, #6366f1); font-weight:600; text-decoration:underline;">로그인 화면으로 돌아가기</a>
+                    </div>
+                </form>
+
+                <!-- 비밀번호 재설정 폼 -->
+                <form id="auth-reset-password-form" onsubmit="handleResetPasswordSubmit(event)" style="display: none; flex-direction: column; gap: 14px;">
+                    <div>
+                        <label for="reset-username" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">사용자명 (ID)</label>
+                        <input type="text" id="reset-username" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="사용자명을 입력하세요">
+                    </div>
+                    <div>
+                        <label for="reset-email" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">등록된 이메일 주소</label>
+                        <input type="email" id="reset-email" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="example@domain.com">
+                    </div>
+                    <div>
+                        <label for="reset-new-password" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">새로운 비밀번호</label>
+                        <input type="password" id="reset-new-password" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="최소 4자 이상" minlength="4">
+                    </div>
+                    <div>
+                        <label for="reset-new-password-confirm" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">새로운 비밀번호 확인</label>
+                        <input type="password" id="reset-new-password-confirm" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="비밀번호를 다시 한 번 입력하세요" minlength="4">
+                    </div>
+                    <button type="submit" class="btn btn-prepare" style="width:100%; font-size:0.9rem; padding:12px; margin-top:10px; border-radius:8px">🔑 비밀번호 재설정 완료</button>
+                    <div style="text-align:center; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
+                        <a href="#" onclick="toggleAuthForm(event, 'login')" style="color:var(--accent-indigo, #6366f1); font-weight:600; text-decoration:underline;">로그인 화면으로 돌아가기</a>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=20260608v"></script>
+    <!-- ─── 🤝 공동수급 협업 제안 모달 ─── -->
+    <div id="collab-proposal-modal-overlay" class="strategy-modal-overlay" onclick="closeProposalModal()" role="dialog" aria-modal="true" aria-labelledby="collab-proposal-modal-title">
+        <div class="strategy-modal sm-redesign" onclick="event.stopPropagation()" style="width: min(92vw, 550px); max-height: 90vh;">
+            <div class="sm-header">
+                <div class="sm-header-left">
+                    <span class="sm-ai-badge">COLLAB</span>
+                    <h2 id="collab-proposal-modal-title" class="sm-title">🤝 공동수급 협업 제안</h2>
+                </div>
+                <button class="sm-close-btn" onclick="closeProposalModal()">&times;</button>
+            </div>
+            
+            <div class="strategy-panel active" style="padding:20px; overflow-y:auto;">
+                <form id="collab-proposal-form" onsubmit="submitCollaborationProposal(event)" style="display: flex; flex-direction: column; gap: 14px;">
+                    <div>
+                        <label for="collab-proposal-sender-biz-id" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">제안 발송 회사 (내 회사)</label>
+                        <select id="collab-proposal-sender-biz-id" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px; background:rgba(15,23,42,0.6); color:#fff;" required>
+                            <!-- 동적 채움 -->
+                        </select>
+                    </div>
+                    <div>
+                        <label for="collab-proposal-receiver-name" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">제안 수신 파트너사</label>
+                        <input type="text" id="collab-proposal-receiver-name" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px; background:rgba(15,23,42,0.3);" readonly>
+                        <input type="hidden" id="collab-proposal-receiver-biz-id">
+                    </div>
+                    <div>
+                        <label for="collab-proposal-bid-no" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">대상 공고번호</label>
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" id="collab-proposal-bid-no" class="fav-detail-input" style="flex:1; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="예: 20260612345-00" onchange="fetchAndFillBidTitle()">
+                            <button type="button" class="btn btn-secondary" onclick="fetchAndFillBidTitle()" style="font-size:0.8rem; padding:10px 14px;">조회</button>
+                        </div>
+                        <div id="collab-proposal-bid-title-preview" style="font-size:0.75rem; margin-top:6px; display:none; padding:6px 10px; background:rgba(0,0,0,0.2); border-radius:6px;"></div>
+                    </div>
+                    <div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <label for="collab-proposal-message" style="font-size:0.78rem; font-weight:600; color:var(--text-secondary);">제안 메시지</label>
+                            <button type="button" id="btn-ai-draft-proposal" class="btn btn-sm btn-accent btn-glow" style="font-size:0.72rem; padding:4px 10px;" onclick="generateAiProposalDraft()">
+                                🤖 AI 제안서 초안 작성
+                            </button>
+                        </div>
+                        <textarea id="collab-proposal-message" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px; min-height:140px; font-family:inherit; resize:vertical;" required placeholder="공동 수급 제안 목적 및 협력 방향을 입력해 주세요. (AI 초안 작성을 이용하면 자동으로 양식에 맞춰 작성됩니다)"></textarea>
+                    </div>
+                    <div style="display:flex; gap:10px; margin-top:10px;">
+                        <button type="button" class="btn btn-secondary" onclick="closeProposalModal()" style="flex:1; border-radius:8px;">취소</button>
+                        <button type="submit" class="btn btn-primary btn-glow" style="flex:1; border-radius:8px;">🤝 제안 전송</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── 📝 제안서/기획서 공유 작성 모달 ─── -->
+    <div id="proposal-modal-overlay" class="strategy-modal-overlay" onclick="closeProposalWriteModal(event)" role="dialog" aria-modal="true" aria-labelledby="proposal-modal-title">
+        <div class="strategy-modal" onclick="event.stopPropagation()" style="max-width:500px; border-radius:16px; overflow:hidden; border: 1px solid rgba(255,255,255,0.1); background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+            <div class="strategy-modal-header" style="background:var(--gradient-primary); color:#fff; padding: 20px; display:flex; justify-content:space-between; align-items:center">
+                <div>
+                    <h2 id="proposal-modal-title" style="color:#fff; font-size: 1.2rem; font-weight: 700; margin:0">📝 자료 공유하기</h2>
+                </div>
+                <button class="close-btn" onclick="closeProposalWriteModal()" style="color:#fff; font-size: 1.5rem; background:none; border:none; cursor:pointer; padding:0; line-height:1">&times;</button>
+            </div>
+            
+            <div class="strategy-modal-body" style="padding:20px;">
+                <form id="proposal-write-form" onsubmit="handleProposalSubmit(event)" style="display: flex; flex-direction: column; gap: 14px;">
+                    <div>
+                        <label for="proposal-title" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">제목</label>
+                        <input type="text" id="proposal-title" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="공유할 자료의 명확한 제목을 입력하세요">
+                    </div>
+                    <div>
+                        <label for="proposal-category" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">구분</label>
+                        <select id="proposal-category" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px; background:rgba(15,23,42,0.6); color:#fff;" required>
+                            <option value="제안서">제안서</option>
+                            <option value="기획서">기획서</option>
+                            <option value="템플릿">템플릿 / 양식</option>
+                            <option value="기타">기타</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="proposal-file-url" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">다운로드 경로 또는 공유 링크</label>
+                        <input type="url" id="proposal-file-url" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="Google Drive, Dropbox 등 다운로드 링크 입력 (https://...)">
+                    </div>
+                    <div>
+                        <label for="proposal-content" style="display:block; font-size:0.78rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">핵심 설명 및 구성 내용</label>
+                        <textarea id="proposal-content" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px; min-height:120px; font-family:inherit; resize:vertical;" required placeholder="자료에 대한 구체적인 요약 설명 및 특장점을 작성해 주세요."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-prepare" style="width:100%; font-size:0.9rem; padding:12px; margin-top:10px; border-radius:8px">📝 공유 등록 완료</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ── 비밀번호 변경 모달 ── -->
+    <div id="change-password-modal-overlay" class="strategy-modal-overlay" onclick="closeChangePasswordModal(event)" role="dialog" aria-modal="true" aria-labelledby="change-pw-title" style="display:none">
+        <div class="strategy-modal-content" style="max-width:420px">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px">
+                <h2 id="change-pw-title" style="color:#fff; font-size:1.2rem; font-weight:700; margin:0">🔑 비밀번호 변경</h2>
+                <button onclick="closeChangePasswordModal()" style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:1.4rem;cursor:pointer">✕</button>
+            </div>
+            <form id="change-password-form" onsubmit="handleChangePassword(event)" autocomplete="off">
+                <div style="margin-bottom:14px">
+                    <label style="display:block;font-size:0.8rem;color:rgba(255,255,255,0.7);margin-bottom:6px">현재 비밀번호</label>
+                    <input type="password" id="cp-current" class="search-input" style="width:100%;box-sizing:border-box" placeholder="현재 비밀번호" required autocomplete="current-password">
+                </div>
+                <div style="margin-bottom:14px">
+                    <label style="display:block;font-size:0.8rem;color:rgba(255,255,255,0.7);margin-bottom:6px">새 비밀번호</label>
+                    <input type="password" id="cp-new" class="search-input" style="width:100%;box-sizing:border-box" placeholder="새 비밀번호 (최소 4자)" required autocomplete="new-password" oninput="updatePasswordStrength('cp-strength', this.value)">
+                    <div id="cp-strength" style="height:4px;border-radius:2px;background:#334155;margin-top:6px;transition:all 0.3s"></div>
+                    <div id="cp-strength-text" style="font-size:0.72rem;color:rgba(255,255,255,0.5);margin-top:4px"></div>
+                </div>
+                <div style="margin-bottom:20px">
+                    <label style="display:block;font-size:0.8rem;color:rgba(255,255,255,0.7);margin-bottom:6px">새 비밀번호 확인</label>
+                    <input type="password" id="cp-confirm" class="search-input" style="width:100%;box-sizing:border-box" placeholder="새 비밀번호 재입력" required autocomplete="new-password">
+                </div>
+                <button type="submit" class="btn btn-gradient" style="width:100%;font-size:0.95rem;padding:12px">🔑 비밀번호 변경</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── 프로필 수정 모달 ── -->
+    <div id="profile-edit-modal-overlay" class="strategy-modal-overlay" onclick="closeProfileEditModal(event)" role="dialog" aria-modal="true" aria-labelledby="profile-edit-title" style="display:none">
+        <div class="strategy-modal-content" style="max-width:420px">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px">
+                <h2 id="profile-edit-title" style="color:#fff; font-size:1.2rem; font-weight:700; margin:0">👤 내 프로필 수정</h2>
+                <button onclick="closeProfileEditModal()" style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:1.4rem;cursor:pointer">✕</button>
+            </div>
+            <div style="padding:14px; background:rgba(99,102,241,0.08); border-radius:10px; margin-bottom:16px">
+                <div style="font-size:0.8rem;color:rgba(255,255,255,0.5);margin-bottom:4px">현재 사용자명</div>
+                <div id="profile-edit-username" style="font-size:1rem;color:#a5b4fc;font-weight:600"></div>
+            </div>
+            <form id="profile-edit-form" onsubmit="handleProfileEdit(event)" autocomplete="off">
+                <div style="margin-bottom:20px">
+                    <label style="display:block;font-size:0.8rem;color:rgba(255,255,255,0.7);margin-bottom:6px">이메일 주소</label>
+                    <input type="email" id="profile-edit-email" class="search-input" style="width:100%;box-sizing:border-box" placeholder="이메일 주소 (선택사항)" autocomplete="email">
+                </div>
+                <button type="submit" class="btn btn-gradient" style="width:100%;font-size:0.95rem;padding:12px">💾 프로필 저장</button>
+            </form>
+            <hr style="border-color:rgba(255,255,255,0.08);margin:20px 0">
+            <button onclick="openChangePasswordModal()" class="btn btn-outline" style="width:100%;font-size:0.9rem;padding:10px">🔑 비밀번호 변경</button>
+            <hr style="border-color:rgba(255,255,255,0.08);margin:16px 0">
+            <div style="padding:12px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px">
+                <div style="font-size:0.8rem;color:#fca5a5;margin-bottom:8px;font-weight:600">⚠️ 위험 영역</div>
+                <button onclick="openDeleteAccountModal()" style="background:none;border:1px solid rgba(239,68,68,0.4);color:#f87171;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:0.82rem;width:100%">🗑️ 계정 탈퇴</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── 계정 탈퇴 확인 모달 ── -->
+    <div id="delete-account-modal-overlay" class="strategy-modal-overlay" onclick="closeDeleteAccountModal(event)" role="dialog" aria-modal="true" aria-labelledby="delete-account-title" style="display:none">
+        <div class="strategy-modal-content" style="max-width:400px">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px">
+                <h2 id="delete-account-title" style="color:#f87171; font-size:1.2rem; font-weight:700; margin:0">⚠️ 계정 탈퇴</h2>
+                <button onclick="closeDeleteAccountModal()" style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:1.4rem;cursor:pointer">✕</button>
+            </div>
+            <div style="padding:14px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:10px; margin-bottom:16px">
+                <p style="color:#fca5a5;font-size:0.85rem;line-height:1.6;margin:0">탈퇴하면 <strong>관심공고, AI 설정, 소속 회사 멤버 정보</strong>가 영구 삭제됩니다. 이 작업은 되돌릴 수 없습니다.</p>
+            </div>
+            <form id="delete-account-form" onsubmit="handleDeleteAccount(event)" autocomplete="off">
+                <div style="margin-bottom:20px">
+                    <label style="display:block;font-size:0.8rem;color:rgba(255,255,255,0.7);margin-bottom:6px">비밀번호 확인</label>
+                    <input type="password" id="delete-account-password" class="search-input" style="width:100%;box-sizing:border-box" placeholder="현재 비밀번호를 입력하세요" required autocomplete="current-password">
+                </div>
+                <button type="submit" style="background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;width:100%;padding:12px;border-radius:8px;font-size:0.95rem;font-weight:600;cursor:pointer">🗑️ 탈퇴 확인</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── 카페 게시글 수정 모달 ── -->
+    <div id="cafe-edit-modal-overlay" class="strategy-modal-overlay" onclick="closeCafeEditModal(event)" role="dialog" aria-modal="true" aria-labelledby="cafe-edit-title" style="display:none">
+        <div class="strategy-modal-content" style="max-width:520px">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px">
+                <h2 id="cafe-edit-title" style="color:#fff; font-size:1.2rem; font-weight:700; margin:0">✏️ 게시글 수정</h2>
+                <button onclick="closeCafeEditModal()" style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:1.4rem;cursor:pointer">✕</button>
+            </div>
+            <input type="hidden" id="cafe-edit-post-id">
+            <form id="cafe-edit-form" onsubmit="handleCafeEditSubmit(event)">
+                <div style="margin-bottom:14px">
+                    <label style="display:block;font-size:0.8rem;color:rgba(255,255,255,0.7);margin-bottom:6px">제목</label>
+                    <input type="text" id="cafe-edit-title-input" class="search-input" style="width:100%;box-sizing:border-box" placeholder="게시글 제목" required>
+                </div>
+                <div style="margin-bottom:20px">
+                    <label style="display:block;font-size:0.8rem;color:rgba(255,255,255,0.7);margin-bottom:6px">내용</label>
+                    <textarea id="cafe-edit-content-input" class="fav-detail-input" style="width:100%;box-sizing:border-box;border-radius:8px;padding:10px;min-height:150px;font-family:inherit;resize:vertical" placeholder="내용을 입력하세요" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-gradient" style="width:100%;font-size:0.95rem;padding:12px">💾 수정 완료</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js?v=20260618aa"></script>
 </body>
 </html>

@@ -24,6 +24,8 @@ from .documents import router as documents_router
 from .auth import router as auth_router
 from .favorites import router as favorites_router
 from .admin import router as admin_router
+from .policies import router as policies_router
+from .proposals import router as proposals_router
 
 
 def create_main_router() -> APIRouter:
@@ -38,5 +40,7 @@ def create_main_router() -> APIRouter:
     main.include_router(analyses_router)
     main.include_router(settings_router)
     main.include_router(documents_router)
+    main.include_router(policies_router)
+    main.include_router(proposals_router)
     return main
 

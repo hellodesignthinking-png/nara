@@ -267,19 +267,20 @@ app = FastAPI(
 # 교차 출처 요청을 허용합니다.
 # ──────────────────────────────────────────────
 
-ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:8000").split(",")
+ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:8000,http://localhost:3000,https://beige-rats-ring.loca.lt").split(",")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,  # 환경변수로 허용 출처 제어
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_origin_regex=r"https://.*\.(loca\.lt|trycloudflare\.com)",
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-API-Key", "Authorization"],
 )
 
 # API Key 인증 미들웨어
-from src.api.middleware.auth import APIKeyAuthMiddleware
-app.add_middleware(APIKeyAuthMiddleware)
+# from src.api.middleware.auth import APIKeyAuthMiddleware
+# app.add_middleware(APIKeyAuthMiddleware)
 
 # ──────────────────────────────────────────────
 # 헬스체크 엔드포인트

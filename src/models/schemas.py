@@ -117,6 +117,10 @@ class BusinessProfile:
     credit_rating: Optional[str] = "BBB"     # 신용평가등급
     company_type: Optional[str] = None       # 기업 구분
     has_sanctions: bool = False              # 부정당업자 제재 이력 여부
+    is_shared: bool = False                  # 회사 정보 공유 동의 여부
+    website_url: Optional[str] = None        # 홈페이지 URL
+    intro_file_url: Optional[str] = None     # 회사소개서 경로
+    social_links: Optional[str] = None       # 소셜 네트워크 링크 (LinkedIn, Blog 등)
     created_at: Optional[datetime] = None    # 생성일시
     updated_at: Optional[datetime] = None    # 수정일시
 
@@ -147,6 +151,10 @@ class BusinessProfile:
             credit_rating=data.get("credit_rating", "BBB"),
             company_type=data.get("company_type"),
             has_sanctions=bool(data.get("has_sanctions", False)),
+            is_shared=bool(data.get("is_shared", False)),
+            website_url=data.get("website_url"),
+            intro_file_url=data.get("intro_file_url"),
+            social_links=data.get("social_links"),
             created_at=_parse_timestamp(data.get("created_at")),
             updated_at=_parse_timestamp(data.get("updated_at")),
         )
@@ -170,6 +178,10 @@ class BusinessProfile:
             "credit_rating": self.credit_rating,
             "company_type": self.company_type,
             "has_sanctions": self.has_sanctions,
+            "is_shared": self.is_shared,
+            "website_url": self.website_url,
+            "intro_file_url": self.intro_file_url,
+            "social_links": self.social_links,
             "created_at": _format_timestamp(self.created_at),
             "updated_at": _format_timestamp(self.updated_at),
         }
@@ -467,6 +479,10 @@ CREATE TABLE IF NOT EXISTS business_profiles (
     credit_rating   TEXT DEFAULT 'BBB',
     company_type    TEXT,
     has_sanctions   INTEGER DEFAULT 0,
+    is_shared       INTEGER DEFAULT 0,
+    website_url     TEXT,
+    intro_file_url  TEXT,
+    social_links    TEXT,           -- JSON 혹은 텍스트
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -600,4 +616,273 @@ CREATE INDEX IF NOT EXISTS idx_analysis_biz ON analysis_results(biz_id);
 CREATE INDEX IF NOT EXISTS idx_fav_username ON user_favorites(username);
 CREATE INDEX IF NOT EXISTS idx_biz_member_username ON business_members(username);
 CREATE INDEX IF NOT EXISTS idx_biz_member_biz ON business_members(biz_id);
+
+-- 제안서/기획서 공유 게시판 테이블
+CREATE TABLE IF NOT EXISTS proposal_shares (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    username        TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    category        TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    file_url        TEXT,
+    downloads       INTEGER DEFAULT 0,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+);
+
+-- 공동 수급/협업 제안 테이블
+CREATE TABLE IF NOT EXISTS collaboration_proposals (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_biz_id   TEXT NOT NULL,
+    receiver_biz_id TEXT NOT NULL,
+    bid_ntce_no     TEXT,
+    message         TEXT,
+    status          TEXT DEFAULT 'pending', -- pending, accepted, rejected
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sender_biz_id) REFERENCES business_profiles(biz_id) ON DELETE CASCADE,
+    FOREIGN KEY (receiver_biz_id) REFERENCES business_profiles(biz_id) ON DELETE CASCADE
+);
+"""
+
+# PostgreSQL DDL
+CREATE_TABLES_PG_SQL = """
+-- 회원 관리 테이블
+CREATE TABLE IF NOT EXISTS users (
+    username        TEXT PRIMARY KEY,
+    password_hash   TEXT NOT NULL,
+    email           TEXT,
+    is_admin        INTEGER DEFAULT 0,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 사업자 프로필 테이블
+CREATE TABLE IF NOT EXISTS business_profiles (
+    biz_id          TEXT PRIMARY KEY,
+    company_name    TEXT NOT NULL,
+    ceo_name        TEXT,
+    business_types  TEXT,           -- JSON 배열
+    licenses        TEXT,           -- JSON 배열
+    regions         TEXT,           -- JSON 배열
+    past_projects   TEXT,           -- JSON 배열
+    annual_revenue  BIGINT,
+    employee_count  INTEGER,
+    keywords        TEXT,           -- JSON 배열
+    min_budget      BIGINT,
+    max_budget      BIGINT,
+    credit_rating   TEXT DEFAULT 'BBB',
+    company_type    TEXT,
+    has_sanctions   INTEGER DEFAULT 0,
+    is_shared       INTEGER DEFAULT 0,
+    website_url     TEXT,
+    intro_file_url  TEXT,
+    social_links    TEXT,           -- JSON 혹은 텍스트
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 다중 회사 소속 멤버 테이블
+CREATE TABLE IF NOT EXISTS business_members (
+    id              SERIAL PRIMARY KEY,
+    biz_id          TEXT NOT NULL,
+    username        TEXT NOT NULL,
+    role            TEXT NOT NULL DEFAULT 'member', -- owner, admin, member
+    joined_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(biz_id, username),
+    FOREIGN KEY (biz_id) REFERENCES business_profiles(biz_id) ON DELETE CASCADE,
+    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+);
+
+-- 입찰공고 테이블
+CREATE TABLE IF NOT EXISTS bid_announcements (
+    bid_ntce_no     TEXT PRIMARY KEY,
+    bid_ntce_ord    TEXT,
+    title           TEXT NOT NULL,
+    org_name        TEXT,
+    demand_org_name TEXT,
+    budget          BIGINT,
+    bid_begin_dt    TEXT,
+    bid_close_dt    TEXT,
+    category        TEXT,
+    bid_method      TEXT,
+    contract_method TEXT,
+    region          TEXT,
+    license_limit   TEXT,
+    rfp_url         TEXT,
+    rfp_text        TEXT,
+    collected_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 낙찰정보 테이블
+CREATE TABLE IF NOT EXISTS award_infos (
+    id              SERIAL PRIMARY KEY,
+    bid_ntce_no     TEXT,
+    bid_title       TEXT,
+    winner_name     TEXT,
+    award_amount    BIGINT,
+    bid_rate        DOUBLE PRECISION,
+    award_date      TEXT,
+    budget          BIGINT,
+    collected_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(bid_ntce_no, winner_name),
+    FOREIGN KEY (bid_ntce_no) REFERENCES bid_announcements(bid_ntce_no)
+);
+
+-- 뉴스기사 테이블
+CREATE TABLE IF NOT EXISTS news_articles (
+    id              SERIAL PRIMARY KEY,
+    title           TEXT,
+    description     TEXT,
+    link            TEXT UNIQUE,
+    pub_date        TEXT,
+    search_query    TEXT,
+    related_bid_no  TEXT,
+    collected_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 분석결과 테이블
+CREATE TABLE IF NOT EXISTS analysis_results (
+    id              SERIAL PRIMARY KEY,
+    bid_ntce_no     TEXT,
+    biz_id          TEXT,
+    relevance_score DOUBLE PRECISION,
+    match_score     DOUBLE PRECISION,
+    summary         TEXT,
+    strategy_report TEXT,
+    competitors     TEXT,           -- JSON
+    analyzed_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(bid_ntce_no, biz_id),
+    FOREIGN KEY (bid_ntce_no) REFERENCES bid_announcements(bid_ntce_no)
+);
+
+-- 사용자 관심공고 테이블
+CREATE TABLE IF NOT EXISTS user_favorites (
+    id              SERIAL PRIMARY KEY,
+    username        TEXT NOT NULL,
+    bid_ntce_no     TEXT NOT NULL,
+    status          TEXT DEFAULT 'reviewing',
+    memo            TEXT,
+    partners        TEXT,           -- JSON array
+    checklist       TEXT,           -- JSON array
+    added_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    title           TEXT,
+    org_name        TEXT,
+    budget          BIGINT,
+    bid_close_dt    TEXT,
+    analysis_done   INTEGER DEFAULT 0,
+    analysis_summary TEXT,
+    UNIQUE(username, bid_ntce_no),
+    FOREIGN KEY (username) REFERENCES users(username),
+    FOREIGN KEY (bid_ntce_no) REFERENCES bid_announcements(bid_ntce_no)
+);
+
+-- 사용자 AI 에이전트 설정 테이블
+CREATE TABLE IF NOT EXISTS user_ai_settings (
+    username          TEXT PRIMARY KEY,
+    bid_target        TEXT DEFAULT 'stable', -- stable, revenue, expansion
+    relevance_weight  DOUBLE PRECISION DEFAULT 0.35,     -- 키워드/업종 가중치
+    capacity_weight   DOUBLE PRECISION DEFAULT 0.35,     -- 예산/실적 가중치
+    credit_weight     DOUBLE PRECISION DEFAULT 0.30,     -- 신용/가점 가중치
+    ai_persona        TEXT DEFAULT 'strategic', -- strategic, aggressive, conservative
+    custom_keywords   TEXT,                  -- JSON Array
+    updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+);
+
+-- 사내 카페(커뮤니티) 게시판 테이블
+CREATE TABLE IF NOT EXISTS company_cafe_posts (
+    id              SERIAL PRIMARY KEY,
+    biz_id          TEXT NOT NULL,
+    username        TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (biz_id) REFERENCES business_profiles(biz_id) ON DELETE CASCADE,
+    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+);
+
+-- 사내 카페 댓글 테이블
+CREATE TABLE IF NOT EXISTS company_cafe_comments (
+    id              SERIAL PRIMARY KEY,
+    post_id         INTEGER NOT NULL,
+    username        TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES company_cafe_posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+);
+
+-- 사내 카페 좋아요 테이블
+CREATE TABLE IF NOT EXISTS company_cafe_likes (
+    post_id         INTEGER NOT NULL,
+    username        TEXT NOT NULL,
+    PRIMARY KEY (post_id, username),
+    FOREIGN KEY (post_id) REFERENCES company_cafe_posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+);
+
+-- 지자체 정책 테이블
+CREATE TABLE IF NOT EXISTS municipal_policies (
+    id              SERIAL PRIMARY KEY,
+    region          TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    category        TEXT,
+    department      TEXT,
+    budget          BIGINT,
+    content         TEXT,
+    keywords        TEXT,
+    ai_summary      TEXT,
+    relevance_score DOUBLE PRECISION DEFAULT 0.0,
+    collected_at    TEXT,
+    metadata        TEXT,
+    UNIQUE(region, title)
+);
+
+-- 인덱스 생성
+CREATE INDEX IF NOT EXISTS idx_pg_bid_collected_at ON bid_announcements(collected_at);
+CREATE INDEX IF NOT EXISTS idx_pg_bid_org_name ON bid_announcements(org_name);
+CREATE INDEX IF NOT EXISTS idx_pg_award_bid_no ON award_infos(bid_ntce_no);
+CREATE INDEX IF NOT EXISTS idx_pg_award_winner ON award_infos(winner_name);
+CREATE INDEX IF NOT EXISTS idx_pg_cafe_biz_id ON company_cafe_posts(biz_id);
+CREATE INDEX IF NOT EXISTS idx_pg_award_bid_title ON award_infos(bid_title);
+CREATE INDEX IF NOT EXISTS idx_pg_news_query ON news_articles(search_query);
+CREATE INDEX IF NOT EXISTS idx_pg_news_title ON news_articles(title);
+CREATE INDEX IF NOT EXISTS idx_pg_analysis_bid ON analysis_results(bid_ntce_no);
+CREATE INDEX IF NOT EXISTS idx_pg_analysis_biz ON analysis_results(biz_id);
+CREATE INDEX IF NOT EXISTS idx_pg_fav_username ON user_favorites(username);
+CREATE INDEX IF NOT EXISTS idx_pg_biz_member_username ON business_members(username);
+CREATE INDEX IF NOT EXISTS idx_pg_biz_member_biz ON business_members(biz_id);
+CREATE INDEX IF NOT EXISTS idx_pg_policies_region ON municipal_policies(region);
+CREATE INDEX IF NOT EXISTS idx_pg_cafe_comment_post_id ON company_cafe_comments(post_id);
+
+-- 제안서/기획서 공유 게시판 테이블
+CREATE TABLE IF NOT EXISTS proposal_shares (
+    id              SERIAL PRIMARY KEY,
+    username        TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    category        TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    file_url        TEXT,
+    downloads       INTEGER DEFAULT 0,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+);
+
+-- 공동 수급/협업 제안 테이블
+CREATE TABLE IF NOT EXISTS collaboration_proposals (
+    id              SERIAL PRIMARY KEY,
+    sender_biz_id   TEXT NOT NULL,
+    receiver_biz_id TEXT NOT NULL,
+    bid_ntce_no     TEXT,
+    message         TEXT,
+    status          TEXT DEFAULT 'pending', -- pending, accepted, rejected
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sender_biz_id) REFERENCES business_profiles(biz_id) ON DELETE CASCADE,
+    FOREIGN KEY (receiver_biz_id) REFERENCES business_profiles(biz_id) ON DELETE CASCADE
+);
 """

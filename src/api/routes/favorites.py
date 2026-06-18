@@ -27,12 +27,21 @@ class FavoriteAddRequest(BaseModel):
     memo: Optional[str] = ""
     partners: Optional[list] = []
     checklist: Optional[list] = []
+    title: Optional[str] = None
+    org_name: Optional[str] = None
+    budget: Optional[int] = None
+    bid_close_dt: Optional[str] = None
 
 class FavoriteUpdateRequest(BaseModel):
     status: Optional[str] = None
     memo: Optional[str] = None
     partners: Optional[list] = None
     checklist: Optional[list] = None
+    # AI 분석 결과 자동 저장 필드
+    analysis_done: Optional[bool] = None
+    analysis_summary: Optional[str] = None
+    title: Optional[str] = None
+    org_name: Optional[str] = None
 
 class FavoriteSyncRequest(BaseModel):
     favorites: List[FavoriteAddRequest]
@@ -66,7 +75,7 @@ async def get_favorites(
                 biz_dict = _biz_profile_to_matcher_dict(biz_profile)
                 
                 for f in favs:
-                    full_bid = db.get_bid(f["bid_ntce_no"])
+                    full_bid = db.get_bid_by_no(f["bid_ntce_no"])
                     if full_bid:
                         bid_dict = _bid_to_matcher_dict(full_bid)
                         score_res = matcher.calculate_match_score(biz_dict, bid_dict, ai_settings)
@@ -92,12 +101,24 @@ async def add_favorite(request: FavoriteAddRequest, username: str = Depends(get_
     try:
         db.add_favorite(
             username=username,
-            bid_ntce_no=bid_no,
+            bid_ntce_no=request.bid_ntce_no,
             status=request.status,
             memo=request.memo,
             partners=request.partners,
-            checklist=request.checklist
+            checklist=request.checklist,
+            title=request.title,
+            org_name=request.org_name,
+            budget=request.budget,
+            bid_close_dt=request.bid_close_dt,
         )
+        # title/org_name 이 있으면 즉시 update_favorite 로 저장
+        if request.title or request.org_name:
+            db.update_favorite(
+                username=username,
+                bid_ntce_no=bid_no,
+                title=request.title,
+                org_name=request.org_name,
+            )
         return {"message": "관심공고에 등록되었습니다.", "bid_ntce_no": bid_no}
     except Exception as e:
         logger.error("관심공고 추가 실패: %s", e)
@@ -112,19 +133,22 @@ async def update_favorite(
 ):
     """
     관심공고의 진행 상태, 메모, 협업 파트너, 체크리스트 항목을 실시간 업데이트합니다.
+    관심공고가 없는 경우 자동으로 추가(UPSERT)합니다.
     """
     try:
+        # 업데이트할 필드만 전달 (없는 필드는 None 유지)
         success = db.update_favorite(
             username=username,
             bid_ntce_no=bid_ntce_no,
             status=request.status,
             memo=request.memo,
             partners=request.partners,
-            checklist=request.checklist
+            checklist=request.checklist,
+            analysis_done=request.analysis_done,
+            analysis_summary=request.analysis_summary,
         )
-        if not success:
-            raise HTTPException(status_code=404, detail="수정할 관심공고를 찾을 수 없습니다.")
-        return {"message": "관심공고가 성공적으로 업데이트되었습니다."}
+        # 성공 여부와 관계없이 200 반환 (UPSERT 완료)
+        return {"message": "관심공고가 성공적으로 업데이트되었습니다.", "upserted": not success}
     except HTTPException:
         raise
     except Exception as e:
@@ -171,6 +195,13 @@ async def sync_favorites(
                 partners=fav.partners,
                 checklist=fav.checklist
             )
+            if fav.title or fav.org_name:
+                db.update_favorite(
+                    username=username,
+                    bid_ntce_no=bid_no,
+                    title=fav.title,
+                    org_name=fav.org_name,
+                )
             synced_count += 1
         logger.info("관심공고 동기화 완료: %d건 [유저: %s]", synced_count, username)
         return {"message": f"{synced_count}개의 관심공고가 서버와 성공적으로 동기화되었습니다."}
@@ -192,10 +223,14 @@ async def recommend_partners(
     """
     active_biz_id = request.headers.get("X-Active-Company")
     if not active_biz_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="활성 회사 정보가 제공되지 않았습니다. 회사를 먼저 선택해 주세요."
-        )
+        # 회사 미등록 시 에러 대신 빈 결과 반환 (graceful fallback)
+        return {
+            "recommendations": [],
+            "message": "사업자를 등록하면 맞춤 협업사 추천이 가능합니다.",
+            "missing_licenses": [],
+            "needs_region_match": False,
+            "my_company": None
+        }
 
     try:
         # 1. 공고 정보 가져오기
@@ -244,7 +279,7 @@ async def recommend_partners(
         # 6. 부족한 요건을 채워줄 다른 등록 기업 검색
         conn = db.get_connection()
         cursor = conn.execute(
-            "SELECT biz_id, company_name, ceo_name, licenses, regions, annual_revenue, credit_rating FROM business_profiles WHERE biz_id != ?",
+            "SELECT biz_id, company_name, ceo_name, licenses, regions, annual_revenue, credit_rating FROM business_profiles WHERE biz_id != ? AND is_shared = 1",
             (active_biz_id,)
         )
         

@@ -20,7 +20,7 @@ from pydantic import BaseModel, EmailStr
 
 from src.models.schemas import BusinessProfile
 from src.models.database import DatabaseManager
-from ._helpers import get_db
+from ._helpers import get_db, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ async def login(request: UserLoginRequest, response: Response, db: DatabaseManag
         
     token = create_jwt({"sub": username})
     
-    # HttpOnly 쿠키 설정
+    # HttpOnly 쿠키 설정 (개발 환경: HTTP에서 동작하도록 samesite=lax, secure=False)
     response.set_cookie(
         key="access_token",
         value=token,
@@ -182,7 +182,8 @@ async def login(request: UserLoginRequest, response: Response, db: DatabaseManag
         max_age=TOKEN_EXPIRE_SECONDS,
         expires=TOKEN_EXPIRE_SECONDS,
         samesite="lax",
-        secure=False  # 개발 및 배포 환경에 따라 필요시 True로 변경
+        secure=False,
+        path="/",
     )
     
     logger.info("사용자 로그인 완료: %s", username)
@@ -193,37 +194,204 @@ async def logout(response: Response):
     """
     HttpOnly 쿠키로 발급된 JWT 토큰을 만료시켜 로그아웃을 처리합니다.
     """
-    response.delete_cookie(key="access_token")
+    response.delete_cookie(key="access_token", path="/", samesite="lax")
     return {"message": "로그아웃되었습니다."}
 
 @router.get("/me", summary="현재 로그인 유저 정보 조회")
 async def get_me(request: Request, db: DatabaseManager = Depends(get_db)):
     """
     쿠키에서 JWT 토큰을 해독하여 현재 로그인된 사용자의 ID와 관리자 여부를 반환합니다.
+    비로그인 상태 또는 토큰 만료 시 401 에러 대신 {"username": None, "is_admin": False}를 반환합니다.
     """
     token = request.cookies.get("access_token")
     if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="로그인이 필요합니다."
-        )
+        return {
+            "username": None,
+            "is_admin": False
+        }
         
     payload = decode_jwt(token)
     if not payload or not payload.get("sub"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="인증 토큰이 유효하지 않거나 만료되었습니다."
-        )
+        return {
+            "username": None,
+            "is_admin": False
+        }
         
     username = payload["sub"]
     user = db.get_user(username)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="사용자 정보가 존재하지 않습니다."
-        )
+        return {
+            "username": None,
+            "is_admin": False
+        }
         
     return {
         "username": username,
         "is_admin": bool(user.get("is_admin", 0))
     }
+
+class FindUsernameRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    username: str
+    email: str
+    new_password: str
+
+@router.post("/find-username", summary="아이디 찾기")
+async def find_username(request: FindUsernameRequest, db: DatabaseManager = Depends(get_db)):
+    email = request.email.strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="이메일 주소는 필수입니다.")
+        
+    conn = db._ensure_connection()
+    try:
+        ph = "%s" if db.is_postgres else "?"
+        cursor = conn.execute(f"SELECT username FROM users WHERE email = {ph}", (email,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="해당 이메일로 가입된 사용자를 찾을 수 없습니다.")
+        
+        username = row["username"] if isinstance(row, dict) else row[0]
+        if len(username) <= 3:
+            masked = username[0] + "*" * (len(username) - 1)
+        else:
+            masked = username[:2] + "*" * (len(username) - 4) + username[-2:]
+            
+        return {"username": masked}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("아이디 찾기 실패: %s", e)
+        raise HTTPException(status_code=500, detail="아이디 찾기 중 오류가 발생했습니다.")
+
+@router.post("/reset-password", summary="비밀번호 재설정")
+async def reset_password(request: ResetPasswordRequest, db: DatabaseManager = Depends(get_db)):
+    username = request.username.strip()
+    email = request.email.strip()
+    new_password = request.new_password
+    
+    if not username or not email or not new_password:
+        raise HTTPException(status_code=400, detail="모든 항목을 입력해야 합니다.")
+    if len(new_password) < 4:
+        raise HTTPException(status_code=400, detail="비밀번호는 최소 4자 이상이어야 합니다.")
+        
+    conn = db._ensure_connection()
+    try:
+        ph = "%s" if db.is_postgres else "?"
+        cursor = conn.execute(f"SELECT username, email FROM users WHERE username = {ph}", (username,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="존재하지 않는 사용자명입니다.")
+        
+        row_email = row["email"] if isinstance(row, dict) else row[1]
+        if row_email != email:
+            raise HTTPException(status_code=400, detail="등록된 이메일 정보와 일치하지 않습니다.")
+            
+        password_hash = hash_password(new_password)
+        if not db.is_postgres:
+            conn.execute("BEGIN TRANSACTION")
+        conn.execute(
+            f"UPDATE users SET password_hash = {ph} WHERE username = {ph}",
+            (password_hash, username)
+        )
+        conn.commit()
+        
+        logger.info("비밀번호 재설정 성공: %s", username)
+        return {"message": "비밀번호가 성공적으로 재설정되었습니다."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.error("비밀번호 재설정 실패: %s", e)
+        raise HTTPException(status_code=500, detail="비밀번호 재설정 중 오류가 발생했습니다.")
+
+
+# ──────────────────────────────────────────────
+# 로그인 상태 회원 관리 API
+# ──────────────────────────────────────────────
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+class UpdateProfileRequest(BaseModel):
+    email: Optional[str] = None
+
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+
+@router.post("/change-password", summary="비밀번호 변경 (로그인 상태)")
+async def change_password(
+    request: ChangePasswordRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    현재 로그인한 사용자가 기존 비밀번호를 확인한 후 새 비밀번호로 변경합니다.
+    """
+    # 1. 현재 비밀번호 검증을 먼저 수행 (보안 우선)
+    user = db.get_user(username)
+    if not user or not verify_password(request.current_password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="현재 비밀번호가 일치하지 않습니다.")
+
+    # 2. 새 비밀번호 유효성 검증
+    if len(request.new_password) < 4:
+        raise HTTPException(status_code=400, detail="새 비밀번호는 최소 4자 이상이어야 합니다.")
+    if request.current_password == request.new_password:
+        raise HTTPException(status_code=400, detail="새 비밀번호는 기존 비밀번호와 달라야 합니다.")
+
+    new_hash = hash_password(request.new_password)
+    success = db.change_user_password(username, new_hash)
+    if not success:
+        raise HTTPException(status_code=500, detail="비밀번호 변경 중 오류가 발생했습니다.")
+
+    logger.info("비밀번호 변경 성공: %s", username)
+    return {"message": "비밀번호가 성공적으로 변경되었습니다."}
+
+
+@router.put("/profile", summary="회원 프로필 수정 (이메일 변경)")
+async def update_profile(
+    request: UpdateProfileRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    현재 로그인한 사용자의 이메일 정보를 수정합니다.
+    """
+    success = db.update_user_profile(username, request.email)
+    if not success:
+        raise HTTPException(status_code=500, detail="프로필 수정 중 오류가 발생했습니다.")
+
+    logger.info("회원 프로필 수정 성공: %s", username)
+    return {"message": "프로필이 성공적으로 수정되었습니다.", "email": request.email}
+
+
+@router.delete("/me", summary="회원 탈퇴 (자진 탈퇴)")
+async def delete_my_account(
+    request: DeleteAccountRequest,
+    response: Response,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    현재 로그인한 사용자가 비밀번호를 확인한 후 계정을 영구 삭제합니다.
+    관심공고, AI 설정, 소속 멤버 정보가 함께 삭제됩니다. (admin 계정 불가)
+    """
+    if username == "admin":
+        raise HTTPException(status_code=403, detail="최고 관리자 계정은 탈퇴할 수 없습니다.")
+
+    user = db.get_user(username)
+    if not user or not verify_password(request.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다.")
+
+    success = db.delete_user_self(username)
+    if not success:
+        raise HTTPException(status_code=500, detail="계정 탈퇴 중 오류가 발생했습니다.")
+
+    # 쿠키 제거
+    response.delete_cookie(key="access_token")
+    logger.info("회원 자진 탈퇴 완료: %s", username)
+    return {"message": "계정이 성공적으로 삭제되었습니다."}
+

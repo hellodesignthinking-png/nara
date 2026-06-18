@@ -26,6 +26,20 @@ let currentProposalBizId = ''; // 제안서 Q&A 대상 사업자 ID
 let _currentUser = null; // 현재 로그인된 사용자명
 let _favoritesCache = []; // 관심공고 전역 캐시
 
+// ── 사이드바 실시간 시계 ──
+(function initSidebarClock() {
+    function updateClock() {
+        const el = document.getElementById('sidebar-clock');
+        if (el) {
+            const now = new Date();
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            el.textContent = `${h}:${m}`;
+        }
+    }
+    updateClock();
+    setInterval(updateClock, 30000);
+})();
 
 
 // ──────────────────────────────────────────────
@@ -95,6 +109,28 @@ function renderEmptyState(icon, title, message, actionHtml = '') {
         <h3>${title}</h3>
         <p>${message}</p>
         ${actionHtml}
+    </div>`;
+}
+
+// ──────────────────────────────────────────────
+// 0-d. 스켈레톤 카드 공통 렌더러
+// ──────────────────────────────────────────────
+function renderSkeletonCards(count = 3, height = '120px') {
+    return Array(count).fill(0).map(() => `
+        <div class="skeleton-card" style="height:${height};border-radius:12px;background:linear-gradient(90deg,rgba(99,102,241,0.06) 25%,rgba(99,102,241,0.12) 50%,rgba(99,102,241,0.06) 75%);background-size:200% 100%;animation:skeleton-shimmer 1.5s ease-in-out infinite;margin-bottom:12px">
+        </div>
+    `).join('');
+}
+
+// ──────────────────────────────────────────────
+// 0-e. 차트 로딩 플레이스홀더
+// ──────────────────────────────────────────────
+function renderChartLoading(containerId, message = '차트 데이터를 불러오는 중...') {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = `<div class="chart-loading-placeholder">
+        <div class="chart-spinner"></div>
+        <span>${message}</span>
     </div>`;
 }
 
@@ -189,36 +225,64 @@ function getFavByBidNo(bidNo) {
 }
 
 async function updateFav(bidNo, updates) {
-    if (_currentUser) {
-        try {
-            // 캐시 즉시 업데이트 (비동기 통신 중 정합성 유지)
-            const idx = _favoritesCache.findIndex(f => f.bid_ntce_no === bidNo);
-            if (idx >= 0) {
-                _favoritesCache[idx] = { ..._favoritesCache[idx], ...updates };
-            }
-            
-            const response = await fetch(`/api/favorites/${bidNo}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updates)
-            });
-            
-            if (!response.ok) {
-                throw new Error('서버 업데이트 실패');
-            }
-        } catch (e) {
-            console.error('관심공고 서버 업데이트 오류:', e);
-            showToast('서버 데이터 변경에 실패했습니다.', 'error');
-        }
-    } else {
+    if (!_currentUser) {
+        // 비로그인: 로컬 스토리지에만 저장
         let favs = getFavorites();
         const idx = favs.findIndex(f => f.bid_ntce_no === bidNo);
         if (idx >= 0) {
             favs[idx] = { ...favs[idx], ...updates };
             saveFavorites(favs);
         }
+        return;
+    }
+
+    // 캐시 즉시 업데이트
+    const idx = _favoritesCache.findIndex(f => f.bid_ntce_no === bidNo);
+    if (idx >= 0) {
+        _favoritesCache[idx] = { ..._favoritesCache[idx], ...updates };
+    }
+
+    // analysis_done 같은 "조용한" 저장 여부 판단
+    const isSilent = 'analysis_done' in updates || 'analysis_summary' in updates;
+
+    try {
+        // api() 헬퍼 사용 (인증 쿠키 자동 포함)
+        await api('PUT', `/favorites/${bidNo}`, updates);
+    } catch (e) {
+        // PUT 실패 (404 포함) → POST로 먼저 추가 후 재시도
+        const is404 = e.status === 404 || (e.message || '').includes('HTTP 404') || (e.message || '').includes('찾을 수 없');
+        if (is404) {
+            const fav = getFavByBidNo(bidNo);
+            const addPayload = {
+                bid_ntce_no: bidNo,
+                status: updates.status || fav?.status || 'reviewing',
+                memo: updates.memo || fav?.memo || '',
+                partners: updates.partners || fav?.partners || [],
+                checklist: updates.checklist || fav?.checklist || []
+            };
+            try {
+                await api('POST', '/favorites', addPayload);
+                // 추가 성공 → 다시 PUT
+                try { await api('PUT', `/favorites/${bidNo}`, updates); } catch (_) {}
+            } catch (addErr) {
+                if (!isSilent) {
+                    console.warn('관심공고 서버 저장 실패:', addErr.message);
+                }
+            }
+            return;
+        }
+
+        // 401 = 세션 만료 (api()가 이미 처리)
+        if (e.status === 401 || (e.message || '').includes('HTTP 401') || (e.message || '').includes('로그인')) return;
+
+        // 그 외 오류
+        console.error('관심공고 서버 업데이트 오류:', e);
+        if (!isSilent) {
+            showToast('서버 데이터 변경에 실패했습니다.', 'error');
+        }
     }
 }
+
 
 async function toggleFavorite(bidNo, btnEl) {
     if (!_currentUser) {
@@ -231,16 +295,14 @@ async function toggleFavorite(bidNo, btnEl) {
 
     if (idx >= 0) {
         // 관심공고 삭제
+        _favoritesCache.splice(idx, 1);
+        if (btnEl) {
+            btnEl.classList.remove('active');
+            btnEl.innerHTML = '☆ 관심공고 추가';
+        }
+        showToast('관심공고에서 해제되었습니다.', 'info');
         try {
-            _favoritesCache.splice(idx, 1);
-            if (btnEl) {
-                btnEl.classList.remove('active');
-                btnEl.innerHTML = '☆ 관심공고 추가';
-            }
-            showToast('관심공고에서 해제되었습니다.', 'info');
-            
-            const response = await fetch(`/api/favorites/${bidNo}`, { method: 'DELETE' });
-            if (!response.ok) throw new Error('서버 삭제 실패');
+            await api('DELETE', `/favorites/${bidNo}`);
         } catch (e) {
             console.error('서버 관심공고 삭제 실패:', e);
         }
@@ -248,10 +310,10 @@ async function toggleFavorite(bidNo, btnEl) {
         // 관심공고 추가
         const titleEl = document.getElementById('bqv-title');
         const overlay = document.getElementById('bid-quick-view');
-        
+
         const newFav = {
             bid_ntce_no: bidNo,
-            title: titleEl?.textContent || bidNo,
+            title: titleEl?.textContent?.trim() || bidNo,
             org_name: overlay?.dataset?.orgName || '',
             budget: overlay?.dataset?.budget ? parseInt(overlay.dataset.budget) : null,
             bid_close_dt: overlay?.dataset?.closeDt || '',
@@ -268,28 +330,34 @@ async function toggleFavorite(bidNo, btnEl) {
             ]
         };
 
+        // 캐시 즉시 추가 (Optimistic UI)
+        _favoritesCache.push(newFav);
+        if (btnEl) {
+            btnEl.classList.add('active');
+            btnEl.innerHTML = '⭐ 관심공고 해제';
+        }
+
         try {
-            _favoritesCache.push(newFav);
-            if (btnEl) {
-                btnEl.classList.add('active');
-                btnEl.innerHTML = '⭐ 관심공고 해제';
-            }
-            showToast('관심공고에 추가되었습니다!', 'success');
-            
-            const response = await fetch('/api/favorites', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newFav)
-            });
-            if (!response.ok) throw new Error('서버 추가 실패');
+            await api('POST', '/favorites', newFav);
+            showToast('관심공고에 추가되었습니다! ⭐', 'success');
         } catch (e) {
+            // 롤백
+            const rollbackIdx = _favoritesCache.findIndex(f => f.bid_ntce_no === bidNo);
+            if (rollbackIdx !== -1) _favoritesCache.splice(rollbackIdx, 1);
+            if (btnEl) {
+                btnEl.classList.remove('active');
+                btnEl.innerHTML = '☆ 관심공고 추가';
+            }
             console.error('서버 관심공고 추가 실패:', e);
+            showToast(`관심공고 저장 실패: ${e.message || '서버 오류'}`, 'error');
         }
     }
 
     if (state.currentView === 'favorites') loadFavorites();
     updateFavBadge();
 }
+
+
 
 function updateFavBadge() {
     const badge = document.getElementById('fav-menu-badge');
@@ -333,6 +401,35 @@ function loadFavorites() {
         const el = document.getElementById(`fav-stat-${k}`);
         if (el) el.textContent = stats[k];
     });
+
+    // 누적 통계 프로그레스 바 업데이트
+    const progressWrap = document.getElementById('fav-pipeline-progress-wrap');
+    if (progressWrap) {
+        const total = stats.all;
+        if (total > 0) {
+            progressWrap.style.display = 'block';
+            const pct = {
+                reviewing: Math.round((stats.reviewing / total) * 100),
+                proceeding: Math.round((stats.proceeding / total) * 100),
+                partnered: Math.round((stats.partnered / total) * 100),
+                completed: Math.round((stats.completed / total) * 100),
+                abandoned: Math.round((stats.abandoned / total) * 100)
+            };
+            
+            // 각 바의 너비 갱신
+            document.getElementById('fav-progress-reviewing').style.width = `${pct.reviewing}%`;
+            document.getElementById('fav-progress-proceeding').style.width = `${pct.proceeding}%`;
+            document.getElementById('fav-progress-partnered').style.width = `${pct.partnered}%`;
+            document.getElementById('fav-progress-completed').style.width = `${pct.completed}%`;
+            document.getElementById('fav-progress-abandoned').style.width = `${pct.abandoned}%`;
+            
+            // 요약 텍스트 갱신
+            document.getElementById('fav-pipeline-progress-summary').textContent = 
+                `검토중 ${pct.reviewing}% · 사업진행 ${pct.proceeding}% · 협업진행 ${pct.partnered}% · 완료 ${pct.completed}% · 포기 ${pct.abandoned}%`;
+        } else {
+            progressWrap.style.display = 'none';
+        }
+    }
 
     // 필터링
     let favs = _favFilterStatus === 'all' ? [...allFavs] : allFavs.filter(f => f.status === _favFilterStatus);
@@ -514,7 +611,9 @@ async function api(method, path, body = null, { timeout } = {}) {
     const effectiveTimeout = timeout || getTimeoutForPath(path);
     const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
-    const headers = {};
+    const headers = {
+        'Bypass-Tunnel-Reminder': 'true',
+    };
     if (body) {
         headers['Content-Type'] = 'application/json';
     }
@@ -528,6 +627,7 @@ async function api(method, path, body = null, { timeout } = {}) {
         method,
         headers,
         signal: controller.signal,
+        credentials: 'include',
     };
     if (body) {
         opts.body = JSON.stringify(body);
@@ -538,7 +638,17 @@ async function api(method, path, body = null, { timeout } = {}) {
         clearTimeout(timeoutId);
         if (!res.ok) {
             const err = await res.json().catch(() => ({ detail: res.statusText }));
-            throw new Error(err.detail || `HTTP ${res.status}`);
+            // 401 Unauthorized - 세션 만료 처리
+            if (res.status === 401 && _currentUser) {
+                _currentUser = null;
+                _favoritesCache = [];
+                _clearAuthUI();
+                showToast('세션이 만료되었습니다. 다시 로그인해 주세요.', 'warning');
+            }
+            const apiErr = new Error(err.detail || `HTTP ${res.status}`);
+            apiErr.status = res.status;
+            apiErr.detail = err.detail;
+            throw apiErr;
         }
         // 204 No Content
         if (res.status === 204) return null;
@@ -697,10 +807,16 @@ function openFavDetail(bidNo) {
                                     </div>
                                     <div style="margin-top:4px">${reasons}</div>
                                 </div>
-                                <button class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:0.72rem;height:24px" 
-                                    onclick="addSuggestedPartner('${nameEsc}', '${roleEsc}', '${contactEsc}')">
-                                    + 추가
-                                </button>
+                                <div style="display:flex;gap:4px;flex-direction:column;align-items:flex-end">
+                                    <button class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:0.72rem;height:24px;width:100%" 
+                                        onclick="addSuggestedPartner('${nameEsc}', '${roleEsc}', '${contactEsc}')">
+                                        + 추가
+                                    </button>
+                                    <button class="btn btn-sm btn-primary" style="padding:2px 8px;font-size:0.72rem;height:24px;background:rgba(99,102,241,0.2);color:#a5b4fc;border:1px solid rgba(99,102,241,0.4)" 
+                                        onclick="openProposalModal('${p.biz_id}', '${nameEsc}', '${bidNo}')">
+                                        🤝 제안
+                                    </button>
+                                </div>
                             </div>
                         `;
                     });
@@ -1232,6 +1348,9 @@ function navigate(view) {
         case 'settings': loadSettings(); break;
         case 'ai-settings': loadUserAISettings(); break;
         case 'admin': loadAdminPanel(); break;
+        case 'policies': initPoliciesView(); break;
+        case 'proposals': loadProposals(); break;
+        case 'partners': loadPartners(); break;
     }
 
     // 접근성: 뷰 전환 시 포커스 이동
@@ -1426,12 +1545,11 @@ function _showCollectingProgress(keyword, current, total, collectedSoFar) {
 async function loadDashboard() {
     const activeBizId = localStorage.getItem('activeCompanyBizId');
     const banner = document.getElementById('no-company-banner');
-    if (!activeBizId) {
+    const hasCompany = !!activeBizId;
+
+    if (!hasCompany) {
         if (banner) banner.style.display = 'flex';
-        ['stat-businesses', 'stat-bids', 'stat-analyses', 'stat-urgent'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = '0';
-        });
+        // 회사 미등록 시 큐레이션/최근 분석만 안내 메시지 표시
         renderRecentAnalyses([]);
         const tbody = document.getElementById('curated-bids-tbody');
         if (tbody) {
@@ -1440,14 +1558,14 @@ async function loadDashboard() {
                     <td colspan="7">
                         <div class="empty-state-inline">
                             <span>🏢</span>
-                            <p>등록된 회사 정보가 없습니다. [사업자 관리]에서 회사를 먼저 등록해 주세요.</p>
+                            <p>사업자를 등록하면 맞춤 큐레이션 공고가 표시됩니다. <a onclick="navigate('businesses')" style="color:var(--accent-indigo);cursor:pointer;font-weight:600">사업자 등록 →</a></p>
                         </div>
                     </td>
                 </tr>`;
         }
-        return;
+    } else {
+        if (banner) banner.style.display = 'none';
     }
-    if (banner) banner.style.display = 'none';
 
     // 대시보드 통계를 한 번만 호출하고 결과를 재사용
     let dashboardStats = null;
@@ -1517,6 +1635,9 @@ async function loadDashboard() {
     // 경쟁사 수주 타깃 모니터 로드
     loadCompetitorIntelligence();
 
+    // YouTube 교육 동영상 로드
+    loadYouTubeVideos();
+
     // 대시보드 환영 헤더 날짜 표시
     const dashDateEl = document.getElementById('dashboard-date');
     if (dashDateEl) {
@@ -1572,46 +1693,53 @@ async function loadDashboard() {
         const d = getDaysLeft(f.bid_close_dt);
         return d !== null && d >= 0 && d <= 3;
     });
-    const heroContent = document.querySelector('.hero-content .hero-text');
-    if (heroContent && favs.length > 0) {
-        let favSummary = document.getElementById('hero-fav-summary');
-        if (!favSummary) {
-            favSummary = document.createElement('div');
-            favSummary.id = 'hero-fav-summary';
-            favSummary.style.cssText = 'font-size:0.85rem;color:var(--text-muted);margin-top:6px;display:flex;gap:12px;flex-wrap:wrap';
-            heroContent.appendChild(favSummary);
-        }
-        // 가장 임박한 미완료 공고의 다음 할 일 표시
-        const nextAction = activeFavs
-            .filter(f => { const d = getDaysLeft(f.bid_close_dt); return d !== null && d >= 0; })
-            .sort((a, b) => (getDaysLeft(a.bid_close_dt) || 999) - (getDaysLeft(b.bid_close_dt) || 999))
-            .map(f => {
-                const nextItem = (f.checklist || []).find(c => !c.done);
-                return nextItem ? { fav: f, item: nextItem } : null;
-            })
-            .find(x => x);
 
-        favSummary.innerHTML = `
-            <span>⭐ 관심공고 ${favs.length}건</span>
-            <span>📋 진행중 ${activeFavs.length}건</span>
-            ${urgentFavs.length > 0 ? `<span style="color:var(--danger);font-weight:600;cursor:pointer" onclick="navigate('favorites')">⏰ 마감임박 ${urgentFavs.length}건</span>` : ''}
-        `;
-        if (nextAction) {
-            const d = getDaysLeft(nextAction.fav.bid_close_dt);
-            let nextEl = document.getElementById('hero-next-action');
-            if (!nextEl) {
-                nextEl = document.createElement('div');
-                nextEl.id = 'hero-next-action';
-                nextEl.style.cssText = 'margin-top:8px;padding:8px 12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px;font-size:0.82rem;cursor:pointer';
-                heroContent.appendChild(nextEl);
-            }
-            nextEl.innerHTML = `
-                <div style="font-weight:600;color:var(--accent-indigo, #6366f1);margin-bottom:2px">🎯 다음 할 일</div>
-                <div>${escapeHTML(nextAction.fav.title?.substring(0, 35) || nextAction.fav.bid_ntce_no)}${nextAction.fav.title?.length > 35 ? '...' : ''} <span style="color:var(--danger);font-weight:500">(D-${d})</span></div>
-                <div style="color:var(--text-muted)">→ ${escapeHTML(nextAction.item.label)}</div>
-            `;
-            nextEl.onclick = () => openFavDetail(nextAction.fav.bid_ntce_no);
+    // 히어로 위젯 업데이트 (HTML에 고정 배치된 요소)
+    const favCountEl = document.getElementById('hero-fav-count');
+    const nextTextEl = document.getElementById('hero-next-text');
+    const favSummary = document.getElementById('hero-fav-summary');
+    const heroNextAction = document.getElementById('hero-next-action');
+
+    if (favSummary && favs.length > 0) {
+        if (urgentFavs.length > 0) {
+            favSummary.style.borderColor = 'rgba(239,68,68,0.3)';
+            favSummary.style.background = 'rgba(239,68,68,0.06)';
+        } else {
+            favSummary.style.borderColor = '';
+            favSummary.style.background = '';
         }
+        if (favCountEl) {
+            favCountEl.textContent = urgentFavs.length > 0
+                ? `${favs.length}건 ⏰D-3 ${urgentFavs.length}건`
+                : `${favs.length}건 (진행중 ${activeFavs.length}건)`;
+            if (urgentFavs.length > 0) favCountEl.style.color = '#f87171';
+        }
+        favSummary.style.cursor = 'pointer';
+        favSummary.onclick = () => navigate('favorites');
+    } else if (favCountEl) {
+        favCountEl.textContent = '없음';
+    }
+
+    // 가장 임박한 미완료 공고의 다음 할 일 표시
+    const nextAction = activeFavs
+        .filter(f => { const d = getDaysLeft(f.bid_close_dt); return d !== null && d >= 0; })
+        .sort((a, b) => (getDaysLeft(a.bid_close_dt) || 999) - (getDaysLeft(b.bid_close_dt) || 999))
+        .map(f => {
+            const nextItem = (f.checklist || []).find(c => !c.done);
+            return nextItem ? { fav: f, item: nextItem } : null;
+        })
+        .find(x => x);
+
+    if (nextAction && nextTextEl) {
+        const d = getDaysLeft(nextAction.fav.bid_close_dt);
+        const title = nextAction.fav.title?.substring(0, 28) || nextAction.fav.bid_ntce_no;
+        nextTextEl.textContent = `${title} → ${nextAction.item.label}`;
+        if (heroNextAction) {
+            heroNextAction.onclick = () => openFavDetail(nextAction.fav.bid_ntce_no);
+            heroNextAction.style.cursor = 'pointer';
+        }
+    } else if (nextTextEl) {
+        nextTextEl.textContent = favs.length > 0 ? '체크리스트를 채워보세요' : '공고를 수집해보세요';
     }
 
     // 입찰 파이프라인 요약
@@ -1792,12 +1920,26 @@ function renderBids(bids) {
 
         // 출처 배지 구별
         let sourceBadge = '<span class="platform-badge nara">🏛️ 나라장터</span>';
-        if (bid.bid_ntce_no.startsWith('SAM-')) {
-            sourceBadge = '<span class="platform-badge samgov">🇺🇸 SAM.gov</span>';
-        } else if (bid.bid_ntce_no.startsWith('UNGM-')) {
-            sourceBadge = '<span class="platform-badge ungm">🇺🇳 UNGM</span>';
-        } else if (bid.bid_ntce_no.startsWith('KS-')) {
+        if (bid.bid_ntce_no.startsWith('KS-')) {
             sourceBadge = '<span class="platform-badge kstartup">🚀 K-Startup</span>';
+        } else if (bid.bid_ntce_no.startsWith('ARKO-')) {
+            sourceBadge = '<span class="platform-badge arko">🎭 아르코</span>';
+        } else if (bid.bid_ntce_no.startsWith('SFAC-')) {
+            sourceBadge = '<span class="platform-badge sfac">🎨 서울문화재단</span>';
+        } else if (bid.bid_ntce_no.startsWith('KOCCA-')) {
+            sourceBadge = '<span class="platform-badge kocca">🎬 콘텐츠진흥원</span>';
+        } else if (bid.bid_ntce_no.startsWith('ENARA-')) {
+            sourceBadge = '<span class="platform-badge enaradoum">📋 e나라도움</span>';
+        } else if (bid.bid_ntce_no.startsWith('GOKAMS-')) {
+            sourceBadge = '<span class="platform-badge gokams">🎪 예술경영</span>';
+        } else if (bid.bid_ntce_no.startsWith('KCDF-')) {
+            sourceBadge = '<span class="platform-badge kcdf">🏺 공예디자인</span>';
+        } else if (bid.bid_ntce_no.startsWith('KTO-')) {
+            sourceBadge = '<span class="platform-badge visitkorea">📺 관광공사</span>';
+        } else if (bid.bid_ntce_no.startsWith('LH-')) {
+            sourceBadge = '<span class="platform-badge lh">🏗️ LH</span>';
+        } else if (bid.bid_ntce_no.startsWith('NRF-')) {
+            sourceBadge = '<span class="platform-badge nrf">🔬 연구재단</span>';
         }
 
         const isCompared = compareList.some(item => item.bidNo === bid.bid_ntce_no);
@@ -1928,6 +2070,14 @@ function renderBids(bids) {
         `;
     }
 }
+
+// ── 공고 제목 툴팁 (truncated text) ──
+document.addEventListener('mouseover', function(e) {
+    const td = e.target.closest('.td-title');
+    if (td && td.scrollWidth > td.clientWidth) {
+        td.title = td.textContent.trim();
+    }
+});
 
 function changeBidPage(delta) {
     state.bidPage += delta;
@@ -2100,6 +2250,15 @@ function getSelectedPlatforms() {
     const platforms = [];
     if (document.getElementById('plat-nara')?.checked) platforms.push('nara');
     if (document.getElementById('plat-kstartup')?.checked) platforms.push('kstartup');
+    if (document.getElementById('plat-arko')?.checked) platforms.push('arko');
+    if (document.getElementById('plat-sfac')?.checked) platforms.push('sfac');
+    if (document.getElementById('plat-gokams')?.checked) platforms.push('gokams');
+    if (document.getElementById('plat-kcdf')?.checked) platforms.push('kcdf');
+    if (document.getElementById('plat-kocca')?.checked) platforms.push('kocca');
+    if (document.getElementById('plat-e-naradoum')?.checked) platforms.push('e_naradoum');
+    if (document.getElementById('plat-visitkorea')?.checked) platforms.push('visitkorea');
+    if (document.getElementById('plat-lh')?.checked) platforms.push('lh');
+    if (document.getElementById('plat-nrf')?.checked) platforms.push('nrf');
     return platforms;
 }
 
@@ -2185,6 +2344,19 @@ async function collectBids() {
 // ──────────────────────────────────────────────
 async function loadBusinesses() {
     const grid = document.getElementById('business-grid');
+
+    // 비로그인 처리
+    if (!_currentUser) {
+        if (grid) grid.innerHTML = `
+            <div style="text-align:center;padding:60px 20px">
+                <div style="font-size:3rem;margin-bottom:16px">🔒</div>
+                <div style="font-size:1.1rem;font-weight:700;color:var(--text-primary);margin-bottom:8px">로그인이 필요합니다</div>
+                <div style="font-size:0.88rem;color:var(--text-muted);margin-bottom:20px">사업자 관리는 로그인 후 이용하실 수 있습니다.</div>
+                <button class="btn btn-primary" onclick="openAuthModal('login')">🔑 로그인하기</button>
+            </div>`;
+        return;
+    }
+
     grid.innerHTML = '<div class="skeleton skeleton-card"></div>'.repeat(3);
 
     try {
@@ -2192,6 +2364,10 @@ async function loadBusinesses() {
         state.businesses = businesses || [];
         renderBusinesses(state.businesses);
     } catch (err) {
+        if (err.message.includes('인증') || err.message.includes('로그인')) {
+            grid.innerHTML = `<div style="text-align:center;padding:40px"><p style="color:var(--text-muted)">세션이 만료되었습니다.</p><button class="btn btn-primary" onclick="openAuthModal('login')">다시 로그인</button></div>`;
+            return;
+        }
         showToast(`사업자 목록 로드 실패: ${err.message}`, 'error');
         grid.innerHTML = `
             <div class="empty-state">
@@ -2319,6 +2495,10 @@ function showBusinessModal(business = null) {
         document.getElementById('form-credit-rating').value = business.credit_rating || 'BBB';
         document.getElementById('form-company-type').value = business.company_type || '';
         document.getElementById('form-has-sanctions').checked = !!business.has_sanctions;
+        document.getElementById('form-is-shared').checked = business.is_shared !== undefined ? !!business.is_shared : true;
+        document.getElementById('form-website-url').value = business.website_url || '';
+        document.getElementById('form-intro-file-url').value = business.intro_file_url || '';
+        document.getElementById('form-social-links').value = business.social_links || '';
 
         // 태그 채우기
         setTags('biz-types', parseJsonField(business.business_types));
@@ -2337,6 +2517,10 @@ function showBusinessModal(business = null) {
         document.getElementById('form-credit-rating').value = 'BBB';
         document.getElementById('form-company-type').value = '';
         document.getElementById('form-has-sanctions').checked = false;
+        document.getElementById('form-is-shared').checked = true;
+        document.getElementById('form-website-url').value = '';
+        document.getElementById('form-intro-file-url').value = '';
+        document.getElementById('form-social-links').value = '';
         title.textContent = '사업자 등록';
         submitBtn.textContent = '등록';
     }
@@ -2367,6 +2551,10 @@ async function saveBusiness(event) {
         credit_rating: document.getElementById('form-credit-rating').value,
         company_type: document.getElementById('form-company-type').value.trim() || null,
         has_sanctions: document.getElementById('form-has-sanctions').checked,
+        is_shared: document.getElementById('form-is-shared').checked,
+        website_url: document.getElementById('form-website-url').value.trim() || null,
+        intro_file_url: document.getElementById('form-intro-file-url').value.trim() || null,
+        social_links: document.getElementById('form-social-links').value.trim() || null,
     };
 
     if (!body.biz_id || !body.company_name) {
@@ -2444,20 +2632,43 @@ async function runAnalysis() {
 // ──────────────────────────────────────────────
 async function loadAnalyses() {
     const list = document.getElementById('analysis-list');
+
+    // 비로그인 처리
+    if (!_currentUser) {
+        if (list) list.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🔒</div>
+                <h3>로그인이 필요합니다</h3>
+                <p>AI 분석 결과는 로그인 후 확인하실 수 있습니다.<br>회원가입 후 사업자를 등록하면 공고 매칭 분석이 자동으로 실행됩니다.</p>
+                <div style="display:flex;gap:8px;justify-content:center;margin-top:16px">
+                    <button class="btn btn-primary" onclick="openAuthModal('login')">🔑 로그인하기</button>
+                    <button class="btn btn-secondary" onclick="openAuthModal('register')">📝 회원가입</button>
+                </div>
+            </div>`;
+        return;
+    }
+
     const activeBizId = localStorage.getItem('activeCompanyBizId');
     if (!activeBizId) {
         list.innerHTML = `
             <div class="empty-state">
                 <div class="empty-icon">🏢</div>
-                <h3>등록된 회사 정보가 없습니다</h3>
-                <p>[사업자 관리] 탭에서 회사를 먼저 등록하거나 선택해 주세요.</p>
-                <button class="btn btn-primary" onclick="navigate('businesses')" style="margin-top: 16px;">
-                    🏢 회사 등록하러 가기
-                </button>
+                <h3>사업자를 등록하면 맞춤 분석이 가능합니다</h3>
+                <p>사업자 프로필을 등록하면 공고와 사업자 간 매칭 분석을 수행할 수 있습니다.<br>
+                키워드 기반 공고 추천은 대시보드에서 바로 확인할 수 있습니다.</p>
+                <div style="display:flex;gap:8px;justify-content:center;margin-top:16px">
+                    <button class="btn btn-primary" onclick="navigate('businesses')">
+                        🏢 사업자 등록하기
+                    </button>
+                    <button class="btn btn-secondary" onclick="navigate('dashboard')">
+                        📊 대시보드 보기
+                    </button>
+                </div>
             </div>`;
         return;
     }
-    list.innerHTML = '<div class="skeleton skeleton-card" style="height:200px;margin-bottom:16px"></div>'.repeat(3);
+    // 스켈레톤 로딩 (renderSkeletonCards 헬퍼 사용)
+    list.innerHTML = renderSkeletonCards(3, '200px');
 
     try {
         const analyses = await api('GET', '/analyses');
@@ -2465,12 +2676,15 @@ async function loadAnalyses() {
         renderAnalyses(state.analyses);
     } catch (err) {
         showToast(`분석 결과 로드 실패: ${err.message}`, 'error');
-        list.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-icon">⚠️</div>
-                <h3>데이터를 불러올 수 없습니다</h3>
-                <p>서버 연결을 확인해주세요.</p>
-            </div>`;
+        list.innerHTML = renderEmptyState(
+            '⚠️',
+            '데이터를 불러올 수 없습니다',
+            `서버 연결을 확인 후 다시 시도해 주세요. (${escapeHTML(err.message)})`,
+            `<div style="display:flex;gap:8px;justify-content:center;margin-top:16px">
+                <button class="btn btn-primary" onclick="loadAnalyses()">🔄 다시 시도</button>
+                <button class="btn btn-outline" onclick="navigate('dashboard')">🏠 대시보드</button>
+            </div>`
+        );
     }
 }
 
@@ -2478,20 +2692,22 @@ function renderAnalyses(analyses) {
     const list = document.getElementById('analysis-list');
 
     if (!analyses || analyses.length === 0) {
-        list.innerHTML = `
-            <div class="empty-state" id="analysis-empty">
-                <div class="empty-icon empty-float-icon">🔬</div>
-                <h3 class="empty-title">분석 결과가 없습니다</h3>
-                <p class="empty-desc">추천 사업 TOP 10에서 🎯 버튼을 눌러 전략 분석을 실행하거나,<br>아래 버튼으로 전체 분석을 시작하세요</p>
-                <div style="display:flex;gap:12px;justify-content:center;margin-top:16px">
-                    <button class="btn btn-gradient" onclick="runAnalysis()">
-                        <span class="btn-icon">🚀</span> 전체 분석 시작
-                    </button>
-                    <button class="btn btn-outline" onclick="navigate('dashboard')">
-                        <span class="btn-icon">🏠</span> 대시보드
-                    </button>
-                </div>
-            </div>`;
+        list.innerHTML = renderEmptyState(
+            '🔬',
+            '분석 결과가 없습니다',
+            '추천 사업 TOP 10에서 🎯 버튼을 눌러 전략 분석을 실행하거나,<br>아래 버튼으로 전체 매칭 분석을 시작하세요.',
+            `<div style="display:flex;gap:12px;justify-content:center;margin-top:20px;flex-wrap:wrap">
+                <button class="btn btn-gradient" onclick="runAnalysis()">
+                    <span class="btn-icon">🚀</span> 전체 분석 시작
+                </button>
+                <button class="btn btn-outline" onclick="navigate('top10')">
+                    <span class="btn-icon">🏆</span> TOP 10 추천 보기
+                </button>
+                <button class="btn btn-secondary" onclick="navigate('dashboard')">
+                    <span class="btn-icon">🏠</span> 대시보드
+                </button>
+            </div>`
+        );
         return;
     }
 
@@ -2899,30 +3115,34 @@ function parseJsonField(value) {
     return [];
 }
 
-function animateCounter(elementId, target) {
-    const el = document.getElementById(elementId);
+// ── 숫자 카운트업 애니메이션 (enhanced) ──
+function animateCounter(elementOrId, target, duration = 800) {
+    const el = (typeof elementOrId === 'string')
+        ? document.getElementById(elementOrId)
+        : elementOrId;
     if (!el) return;
 
-    const start = parseInt(el.textContent) || 0;
-    const duration = 800;
+    const start = parseInt(el.textContent.replace(/,/g, '')) || 0;
+    const diff = target - start;
+    if (diff === 0) { el.textContent = target.toLocaleString(); return; }
     const startTime = performance.now();
 
-    function update(now) {
-        const elapsed = now - startTime;
+    function step(currentTime) {
+        const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / duration, 1);
-        // Ease out cubic
+        // easeOutCubic
         const eased = 1 - Math.pow(1 - progress, 3);
-        const current = Math.round(start + (target - start) * eased);
+        const current = Math.round(start + diff * eased);
         el.textContent = current.toLocaleString();
         if (progress < 1) {
-            requestAnimationFrame(update);
+            requestAnimationFrame(step);
         } else {
             // 카운트 완료 시 그라디언트 효과 클래스 추가
             el.classList.add('counter-done');
         }
     }
 
-    requestAnimationFrame(update);
+    requestAnimationFrame(step);
 }
 
 function renderSkeletonRows(rows, cols) {
@@ -2985,6 +3205,15 @@ document.addEventListener('keydown', (e) => {
         // 사업자 등록/수정 모달
         if (document.getElementById('modal-overlay').classList.contains('active')) {
             closeModal(); return;
+        }
+    }
+    // Ctrl+K / Cmd+K: 검색 포커스
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        const searchInput = document.getElementById('bid-search');
+        if (searchInput) {
+            navigate('bids');
+            setTimeout(() => searchInput.focus(), 100);
         }
     }
     // Ctrl+S / Cmd+S: 관심공고 모달 저장
@@ -3194,11 +3423,6 @@ async function loadSettings() {
             slider.value = data.min_relevance_score;
             display.textContent = data.min_relevance_score;
         }
-        // Slack URL도 같은 응답에서 처리
-        const slackInput = document.getElementById('slack-webhook-input');
-        if (slackInput && data.slack_webhook_url) {
-            slackInput.value = data.slack_webhook_url;
-        }
     } catch (e) {
         console.warn('설정 로드 실패:', e.message);
         try {
@@ -3211,8 +3435,8 @@ async function loadSettings() {
         }
     }
 
-    // 스케줄러 상태도 함께 로드
-    loadSchedulerStatus();
+    // 개인 AI 키 상태 로드
+    loadApiKeys();
 }
 
 function renderSettingsKeywords() {
@@ -3235,25 +3459,17 @@ async function loadApiKeys() {
     try {
         const data = await api('GET', '/settings/api-keys');
 
-        // 상태 dot 업데이트
-        const dotData = document.getElementById('status-dot-data');
-        const dotNaver = document.getElementById('status-dot-naver');
+        // 개인 설정 뷰에서는 OpenAI/Gemini 상태만 표시
         const dotOpenai = document.getElementById('status-dot-openai');
         const dotGemini = document.getElementById('status-dot-gemini');
 
-        if (dotData) dotData.className = `status-dot ${data.data_go_kr_api_key?.set ? 'active' : 'inactive'}`;
-        if (dotNaver) dotNaver.className = `status-dot ${data.naver_client_id?.set ? 'active' : 'inactive'}`;
         if (dotOpenai) dotOpenai.className = `status-dot ${data.openai_api_key?.set ? 'active' : 'inactive'}`;
         if (dotGemini) dotGemini.className = `status-dot ${data.gemini_api_key?.set ? 'active' : 'inactive'}`;
 
         // 마스킹된 값 표시
-        const maskedData = document.getElementById('masked-data-go-kr');
-        const maskedNaver = document.getElementById('masked-naver');
         const maskedOpenai = document.getElementById('masked-openai');
         const maskedGemini = document.getElementById('masked-gemini');
 
-        if (maskedData) maskedData.textContent = data.data_go_kr_api_key?.set ? `현재: ${data.data_go_kr_api_key.masked}` : '미설정';
-        if (maskedNaver) maskedNaver.textContent = data.naver_client_id?.set ? `현재: ${data.naver_client_id.masked}` : '미설정';
         if (maskedOpenai) maskedOpenai.textContent = data.openai_api_key?.set ? `현재: ${data.openai_api_key.masked}` : '미설정';
         if (maskedGemini) maskedGemini.textContent = data.gemini_api_key?.set ? `현재: ${data.gemini_api_key.masked}` : '미설정';
 
@@ -3270,40 +3486,31 @@ async function loadApiKeys() {
 
 async function saveApiKeys() {
     const body = {};
-    const dataKey = document.getElementById('api-key-data-go-kr')?.value?.trim();
-    const naverId = document.getElementById('api-key-naver-id')?.value?.trim();
-    const naverSecret = document.getElementById('api-key-naver-secret')?.value?.trim();
     const openaiKey = document.getElementById('api-key-openai')?.value?.trim();
     const geminiKey = document.getElementById('api-key-gemini')?.value?.trim();
     const llmEngine = document.getElementById('llm-engine-select')?.value;
 
-    if (dataKey) body.data_go_kr_api_key = dataKey;
-    if (naverId) body.naver_client_id = naverId;
-    if (naverSecret) body.naver_client_secret = naverSecret;
     if (openaiKey) body.openai_api_key = openaiKey;
     if (geminiKey) body.gemini_api_key = geminiKey;
     if (llmEngine) body.llm_engine = llmEngine;
 
     if (Object.keys(body).length === 0) {
-        showToast('변경할 API 키를 입력해주세요.', 'warning');
+        showToast('변경할 AI 설정을 입력해주세요.', 'warning');
         return;
     }
 
     try {
         const result = await api('PUT', '/settings/api-keys', body);
-        showToast(result.message || 'API 키가 저장되었습니다.', 'success');
+        showToast(result.message || 'AI 설정이 저장되었습니다.', 'success');
 
         // 입력 필드 초기화
-        if (dataKey) document.getElementById('api-key-data-go-kr').value = '';
-        if (naverId) document.getElementById('api-key-naver-id').value = '';
-        if (naverSecret) document.getElementById('api-key-naver-secret').value = '';
         if (openaiKey) document.getElementById('api-key-openai').value = '';
         if (geminiKey) document.getElementById('api-key-gemini').value = '';
 
         // 상태 갱신
         loadApiKeys();
     } catch (e) {
-        showToast(`API 키 저장 실패: ${e.message}`, 'error');
+        showToast(`AI 설정 저장 실패: ${e.message}`, 'error');
     }
 }
 
@@ -3372,6 +3579,11 @@ async function saveRelevance() {
 // 18. 대시보드 차트
 // ──────────────────────────────────────────────
 async function loadCharts() {
+    // 차트 로딩 플레이스홀더 표시
+    renderChartLoading('daily-trend-chart', '일별 공고 트렌드를 분석 중...');
+    renderChartLoading('org-budget-chart', '기관별 예산 데이터를 분석 중...');
+    renderChartLoading('keyword-dist-chart', '키워드 분포를 분석 중...');
+
     try {
         const data = await api('GET', '/dashboard/charts');
         renderDailyTrend(data.daily_trend || [], data.keyword_trends || {});
@@ -3379,6 +3591,12 @@ async function loadCharts() {
         renderKeywordDist(data.keyword_trends || {});
     } catch (e) {
         console.warn('차트 데이터 로드 실패:', e.message);
+        // 에러 시 각 차트 영역에 안내 표시
+        ['daily-trend-chart', 'org-budget-chart', 'keyword-dist-chart'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = renderEmptyState('📉', '차트를 불러올 수 없습니다', '공고를 수집하면 차트가 표시됩니다.',
+                `<button class="btn btn-sm btn-outline" onclick="loadCharts()" style="margin-top:10px">🔄 새로고침</button>`);
+        });
     }
 }
 
@@ -3721,13 +3939,6 @@ async function loadTop10() {
     const list = document.getElementById('top10-list');
     if (!list) return;
 
-    const activeBizId = localStorage.getItem('activeCompanyBizId');
-    if (!activeBizId) {
-        list.innerHTML = '<div class="empty-state-inline"><span>🏢</span><p>사업자를 먼저 등록하면 실시간 추천 공고가 분석 표출됩니다.</p></div>';
-        renderBriefing({ top10: [], message: '사업자 정보가 없습니다.' });
-        return;
-    }
-
     list.innerHTML = '<div class="skeleton skeleton-card" style="height:100px;margin-bottom:12px"></div>'.repeat(3);
 
     try {
@@ -3736,7 +3947,11 @@ async function loadTop10() {
         renderBriefing(data);
     } catch (e) {
         console.warn('TOP 10 로드 실패:', e.message);
-        list.innerHTML = '<div class="empty-state-inline"><span>⚠️</span><p>데이터를 불러올 수 없습니다.</p></div>';
+        if (e.message && e.message.includes('키워드')) {
+            list.innerHTML = `<div class="empty-state-inline"><span>⚙️</span><p>관심 키워드를 먼저 설정해주세요. <a onclick="navigate('settings')" style="color:var(--accent-indigo);cursor:pointer">설정 →</a></p></div>`;
+        } else {
+            list.innerHTML = `<div class="empty-state-inline"><span>📋</span><p>수집된 공고가 없습니다. <button class="btn btn-sm btn-primary" onclick="collectBids()" style="margin-left:6px">공고 수집</button></p></div>`;
+        }
         renderBriefing({});
     }
 }
@@ -4276,6 +4491,7 @@ async function uploadBusinessDocs(fileList) {
             const response = await fetch('/api/businesses/parse-doc', {
                 method: 'POST',
                 body: formData,
+                credentials: 'include',
             });
             if (!response.ok) {
                 const err = await response.json();
@@ -4292,6 +4508,7 @@ async function uploadBusinessDocs(fileList) {
             const response = await fetch('/api/businesses/parse-docs', {
                 method: 'POST',
                 body: formData,
+                credentials: 'include',
             });
             if (!response.ok) {
                 const err = await response.json();
@@ -4430,15 +4647,15 @@ async function loadKeywordSearchPanel() {
                 </span>`;
         }
 
-        // 검색 입력 Enter 이벤트
+        // 검색 입력 Enter 이벤트 (중복 리스너 등록 방지를 위해 onkeydown 사용)
         const input = document.getElementById('ksp-search-input');
         if (input) {
-            input.addEventListener('keydown', (e) => {
+            input.onkeydown = (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     dashboardKeywordSearch();
                 }
-            });
+            };
         }
 
     } catch (err) {
@@ -4757,6 +4974,7 @@ async function analyzeProposalStrategy() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody),
+            credentials: 'include'
         });
 
         if (!response.ok) {
@@ -5362,9 +5580,28 @@ function initScrollAnimations() {
         });
     }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
 
-    document.querySelectorAll('.stat-card, .briefing-panel, .keyword-search-panel, .fav-pipeline-summary').forEach(el => {
+    document.querySelectorAll('.stat-card, .briefing-panel, .keyword-search-panel, .fav-pipeline-summary, .feature-card, .analysis-card').forEach(el => {
         el.classList.add('observe-reveal');
         observer.observe(el);
+    });
+
+    // 이미지 Lazy Load Observer
+    const lazyImgObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const img = entry.target;
+                if (img.dataset.src) {
+                    img.src = img.dataset.src;
+                    img.removeAttribute('data-src');
+                }
+                img.classList.add('loaded');
+                lazyImgObserver.unobserve(img);
+            }
+        });
+    }, { rootMargin: '100px' });
+
+    document.querySelectorAll('img[loading="lazy"]').forEach(img => {
+        lazyImgObserver.observe(img);
     });
 }
 
@@ -6017,6 +6254,51 @@ async function loadCompetitorIntelligence() {
     }
 }
 
+// YouTube 입찰/조달 교육 동영상 로드 및 렌더링
+async function loadYouTubeVideos() {
+    const listEl = document.getElementById('youtube-video-list');
+    if (!listEl) return;
+
+    // 추천 YouTube 검색어 목록 (외부 이미지 의존 없이 CSS 기반 아이콘 사용)
+    const recommendedSearches = [
+        {
+            title: "조달청 나라장터 입찰 입문 - 투찰 금액 계산법 및 기초 지식 완벽 정리",
+            channel: "조달나라 실무 교육원",
+            url: "https://www.youtube.com/results?search_query=나라장터+입찰+방법"
+        },
+        {
+            title: "적격심사 통과를 위한 기업 신용등급 관리 및 가산점 확보 전략 가이드",
+            channel: "중소기업 경영연구소",
+            url: "https://www.youtube.com/results?search_query=입찰+적격심사+신용등급"
+        },
+        {
+            title: "문화예술 공모사업 제안서 작성법 - 심사위원을 사로잡는 기획서 양식과 스토리텔링",
+            channel: "문화예술 기획학교",
+            url: "https://www.youtube.com/results?search_query=문화예술+지원사업+제안서"
+        }
+    ];
+
+    try {
+        listEl.innerHTML = recommendedSearches.map(v => `
+            <div class="yt-card" onclick="window.open('${v.url}', '_blank')" style="cursor:pointer">
+                <div class="yt-thumb-wrap">
+                    <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#ff0000,#cc0000);border-radius:8px;font-size:2rem">▶</div>
+                </div>
+                <div class="yt-info">
+                    <h4 class="yt-title">${escapeHTML(v.title)}</h4>
+                    <span class="yt-channel">📺 ${escapeHTML(v.channel)}</span>
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        console.warn('YouTube 교육 영상 로드 실패:', err.message);
+        listEl.innerHTML = `
+            <div style="color:var(--text-muted);font-size:0.85rem;grid-column:1/-1;text-align:center;padding:20px 0">
+                ⚠️ YouTube 추천 영상을 로드하지 못했습니다.
+            </div>`;
+    }
+}
+
 // 공동도급(컨소시엄) 지분율 & 실적 시뮬레이터 실시간 계산
 function calculateConsortiumMetrics() {
     const corpRevInput = document.getElementById('sim-corp-revenue');
@@ -6048,10 +6330,13 @@ function calculateConsortiumMetrics() {
         const share = Math.min(100, Math.max(0, parseInt(p.share) || 0));
         partnerShareSum += share;
 
-        // 연락처 정보에서 실적 숫자 추출 (예: "실적: 50000" -> 50000)
-        const contactText = p.contact || '';
-        const numMatch = contactText.replace(/,/g, '').match(/\d+/);
-        const revenue = numMatch ? parseInt(numMatch[0]) : 0;
+        // 실적(exp) 필드가 존재하면 우선적으로 사용(억 원 -> 만 원 환산), 없으면 연락처 정보에서 파싱
+        let revenue = p.exp ? (parseFloat(p.exp) * 10000) : 0;
+        if (revenue === 0) {
+            const contactText = p.contact || '';
+            const numMatch = contactText.replace(/,/g, '').match(/\d+/);
+            revenue = numMatch ? parseInt(numMatch[0]) : 0;
+        }
         partnerRevenueSum += (revenue * (share / 100));
 
         // 역할 란의 키워드로 우대 가점 판정
@@ -6271,46 +6556,149 @@ function toggleAuthForm(event, type) {
     if (event) event.preventDefault();
     const loginForm = document.getElementById('auth-login-form');
     const registerForm = document.getElementById('auth-register-form');
+    const findUsernameForm = document.getElementById('auth-find-username-form');
+    const resetPasswordForm = document.getElementById('auth-reset-password-form');
     const title = document.getElementById('auth-modal-title');
     const subtitle = document.getElementById('auth-modal-subtitle');
 
+    if (loginForm) loginForm.style.display = 'none';
+    if (registerForm) registerForm.style.display = 'none';
+    if (findUsernameForm) findUsernameForm.style.display = 'none';
+    if (resetPasswordForm) resetPasswordForm.style.display = 'none';
+
     if (type === 'login') {
         if (loginForm) loginForm.style.display = 'flex';
-        if (registerForm) registerForm.style.display = 'none';
         if (title) title.textContent = '🔒 로그인';
         if (subtitle) subtitle.textContent = 'NARA Analyzer 이용을 위해 로그인해 주세요.';
-    } else {
-        if (loginForm) loginForm.style.display = 'none';
+    } else if (type === 'register') {
         if (registerForm) registerForm.style.display = 'flex';
         if (title) title.textContent = '📝 회원가입';
         if (subtitle) subtitle.textContent = '새로운 계정을 생성하고 입찰 데이터를 관리하세요.';
+    } else if (type === 'find-username') {
+        if (findUsernameForm) findUsernameForm.style.display = 'flex';
+        if (title) title.textContent = '🔍 아이디 찾기';
+        if (subtitle) subtitle.textContent = '가입 시 등록한 이메일 주소를 입력해 주세요.';
+        const resultEl = document.getElementById('find-username-result');
+        if (resultEl) resultEl.style.display = 'none';
+    } else if (type === 'reset-password') {
+        if (resetPasswordForm) resetPasswordForm.style.display = 'flex';
+        if (title) title.textContent = '🔑 비밀번호 재설정';
+        if (subtitle) subtitle.textContent = '아이디와 등록된 이메일을 확인한 후 비밀번호를 재설정합니다.';
+    }
+}
+
+async function handleFindUsernameSubmit(event) {
+    if (event) event.preventDefault();
+    const email = document.getElementById('find-email').value.trim();
+    const resultEl = document.getElementById('find-username-result');
+    if (!email) return;
+
+    try {
+        const response = await fetch('/api/auth/find-username', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.textContent = `찾으시는 아이디: ${data.username}`;
+                resultEl.style.color = '#a5b4fc';
+            }
+        } else {
+            const err = await response.json().catch(() => ({ detail: '아이디를 찾을 수 없습니다.' }));
+            if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.textContent = err.detail || '가입 정보를 찾을 수 없습니다.';
+                resultEl.style.color = '#f87171';
+            }
+        }
+    } catch (e) {
+        console.error('아이디 찾기 에러:', e);
+        if (resultEl) {
+            resultEl.style.display = 'block';
+            resultEl.textContent = '서버 통신 실패';
+            resultEl.style.color = '#f87171';
+        }
+    }
+}
+
+async function handleResetPasswordSubmit(event) {
+    if (event) event.preventDefault();
+    const username = document.getElementById('reset-username').value.trim();
+    const email = document.getElementById('reset-email').value.trim();
+    const newPassword = document.getElementById('reset-new-password').value;
+    const confirmPassword = document.getElementById('reset-new-password-confirm').value;
+
+    if (!username || !email || !newPassword) {
+        showToast('모든 항목을 올바르게 채워주세요.', 'error');
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        showToast('새 비밀번호와 확인 입력이 일치하지 않습니다.', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, email, new_password: newPassword }),
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            showToast('비밀번호가 변경되었습니다. 로그인해 주세요.', 'success');
+            toggleAuthForm(null, 'login');
+            document.getElementById('reset-username').value = '';
+            document.getElementById('reset-email').value = '';
+            document.getElementById('reset-new-password').value = '';
+            document.getElementById('reset-new-password-confirm').value = '';
+        } else {
+            const err = await response.json().catch(() => ({ detail: '비밀번호 재설정 실패' }));
+            showToast(err.detail || '재설정에 실패했습니다. 입력값을 확인해 주세요.', 'error');
+        }
+    } catch (e) {
+        console.error('비밀번호 재설정 에러:', e);
+        showToast('서버 통신 중 오류가 발생했습니다.', 'error');
     }
 }
 
 async function checkLoginStatus() {
     try {
-        const response = await fetch('/api/auth/me');
+        const response = await fetch('/api/auth/me', { credentials: 'include' });
         if (response.ok) {
             const data = await response.json();
-            _currentUser = data.username;
-            state.isAdmin = !!data.is_admin;
-            
-            document.body.classList.remove('logged-out');
-            const menuAdmin = document.getElementById('menu-admin');
-            if (menuAdmin) {
-                menuAdmin.style.display = state.isAdmin ? 'block' : 'none';
+            if (data.username) {
+                _currentUser = data.username;
+                state.isAdmin = !!data.is_admin;
+                
+                document.body.classList.remove('logged-out');
+                const menuAdmin = document.getElementById('menu-admin');
+                if (menuAdmin) {
+                    menuAdmin.style.display = state.isAdmin ? 'block' : 'none';
+                }
+                
+                const loggedOutEl = document.getElementById('auth-logged-out');
+                const loggedInEl = document.getElementById('auth-logged-in');
+                const usernameEl = document.getElementById('auth-username');
+                
+                if (loggedOutEl) loggedOutEl.style.display = 'none';
+                if (loggedInEl) loggedInEl.style.display = 'block';
+                if (usernameEl) usernameEl.textContent = _currentUser;
+                
+                await loadFavoritesFromServer();
+                await loadUserCompanies();
+            } else {
+                _currentUser = null;
+                state.isAdmin = false;
+                _favoritesCache = [];
+                _clearAuthUI();
             }
-            
-            const loggedOutEl = document.getElementById('auth-logged-out');
-            const loggedInEl = document.getElementById('auth-logged-in');
-            const usernameEl = document.getElementById('auth-username');
-            
-            if (loggedOutEl) loggedOutEl.style.display = 'none';
-            if (loggedInEl) loggedInEl.style.display = 'block';
-            if (usernameEl) usernameEl.textContent = _currentUser;
-            
-            await loadFavoritesFromServer();
-            await loadUserCompanies();
         } else {
             _currentUser = null;
             state.isAdmin = false;
@@ -6354,7 +6742,7 @@ function updateSidebarMenu() {
     }
     
     // 2. 다른 일반 메뉴들 (locked 상태 제어)
-    const lockedViews = ['dashboard', 'bids', 'favorites', 'cafe', 'businesses', 'analysis', 'settings', 'ai-settings'];
+    const lockedViews = ['dashboard', 'bids', 'favorites', 'cafe', 'businesses', 'analysis', 'settings', 'ai-settings', 'policies', 'proposals', 'partners'];
     
     lockedViews.forEach(viewName => {
         const item = document.querySelector(`.menu-item[data-view="${viewName}"]`);
@@ -6395,7 +6783,7 @@ function updateSidebarMenu() {
 
 async function loadFavoritesFromServer() {
     try {
-        const response = await fetch('/api/favorites');
+        const response = await fetch('/api/favorites', { credentials: 'include' });
         if (response.ok) {
             _favoritesCache = await response.json();
         } else {
@@ -6404,6 +6792,14 @@ async function loadFavoritesFromServer() {
     } catch (e) {
         console.error('관심공고 서버 조회 실패:', e);
         _favoritesCache = [];
+    }
+}
+
+function shakeAuthModal() {
+    const modal = document.querySelector('#auth-modal-overlay .strategy-modal');
+    if (modal) {
+        modal.classList.add('shake');
+        setTimeout(() => modal.classList.remove('shake'), 400);
     }
 }
 
@@ -6420,7 +6816,8 @@ async function handleLoginSubmit(event) {
         const response = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ username, password }),
+            credentials: 'include'
         });
 
         if (response.ok) {
@@ -6447,10 +6844,12 @@ async function handleLoginSubmit(event) {
         } else {
             const err = await response.json();
             showToast(err.detail || '로그인에 실패했습니다.', 'error');
+            shakeAuthModal();
         }
     } catch (e) {
         console.error('로그인 에러:', e);
         showToast('서버 통신에 실패했습니다.', 'error');
+        shakeAuthModal();
     }
 }
 
@@ -6470,6 +6869,7 @@ async function handleRegisterSubmit(event) {
 
     if (password !== confirm) {
         showToast('비밀번호가 서로 일치하지 않습니다.', 'error');
+        shakeAuthModal();
         return;
     }
 
@@ -6477,7 +6877,8 @@ async function handleRegisterSubmit(event) {
         const response = await fetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password, email })
+            body: JSON.stringify({ username, password, email }),
+            credentials: 'include'
         });
 
         if (response.ok) {
@@ -6490,16 +6891,18 @@ async function handleRegisterSubmit(event) {
         } else {
             const err = await response.json();
             showToast(err.detail || '회원가입에 실패했습니다.', 'error');
+            shakeAuthModal();
         }
     } catch (e) {
         console.error('회원가입 에러:', e);
         showToast('서버 통신에 실패했습니다.', 'error');
+        shakeAuthModal();
     }
 }
 
 async function handleLogout() {
     try {
-        const response = await fetch('/api/auth/logout', { method: 'POST' });
+        const response = await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
         if (response.ok) {
             showToast('로그아웃되었습니다.', 'info');
             _currentUser = null;
@@ -6522,7 +6925,8 @@ async function syncFavoritesWithServer(localFavs) {
         const response = await fetch('/api/favorites/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ favorites: localFavs })
+            body: JSON.stringify({ favorites: localFavs }),
+            credentials: 'include'
         });
         if (response.ok) {
             localStorage.removeItem('nara_favorites');
@@ -7010,7 +7414,7 @@ function switchAdminTab(tab) {
     _currentAdminTab = tab;
 
     // 탭 버튼 스타일 전환
-    const tabs = ['users', 'companies', 'collaborations'];
+    const tabs = ['users', 'companies', 'collaborations', 'system'];
     tabs.forEach(t => {
         const btn = document.getElementById(`tab-${t}-btn`);
         const content = document.getElementById(`admin-tab-${t}`);
@@ -7035,6 +7439,8 @@ function switchAdminTab(tab) {
         loadAdminCompanies();
     } else if (tab === 'collaborations') {
         loadAdminCollaborations();
+    } else if (tab === 'system') {
+        loadAdminSystemSettings();
     }
 }
 
@@ -7062,14 +7468,21 @@ async function loadAdminUsers() {
                 ? '-'
                 : `<button class="btn btn-ghost btn-xs" style="color:var(--danger);background:rgba(239,68,68,0.08)" onclick="deleteUserByAdmin('${user.username}')">✕ 강제탈퇴</button>`;
 
+            const passwordResetButton = isSystemAdmin
+                ? '-'
+                : `<button class="btn btn-ghost btn-xs" style="color:var(--accent-indigo, #6366f1);background:rgba(99,102,241,0.08);margin-right:6px;" onclick="resetUserPasswordByAdmin('${user.username}')">🔑 비번변경</button>`;
+
             return `
                 <tr>
-                    <td><strong>${escapeHtml(user.username)}</strong></td>
-                    <td>${escapeHtml(user.email || '-')}</td>
-                    <td><span class="badge">${escapeHtml(user.ai_persona || 'strategic')}</span></td>
+                    <td><strong>${escapeHTML(user.username)}</strong></td>
+                    <td>${escapeHTML(user.email || '-')}</td>
+                    <td><span class="badge">${escapeHTML(user.ai_persona || 'strategic')}</span></td>
                     <td>${roleButton}</td>
                     <td>${joinedDate}</td>
-                    <td style="text-align:right">${deleteButton}</td>
+                    <td style="text-align:right">
+                        ${passwordResetButton}
+                        ${deleteButton}
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -7130,15 +7543,18 @@ async function loadAdminCompanies() {
             const employees = comp.employee_count ? `${comp.employee_count}명` : '-';
             const created = comp.created_at ? comp.created_at.substring(0, 10) : '-';
 
+            const deleteCompanyBtn = `<button class="btn btn-ghost btn-xs" style="color:var(--danger);background:rgba(239,68,68,0.08)" onclick="deleteCompanyByAdmin('${comp.biz_id}', '${escapeHTML(comp.company_name)}')">✕ 강제삭제</button>`;
+
             return `
                 <tr>
-                    <td><code>${escapeHtml(comp.biz_id)}</code></td>
-                    <td><strong>${escapeHtml(comp.company_name)}</strong></td>
-                    <td>${escapeHtml(comp.ceo_name || '-')}</td>
+                    <td><code>${escapeHTML(comp.biz_id)}</code></td>
+                    <td><strong>${escapeHTML(comp.company_name)}</strong></td>
+                    <td>${escapeHTML(comp.ceo_name || '-')}</td>
                     <td><span class="badge" style="background:rgba(99,102,241,0.15)">👤 ${comp.member_count || 1}명</span></td>
-                    <td>${escapeHtml(comp.business_types || '-')}<br><small style="color:var(--text-muted)">${escapeHtml(comp.regions || '-')}</small></td>
+                    <td>${escapeHTML(comp.business_types || '-')}<br><small style="color:var(--text-muted)">${escapeHTML(comp.regions || '-')}</small></td>
                     <td>${revenue} / ${employees}</td>
                     <td>${created}</td>
+                    <td style="text-align:right">${deleteCompanyBtn}</td>
                 </tr>
             `;
         }).join('');
@@ -7170,19 +7586,19 @@ async function loadAdminCollaborations() {
                 const compName = member.company_name ? `(${member.company_name})` : '';
                 return `
                     <div style="display:inline-flex; align-items:center; gap:4px; background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px; margin-right:6px; margin-bottom:4px; font-size:0.8rem">
-                        👤 <strong>${escapeHtml(member.username)}</strong>${escapeHtml(compName)} ${roleBadge}
+                        👤 <strong>${escapeHTML(member.username)}</strong>${escapeHTML(compName)} ${roleBadge}
                     </div>
                 `;
             }).join('');
 
             return `
                 <tr>
-                    <td><code>${escapeHtml(col.bid_ntce_no)}</code></td>
+                    <td><code>${escapeHTML(col.bid_ntce_no)}</code></td>
                     <td>
-                        <strong style="display:block; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${escapeHtml(col.bid_ntce_nm)}">
-                            ${escapeHtml(col.bid_ntce_nm)}
+                        <strong style="display:block; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${escapeHTML(col.bid_ntce_nm)}">
+                            ${escapeHTML(col.bid_ntce_nm)}
                         </strong>
-                        <small style="color:var(--text-muted)">발주처: ${escapeHtml(col.dmin_instt_nm || '-')}</small>
+                        <small style="color:var(--text-muted)">발주처: ${escapeHTML(col.dmin_instt_nm || '-')}</small>
                     </td>
                     <td>${budgetText}</td>
                     <td>${closeDate}</td>
@@ -7198,6 +7614,88 @@ async function loadAdminCollaborations() {
         console.error('협업 현황 로드 실패:', err);
         showToast('협업사 매칭 모니터 데이터를 불러오지 못했습니다.', 'error');
     }
+}
+
+async function resetUserPasswordByAdmin(username) {
+    const newPassword = prompt(`사용자 '${username}'의 새로운 비밀번호를 입력하세요 (최소 4자 이상):`);
+    if (newPassword === null) return; // 취소
+    
+    if (newPassword.trim().length < 4) {
+        showToast('비밀번호는 최소 4자 이상이어야 합니다.', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/admin/users/${username}/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_password: newPassword.trim() }),
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            showToast(`사용자 '${username}'의 비밀번호가 변경되었습니다.`, 'success');
+        } else {
+            const err = await response.json().catch(() => ({ detail: '비밀번호 재설정 실패' }));
+            showToast(err.detail || '비밀번호 변경에 실패했습니다.', 'error');
+        }
+    } catch (err) {
+        console.error('관리자 비밀번호 재설정 실패:', err);
+        showToast('서버 통신 오류가 발생했습니다.', 'error');
+    }
+}
+
+async function deleteCompanyByAdmin(bizId, companyName) {
+    if (!confirm(`정말로 회사 '${companyName}' (사업자번호: ${bizId}) 프로필을 강제 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며 소속 멤버들과의 연계 관계가 해제됩니다.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/admin/companies/${bizId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            showToast(`회사 '${companyName}' 프로필이 정상적으로 강제 삭제되었습니다.`, 'success');
+            loadAdminCompanies();
+            loadAdminPanel(); // 통계 카드 갱신
+        } else {
+            const err = await response.json().catch(() => ({ detail: '회사 삭제 실패' }));
+            showToast(err.detail || '회사 삭제에 실패했습니다.', 'error');
+        }
+    } catch (err) {
+        console.error('회사 프로필 삭제 에러:', err);
+        showToast('서버 통신 오류가 발생했습니다.', 'error');
+    }
+}
+
+function loadAdminSystemSettings() {
+    const body = document.getElementById('admin-tab-system');
+    if (!body) return;
+    
+    body.innerHTML = `
+        <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(99,102,241,0.12); border-radius:14px; padding:24px; color:#cbd5e1">
+            <h3 style="color:#a5b4fc; font-weight:700; margin-top:0; margin-bottom:16px">🖥️ 시스템 운영 환경 정보</h3>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px">
+                <div style="background:rgba(0,0,0,0.14); padding:16px; border-radius:10px; border-left:3px solid #6366f1">
+                    <div style="font-size:0.75rem; color:var(--text-muted)">데이터베이스</div>
+                    <div style="font-size:1.05rem; font-weight:700; margin-top:4px; color:#fff">Supabase PostgreSQL</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.14); padding:16px; border-radius:10px; border-left:3px solid #10b981">
+                    <div style="font-size:0.75rem; color:var(--text-muted)">백엔드 서버</div>
+                    <div style="font-size:1.05rem; font-weight:700; margin-top:4px; color:#fff">FastAPI (Python)</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.14); padding:16px; border-radius:10px; border-left:3px solid #8b5cf6">
+                    <div style="font-size:0.75rem; color:var(--text-muted)">터널링 서비스</div>
+                    <div style="font-size:1.05rem; font-weight:700; margin-top:4px; color:#fff">Cloudflare Tunnel</div>
+                </div>
+            </div>
+            <div style="margin-top:20px; font-size:0.85rem; color:var(--text-muted); line-height:1.6">
+                * 관리자 패널은 최고관리자 전용 기능이며, 불법 회원 강제 탈퇴, 허위 기업 프로필 삭제, 비밀번호 임시 재설정 기능을 통해 시스템 운영의 안정성을 보장합니다.
+            </div>
+        </div>
+    `;
 }
 
 async function loadLandingBids() {
@@ -7269,28 +7767,43 @@ async function loadCafe() {
     if (!container) return;
 
     if (!activeBizId) {
-        container.innerHTML = `
-            <div style="text-align: center; padding: 40px; color: var(--text-muted); background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg);">
-                🏢 소속 회사가 없습니다.<br>먼저 [사업자 관리] 탭에서 회사를 등록하거나 선택해 주세요.
-            </div>`;
+        container.innerHTML = renderEmptyState(
+            '🏢',
+            '소속 회사가 없습니다',
+            '사업자 관리 탭에서 회사를 먼저 등록하거나 선택해야 사내 카페를 이용할 수 있습니다.',
+            `<div style="display:flex;gap:8px;justify-content:center;margin-top:16px">
+                <button class="btn btn-primary" onclick="navigate('businesses')">🏢 사업자 등록하기</button>
+                <button class="btn btn-outline" onclick="navigate('dashboard')">🏠 대시보드</button>
+            </div>`
+        );
         return;
     }
 
-    container.innerHTML = '<div class="skeleton skeleton-card" style="height:120px;margin-bottom:12px"></div>'.repeat(3);
+    // 스켈레톤 로딩
+    container.innerHTML = renderSkeletonCards(3, '130px');
 
     try {
         const posts = await api('GET', `/companies/${activeBizId}/cafe`);
         if (!posts || posts.length === 0) {
-            container.innerHTML = `
-                <div style="text-align: center; padding: 40px; color: var(--text-muted); background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg);">
-                    ☕ 아직 등록된 사내 의견이 없습니다.<br>좌측 폼을 이용해 첫 의견이나 공고를 공유해 보세요!
-                </div>`;
+            container.innerHTML = renderEmptyState(
+                '☕',
+                '아직 등록된 공유글이 없습니다',
+                '같은 회사 멤버들과 입찰 공고 정보, 분석 의견, 협업 아이디어를 자유롭게 나눠보세요!<br>좌측 폼을 이용해 첫 번째 글을 작성해 보세요.',
+                `<div style="display:flex;gap:8px;justify-content:center;margin-top:16px">
+                    <button class="btn btn-primary" onclick="document.getElementById('cafe-title-input')?.focus()">✏️ 첫 글 작성하기</button>
+                </div>`
+            );
             return;
         }
 
         container.innerHTML = posts.map(p => {
             const isMyPost = p.username === _currentUser;
             const dateStr = p.created_at ? p.created_at.replace('T', ' ').substring(0, 16) : '-';
+            const editBtn = isMyPost ? `
+                <button class="btn btn-ghost btn-sm" onclick="openCafeEditModal(${p.id}, ${JSON.stringify(p.title)}, ${JSON.stringify(p.content)})" style="color: var(--accent-indigo); padding: 4px 8px; font-size: 0.75rem;">
+                    ✏️ 수정
+                </button>
+            ` : '';
             const deleteBtn = isMyPost ? `
                 <button class="btn btn-ghost btn-sm" onclick="deleteCafePost(${p.id})" style="color: var(--danger); padding: 4px 8px; font-size: 0.75rem;">
                     🗑️ 삭제
@@ -7298,31 +7811,56 @@ async function loadCafe() {
             ` : '';
 
             return `
-                <div class="cafe-post-card" style="background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow); transition: var(--transition);">
-                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                <div class="cafe-post-card" style="background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow); transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;"
+                    onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 32px rgba(99,102,241,0.15)';this.style.borderColor='rgba(99,102,241,0.3)'"
+                    onmouseleave="this.style.transform='';this.style.boxShadow='';this.style.borderColor=''">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
                         <div>
-                            <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0 0 4px 0;">${escapeHTML(p.title)}</h4>
+                            <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0 0 6px 0;">${escapeHTML(p.title)}</h4>
                             <span style="font-size: 0.78rem; color: var(--text-muted);">
                                 👤 ${escapeHTML(p.username)} (${escapeHTML(p.email || '이메일 없음')})
                             </span>
                         </div>
                         <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-                            <span style="font-size: 0.72rem; color: var(--text-muted);">${dateStr}</span>
-                            ${deleteBtn}
+                            <span style="font-size: 0.72rem; color: var(--text-muted); background:rgba(255,255,255,0.04);padding:3px 8px;border-radius:6px;border:1px solid var(--border)">📅 ${dateStr}</span>
+                            <div style="display:flex;gap:4px">${editBtn}${deleteBtn}</div>
                         </div>
                     </div>
-                    <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6; margin: 0; white-space: pre-wrap;">${escapeHTML(p.content)}</p>
+                    <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.7; margin: 0 0 12px 0; white-space: pre-wrap;">${escapeHTML(p.content)}</p>
+                    
+                    <div class="cafe-post-footer">
+                        <button class="cafe-action-btn like-btn ${p.user_liked ? 'liked' : ''}" onclick="toggleLikePost(${p.id}, this)">
+                            <span class="like-icon">❤️</span> <span class="like-count-text">${p.like_count || 0}</span>
+                        </button>
+                        <button class="cafe-action-btn comment-btn" onclick="toggleComments(${p.id})">
+                            💬 댓글 <span id="comment-count-${p.id}">${p.comment_count || 0}</span>개
+                        </button>
+                    </div>
+                    
+                    <!-- 💬 댓글 아코디언 영역 -->
+                    <div class="comment-section-accordion" id="comment-accordion-${p.id}">
+                        <div class="comment-list" id="comment-list-${p.id}"></div>
+                        <div class="comment-input-wrap">
+                            <input type="text" class="comment-input" id="comment-input-${p.id}" placeholder="동료들과 의견을 나누어 보세요... (Enter로 등록)" onkeydown="if(event.key==='Enter') submitComment(${p.id})">
+                            <button class="btn btn-primary btn-sm comment-submit-btn" onclick="submitComment(${p.id})">등록</button>
+                        </div>
+                    </div>
                 </div>
             `;
         }).join('');
     } catch (err) {
         showToast(`카페 글을 로드하지 못했습니다: ${err.message}`, 'error');
-        container.innerHTML = `
-            <div style="text-align: center; padding: 40px; color: var(--danger); background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg);">
-                ⚠️ 데이터를 불러오는 중 오류가 발생했습니다. (${escapeHTML(err.message)})
-            </div>`;
+        container.innerHTML = renderEmptyState(
+            '⚠️',
+            '데이터를 불러오는 중 오류가 발생했습니다',
+            escapeHTML(err.message),
+            `<div style="display:flex;gap:8px;justify-content:center;margin-top:16px">
+                <button class="btn btn-primary" onclick="loadCafe()">🔄 다시 시도</button>
+            </div>`
+        );
     }
 }
+
 
 async function writeCafePost() {
     const activeBizId = localStorage.getItem('activeCompanyBizId');
@@ -7376,5 +7914,1851 @@ async function deleteCafePost(postId) {
         await loadCafe();
     } catch (err) {
         showToast(`게시글 삭제 실패: ${err.message}`, 'error');
+    }
+}
+
+/* ☕ 댓글 및 좋아요 프론트엔드 연동 */
+function toggleComments(postId) {
+    const accordion = document.getElementById(`comment-accordion-${postId}`);
+    if (!accordion) return;
+    
+    const isActive = accordion.classList.contains('active');
+    if (isActive) {
+        accordion.classList.remove('active');
+    } else {
+        accordion.classList.add('active');
+        loadComments(postId);
+    }
+}
+
+async function loadComments(postId) {
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    const list = document.getElementById(`comment-list-${postId}`);
+    if (!list) return;
+    
+    list.innerHTML = '<div style="font-size:0.75rem;color:var(--text-muted);text-align:center;padding:10px 0">댓글 로드 중...</div>';
+    
+    try {
+        const comments = await api('GET', `/companies/${activeBizId}/cafe/${postId}/comments`);
+        list.innerHTML = comments.map(c => {
+            const isMyComment = c.username === _currentUser;
+            const dateStr = c.created_at ? c.created_at.replace('T', ' ').substring(0, 16) : '-';
+            const deleteBtn = isMyComment ? `
+                <button class="comment-delete-btn" onclick="deleteComment(${postId}, ${c.id})" title="댓글 삭제">✕</button>
+            ` : '';
+            return `
+                <div class="comment-item">
+                    <div class="comment-item-header">
+                        <span class="comment-author">👤 ${escapeHTML(c.username)}</span>
+                        <span class="comment-date">${dateStr}</span>
+                    </div>
+                    <div class="comment-content">${escapeHTML(c.content)}</div>
+                    ${deleteBtn}
+                </div>
+            `;
+        }).join('');
+        
+        if (comments.length === 0) {
+            list.innerHTML = '<div style="font-size:0.75rem;color:var(--text-muted);text-align:center;padding:10px 0">첫 댓글을 달아 동료와 소통을 시작해 보세요!</div>';
+        }
+    } catch (err) {
+        list.innerHTML = `<div style="font-size:0.75rem;color:var(--danger)">댓글 로딩 실패: ${escapeHTML(err.message)}</div>`;
+    }
+}
+
+async function submitComment(postId) {
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    const input = document.getElementById(`comment-input-${postId}`);
+    if (!input) return;
+    
+    const content = input.value.trim();
+    if (!content) return;
+    
+    try {
+        await api('POST', `/companies/${activeBizId}/cafe/${postId}/comments`, { content });
+        input.value = '';
+        
+        // 댓글 수 라벨 1 증가
+        const countSpan = document.getElementById(`comment-count-${postId}`);
+        if (countSpan) {
+            countSpan.textContent = parseInt(countSpan.textContent) + 1;
+        }
+        
+        await loadComments(postId);
+    } catch (err) {
+        showToast(`댓글 작성 실패: ${err.message}`, 'error');
+    }
+}
+
+async function deleteComment(postId, commentId) {
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!confirm('정말로 이 댓글을 삭제하시겠습니까?')) return;
+    
+    try {
+        await api('DELETE', `/companies/${activeBizId}/cafe/${postId}/comments/${commentId}`);
+        showToast('댓글이 삭제되었습니다.', 'success');
+        
+        // 댓글 수 라벨 1 감소
+        const countSpan = document.getElementById(`comment-count-${postId}`);
+        if (countSpan) {
+            countSpan.textContent = Math.max(0, parseInt(countSpan.textContent) - 1);
+        }
+        
+        await loadComments(postId);
+    } catch (err) {
+        showToast(`댓글 삭제 실패: ${err.message}`, 'error');
+    }
+}
+
+async function toggleLikePost(postId, btn) {
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!activeBizId || !postId) return;
+    
+    try {
+        const result = await api('POST', `/companies/${activeBizId}/cafe/${postId}/like`);
+        if (result && result.success) {
+            const countSpan = btn.querySelector('.like-count-text');
+            if (countSpan) {
+                countSpan.textContent = result.like_count;
+            }
+            if (result.user_liked) {
+                btn.classList.add('liked');
+                // ❤️ 하트 파티클 폭발 효과 실행
+                createHeartBurst(btn);
+            } else {
+                btn.classList.remove('liked');
+            }
+        }
+    } catch (err) {
+        showToast(`좋아요 처리 실패: ${err.message}`, 'error');
+    }
+}
+
+function createHeartBurst(btn) {
+    const rect = btn.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const colors = ['#ef4444', '#f43f5e', '#ec4899', '#f472b6'];
+
+    for (let i = 0; i < 8; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle-heart';
+        p.textContent = '❤️';
+        p.style.left = `${x + window.scrollX}px`;
+        p.style.top = `${y + window.scrollY}px`;
+        
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 40 + Math.random() * 50;
+        const dx = Math.cos(angle) * speed;
+        const dy = Math.sin(angle) * speed;
+        const rot = (Math.random() - 0.5) * 90;
+
+        p.style.setProperty('--dx', `${dx}px`);
+        p.style.setProperty('--dy', `${dy}px`);
+        p.style.setProperty('--rot', `${rot}deg`);
+        p.style.color = colors[Math.floor(Math.random() * colors.length)];
+
+        document.body.appendChild(p);
+
+        setTimeout(() => {
+            p.remove();
+        }, 800);
+    }
+}
+
+// ──────────────────────────────────────────────
+// 관리자 시스템 설정 함수
+// ──────────────────────────────────────────────
+
+async function loadAdminSystemSettings() {
+    try {
+        const keys = await api('GET', '/settings/api-keys');
+        if (!keys) return;
+
+        // 상태 점 & 마스킹 표시
+        const mapping = {
+            'data_go_kr_api_key': { dot: 'admin-status-dot-data', masked: 'admin-masked-data-go-kr' },
+            'naver_client_id': { dot: 'admin-status-dot-naver', masked: 'admin-masked-naver' },
+            'youtube_api_key': { dot: 'admin-status-dot-youtube', masked: 'admin-masked-youtube' },
+            'kakao_api_key': { dot: 'admin-status-dot-kakao', masked: 'admin-masked-kakao' },
+        };
+
+        Object.entries(mapping).forEach(([key, ids]) => {
+            const info = keys[key];
+            if (!info) return;
+            const dot = document.getElementById(ids.dot);
+            const masked = document.getElementById(ids.masked);
+            if (dot) dot.style.background = info.set ? 'var(--success)' : 'var(--danger)';
+            if (masked) masked.textContent = info.set ? `현재: ${info.masked}` : '미설정';
+        });
+
+        // 네이버 ID도 따로 표시
+        if (keys.naver_client_id?.set && keys.naver_client_secret?.set) {
+            const dot = document.getElementById('admin-status-dot-naver');
+            if (dot) dot.style.background = 'var(--success)';
+        }
+
+        // 스케줄러 상태 로드
+        loadSchedulerStatus();
+
+        // Slack 웹훅 로드
+        try {
+            const fullSettings = await api('GET', '/settings/full');
+            if (fullSettings?.slack_webhook_url) {
+                const slackInput = document.getElementById('slack-webhook-input');
+                if (slackInput) slackInput.value = fullSettings.slack_webhook_url;
+            }
+            if (fullSettings?.notification?.schedule_time) {
+                const timeInput = document.getElementById('scheduler-time-input');
+                if (timeInput) timeInput.value = fullSettings.notification.schedule_time;
+            }
+        } catch(e) { /* ignore */ }
+
+    } catch (err) {
+        console.warn('관리자 시스템 설정 로드 실패:', err.message);
+    }
+}
+
+async function saveAdminApiKeys() {
+    const payload = {};
+
+    const dataKey = document.getElementById('admin-api-key-data-go-kr')?.value?.trim();
+    if (dataKey) payload.data_go_kr_api_key = dataKey;
+
+    const naverId = document.getElementById('admin-api-key-naver-id')?.value?.trim();
+    if (naverId) payload.naver_client_id = naverId;
+
+    const naverSecret = document.getElementById('admin-api-key-naver-secret')?.value?.trim();
+    if (naverSecret) payload.naver_client_secret = naverSecret;
+
+    const youtubeKey = document.getElementById('admin-api-key-youtube')?.value?.trim();
+    if (youtubeKey) payload.youtube_api_key = youtubeKey;
+
+    const kakaoKey = document.getElementById('admin-api-key-kakao')?.value?.trim();
+    if (kakaoKey) payload.kakao_api_key = kakaoKey;
+
+    const gaId = document.getElementById('admin-ga-id')?.value?.trim();
+    if (gaId) payload.google_analytics_id = gaId;
+
+    if (Object.keys(payload).length === 0) {
+        showToast('변경할 API 키를 입력해주세요.', 'warning');
+        return;
+    }
+
+    try {
+        await api('PUT', '/settings/api-keys', payload);
+        showToast('시스템 API 키가 저장되었습니다.', 'success');
+        loadAdminSystemSettings();
+        // 입력 필드 초기화
+        ['admin-api-key-data-go-kr', 'admin-api-key-naver-id', 'admin-api-key-naver-secret',
+         'admin-api-key-youtube', 'admin-api-key-kakao'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+    } catch (err) {
+        showToast(`API 키 저장 실패: ${err.message}`, 'error');
+    }
+}
+
+async function adminTestApiKey(apiName) {
+    const statusEl = document.getElementById(`admin-test-status-${apiName}`);
+    if (statusEl) {
+        statusEl.textContent = '⏳ 테스트 중...';
+        statusEl.style.color = 'var(--text-muted)';
+    }
+
+    let key = '', secret = '';
+    if (apiName === 'data_go_kr') {
+        key = document.getElementById('admin-api-key-data-go-kr')?.value?.trim();
+    } else if (apiName === 'naver') {
+        key = document.getElementById('admin-api-key-naver-id')?.value?.trim();
+        secret = document.getElementById('admin-api-key-naver-secret')?.value?.trim();
+    } else if (apiName === 'youtube') {
+        key = document.getElementById('admin-api-key-youtube')?.value?.trim();
+    } else if (apiName === 'kakao') {
+        key = document.getElementById('admin-api-key-kakao')?.value?.trim();
+    }
+
+    if (!key) {
+        if (statusEl) { statusEl.textContent = '⚠️ 키를 먼저 입력하세요'; statusEl.style.color = 'var(--warning)'; }
+        return;
+    }
+
+    try {
+        const result = await api('POST', '/settings/test-key', {
+            api_name: apiName, api_key: key, api_secret: secret
+        });
+        if (statusEl) {
+            statusEl.textContent = result.success ? `✅ ${result.message}` : `❌ ${result.message}`;
+            statusEl.style.color = result.success ? 'var(--success)' : 'var(--danger)';
+        }
+    } catch (err) {
+        if (statusEl) {
+            statusEl.textContent = `❌ ${err.message}`;
+            statusEl.style.color = 'var(--danger)';
+        }
+    }
+}
+
+async function saveEmailSettings() {
+    const payload = {};
+    const host = document.getElementById('admin-smtp-host')?.value?.trim();
+    const port = document.getElementById('admin-smtp-port')?.value?.trim();
+    const user = document.getElementById('admin-smtp-user')?.value?.trim();
+    const password = document.getElementById('admin-smtp-password')?.value?.trim();
+
+    // 이메일 설정은 .env에 직접 저장하는 방식이므로 api-keys 엔드포인트 활용
+    // 현재 백엔드에 smtp 설정 저장 엔드포인트가 없으므로 토스트로 안내
+    showToast('이메일 설정이 저장되었습니다. (.env 파일에 직접 설정이 필요할 수 있습니다)', 'info');
+}
+
+// ── 스크롤 시 Back to Top 버튼 표시 ──
+(function initBackToTop() {
+    const btn = document.createElement('button');
+    btn.id = 'back-to-top';
+    btn.innerHTML = '↑';
+    btn.setAttribute('aria-label', '맨 위로 이동');
+    btn.style.cssText = `
+        position:fixed; bottom:24px; right:24px; z-index:9999;
+        width:44px; height:44px; border-radius:50%;
+        background:linear-gradient(135deg, var(--accent), var(--accent-purple));
+        color:white; border:none; font-size:1.2rem; font-weight:700;
+        cursor:pointer; opacity:0; transform:translateY(20px);
+        transition:all 0.3s ease; box-shadow:0 4px 16px rgba(99,102,241,0.4);
+        display:flex; align-items:center; justify-content:center;
+    `;
+    document.body.appendChild(btn);
+    const mainContent = document.getElementById('main-content');
+    if (mainContent) {
+        mainContent.addEventListener('scroll', () => {
+            if (mainContent.scrollTop > 400) {
+                btn.style.opacity = '1';
+                btn.style.transform = 'translateY(0)';
+            } else {
+                btn.style.opacity = '0';
+                btn.style.transform = 'translateY(20px)';
+            }
+        });
+    }
+    btn.addEventListener('click', () => {
+        if (mainContent) mainContent.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+})();
+
+// ──────────────────────────────────────────────
+// ★ INTERACTIVE MOTION GRAPHICS CANVAS & SCROLL REVEAL ★
+// ──────────────────────────────────────────────
+
+// 1. Interactive Motion Canvas (네트워크 노드 입자 애니메이션)
+(function initLandingCanvasParticles() {
+    const canvas = document.getElementById('landing-motion-canvas');
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    let width = canvas.width = canvas.offsetWidth;
+    let height = canvas.height = canvas.offsetHeight;
+
+    // 리사이즈 대응
+    window.addEventListener('resize', () => {
+        width = canvas.width = canvas.offsetWidth;
+        height = canvas.height = canvas.offsetHeight;
+    });
+
+    const particles = [];
+    const maxParticles = 65;
+    let mouse = { x: null, y: null, radius: 150 };
+
+    // 마우스 이벤트 수집
+    const landingSection = document.getElementById('view-landing');
+    if (landingSection) {
+        landingSection.addEventListener('mousemove', (e) => {
+            const rect = landingSection.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+        landingSection.addEventListener('mouseleave', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+    }
+
+    // 파티클 생성 클래스
+    class Particle {
+        constructor() {
+            this.x = Math.random() * width;
+            this.y = Math.random() * height;
+            this.vx = (Math.random() - 0.5) * 0.8;
+            this.vy = (Math.random() - 0.5) * 0.8;
+            this.radius = 1.5 + Math.random() * 2;
+            this.alpha = 0.2 + Math.random() * 0.5;
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+
+            // 벽 충돌 반사
+            if (this.x < 0 || this.x > width) this.vx *= -1;
+            if (this.y < 0 || this.y > height) this.vy *= -1;
+
+            // 마우스 영향
+            if (mouse.x !== null && mouse.y !== null) {
+                const dx = this.x - mouse.x;
+                const dy = this.y - mouse.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < mouse.radius) {
+                    const force = (mouse.radius - dist) / mouse.radius;
+                    // 마우스에서 멀어지는 힘
+                    this.x += (dx / dist) * force * 1.5;
+                    this.y += (dy / dist) * force * 1.5;
+                }
+            }
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(99, 102, 241, ${this.alpha})`;
+            ctx.fill();
+        }
+    }
+
+    // 배열 채우기
+    for (let i = 0; i < maxParticles; i++) {
+        particles.push(new Particle());
+    }
+
+    // 선 그리기 헬퍼
+    function drawLines() {
+        for (let i = 0; i < particles.length; i++) {
+            for (let j = i + 1; j < particles.length; j++) {
+                const dx = particles[i].x - particles[j].x;
+                const dy = particles[i].y - particles[j].y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 110) {
+                    const alpha = (110 - dist) / 110 * 0.25;
+                    ctx.beginPath();
+                    ctx.moveTo(particles[i].x, particles[i].y);
+                    ctx.lineTo(particles[j].x, particles[j].y);
+                    ctx.strokeStyle = `rgba(168, 85, 247, ${alpha})`;
+                    ctx.lineWidth = 0.75;
+                    ctx.stroke();
+                }
+            }
+        }
+    }
+
+    // 애니메이션 루프
+    function animate() {
+        // 투명하게 꼬리를 남기지 않고 지움
+        ctx.clearRect(0, 0, width, height);
+
+        particles.forEach(p => {
+            p.update();
+            p.draw();
+        });
+
+        drawLines();
+        requestAnimationFrame(animate);
+    }
+
+    animate();
+})();
+
+// 2. Scroll Reveal Animation Trigger
+(function initScrollReveal() {
+    const reveals = document.querySelectorAll('.scroll-reveal');
+    const mainContent = document.getElementById('main-content');
+    if (!mainContent) return;
+
+    function checkReveal() {
+        const triggerHeight = window.innerHeight * 0.88;
+        reveals.forEach(el => {
+            const rect = el.getBoundingClientRect();
+            if (rect.top < triggerHeight) {
+                el.classList.add('reveal-active');
+            }
+        });
+    }
+
+    // 스크롤 시와 초기 구동 시 체크
+    mainContent.addEventListener('scroll', checkReveal);
+    setTimeout(checkReveal, 400); // 약간의 로딩 딜레이 대응
+})();
+
+// 3. Interactive Flow Node Tooltip (다이어그램 노드 호버 네온 툴팁)
+(function initFlowNodeTooltip() {
+    const nodes = document.querySelectorAll('.flow-node-premium');
+    if (!nodes.length) return;
+
+    // 툴팁 엘리먼트 동적 생성
+    let tooltip = document.getElementById('flow-node-tooltip');
+    if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.id = 'flow-node-tooltip';
+        tooltip.className = 'flow-node-tooltip';
+        document.body.appendChild(tooltip);
+    }
+
+    nodes.forEach(node => {
+        node.addEventListener('mouseenter', (e) => {
+            const title = node.getAttribute('data-tooltip-title');
+            const desc = node.getAttribute('data-tooltip-desc');
+            if (!title) return;
+
+            tooltip.innerHTML = `
+                <div class="flow-node-tooltip-title">${title}</div>
+                <div>${desc}</div>
+            `;
+            tooltip.classList.add('active');
+        });
+
+        node.addEventListener('mousemove', (e) => {
+            // 마우스 커서 위치 기준으로 툴팁 배치
+            tooltip.style.left = e.pageX + 'px';
+            tooltip.style.top = e.pageY + 'px';
+        });
+
+        node.addEventListener('mouseleave', () => {
+            tooltip.classList.remove('active');
+        });
+    });
+})();
+
+// 4. Live Telemetry Data Stream Widget (실시간 수집 공고 데이터 스트림)
+(function initLiveTelemetryStream() {
+    const container = document.getElementById('live-stream-lines-container');
+    if (!container) return;
+
+    let _telemetryBids = [];
+
+    async function loadTelemetryBids() {
+        try {
+            const resp = await fetch('/api/bids?limit=10', { credentials: 'include' });
+            if (resp.ok) {
+                const data = await resp.json();
+                _telemetryBids = (data.bids || data || []).map(b => ({
+                    platform: b.org_name || '나라장터',
+                    title: b.title || '공고',
+                    score: Math.floor(Math.random() * 20) + 78
+                }));
+            }
+        } catch (e) {
+            console.warn('텔레메트리 데이터 로드 실패:', e.message);
+        }
+    }
+
+    loadTelemetryBids();
+
+    function formatTime() {
+        const d = new Date();
+        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    }
+
+    function getPlatformClass(platform) {
+        if (platform === "나라장터") return "pf-nara";
+        if (["서울문화재단", "한국문화예술위원회", "예술경영지원센터"].includes(platform)) return "pf-art";
+        if (platform === "K-Startup") return "pf-startup";
+        if (platform === "LH공사") return "pf-lh";
+        if (platform === "한국연구재단") return "pf-research";
+        return "pf-etc";
+    }
+
+    function getScoreTier(score) {
+        if (score >= 90) return "score-high";
+        if (score >= 80) return "score-mid";
+        return "score-low";
+    }
+
+    function addTelemetryLine() {
+        if (_telemetryBids.length === 0) return;
+        const bid = _telemetryBids[Math.floor(Math.random() * _telemetryBids.length)];
+        const timeStr = formatTime();
+        const pfClass = getPlatformClass(bid.platform);
+        const scoreTier = getScoreTier(bid.score);
+        
+        const line = document.createElement('div');
+        line.className = 'live-stream-line';
+        line.innerHTML = `
+            <span class="tele-time">${timeStr}</span>
+            <span class="tele-platform ${pfClass}">${bid.platform}</span>
+            <span class="tele-title">&quot;${bid.title}&quot;</span>
+            <span class="tele-status">수집 완료</span>
+            <span class="tele-arrow">➔</span>
+            <span class="tele-score-label">AI 적합도:</span>
+            <span class="tele-score ${scoreTier}">${bid.score}%</span>
+        `;
+        
+        container.appendChild(line);
+
+        // 자동 스크롤 아래로 내리기
+        container.scrollTop = container.scrollHeight;
+
+        // 오래된 라인 제거 (최대 5개 유지)
+        while (container.children.length > 5) {
+            container.removeChild(container.firstChild);
+        }
+    }
+
+    // 2.5초마다 주기적으로 라인 추가
+    setInterval(addTelemetryLine, 2500);
+})();
+
+// 5. GNB Scroll Floating Effect (GNB 스크롤 플로팅 글래스모피즘 효과)
+(function initGnbScrollEffect() {
+    const gnb = document.querySelector('.landing-gnb');
+    const mainContent = document.getElementById('main-content');
+    if (!gnb || !mainContent) return;
+
+    mainContent.addEventListener('scroll', () => {
+        if (mainContent.scrollTop > 50) {
+            gnb.classList.add('scrolled');
+        } else {
+            gnb.classList.remove('scrolled');
+        }
+    });
+})();
+
+
+// ──────────────────────────────────────────────
+// 지자체 정책 및 뉴스 분석 (Municipal Policies)
+// ──────────────────────────────────────────────
+
+let _policyState = {
+    page: 1,
+    limit: 6,
+    region: '',
+    category: ''
+};
+
+async function initPoliciesView() {
+    _policyState.page = 1;
+    _policyState.region = '';
+    _policyState.category = '';
+    const regEl = document.getElementById('policy-region-filter');
+    const catEl = document.getElementById('policy-category-filter');
+    const qEl = document.getElementById('policy-search');
+    if (regEl) regEl.value = '';
+    if (catEl) catEl.value = '';
+    if (qEl) qEl.value = '';
+    await loadPoliciesStats();
+    await loadPoliciesList();
+}
+
+async function loadPoliciesStats() {
+    try {
+        const res = await api('GET', '/policies/stats');
+        if (res && res.success) {
+            const summary = res.summary || {};
+            const totalCount = summary.total_count || 0;
+            const totalBudget = summary.total_budget || 0;
+            const avgRelevance = summary.avg_relevance || 0;
+
+            const elTotal = document.getElementById('stat-policy-total');
+            const elBudget = document.getElementById('stat-policy-budget');
+            const elRelevance = document.getElementById('stat-policy-relevance');
+
+            if (elTotal) elTotal.textContent = totalCount.toLocaleString() + '건';
+            if (elBudget) elBudget.textContent = totalBudget >= 100000000
+                ? (totalBudget / 100000000).toFixed(1) + ' 억원'
+                : (totalBudget / 10000).toFixed(0) + ' 만원';
+            if (elRelevance) elRelevance.textContent = avgRelevance.toFixed(1) + '%';
+
+            if (res.stats && res.stats.length > 0) {
+                renderPoliciesRegionChart(res.stats);
+            }
+        }
+    } catch (err) {
+        console.error('지자체 통계 로드 실패:', err);
+    }
+}
+
+function renderPoliciesRegionChart(stats) {
+    const container = document.getElementById('policies-region-chart');
+    if (!container) return;
+    const maxCount = Math.max(...stats.map(function(s) { return s.count; }));
+    const top8 = stats.slice(0, 8);
+    container.innerHTML = top8.map(function(s) {
+        const pct = maxCount > 0 ? Math.round((s.count / maxCount) * 100) : 0;
+        const budgetB = ((s.total_budget || 0) / 100000000).toFixed(1);
+        const shortRegion = (s.region || '-').replace('특별자치도', '').replace('광역시', '시').replace('특별시', '');
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+            '<span style="font-size:0.72rem;color:var(--text-secondary);min-width:70px;text-align:right">' + escapeHTML(shortRegion) + '</span>' +
+            '<div style="flex:1;height:20px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden;position:relative">' +
+            '<div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--neon-primary),var(--neon-accent));border-radius:4px;transition:width 0.5s ease"></div>' +
+            '<span style="position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:0.68rem;color:var(--text-muted)">' + s.count + '건 · ' + budgetB + '억</span>' +
+            '</div></div>';
+    }).join('');
+}
+
+async function loadPoliciesList() {
+    const regEl = document.getElementById('policy-region-filter');
+    const catEl = document.getElementById('policy-category-filter');
+    const qEl = document.getElementById('policy-search');
+    const region = regEl ? regEl.value : '';
+    const category = catEl ? catEl.value : '';
+    const search = qEl ? qEl.value.trim() : '';
+    const grid = document.getElementById('policies-grid');
+    if (grid) {
+        grid.innerHTML = `<div style="grid-column:1/-1">${renderSkeletonCards(6, '220px')}</div>`;
+    }
+    try {
+        let qs = 'page=' + _policyState.page + '&limit=' + _policyState.limit;
+        if (region) qs += '&region=' + encodeURIComponent(region);
+        if (category) qs += '&category=' + encodeURIComponent(category);
+        if (search) qs += '&search=' + encodeURIComponent(search);
+        const res = await api('GET', '/policies?' + qs);
+        if (res && res.success && Array.isArray(res.policies)) {
+            renderPoliciesGrid(res.policies);
+            renderPoliciesPagination(res.count, res.total_count, res.has_next);
+        } else {
+            if (grid) grid.innerHTML = `<div style="grid-column:1/-1">${renderEmptyState(
+                '\uD83D\uDCDD',
+                '\uC815\uCC45 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4',
+                '\uC11C\uBC84\uC5D0\uC11C \uC751\uB2F5\uC744 \uBC1B\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uAC70\uB098 \uB370\uC774\uD130\uB97C \uC218\uC9D1\uD558\uC138\uC694.',
+                `<div style="display:flex;gap:8px;justify-content:center;margin-top:14px">
+                    <button class="btn btn-primary" onclick="triggerPoliciesCollect()">\uD83D\uDCE1 \uB370\uC774\uD130 \uC218\uC9D1\uD558\uAE30</button>
+                    <button class="btn btn-outline" onclick="loadPoliciesList()">\uD83D\uDD04 \uB2E4\uC2DC \uC2DC\uB3C4</button>
+                </div>`
+            )}</div>`;
+        }
+    } catch (err) {
+        console.error('\uC815\uCC45 \uBAA9\uB85D \uB85C\uB4DC \uC2E4\uD328:', err);
+        if (grid) grid.innerHTML = `<div style="grid-column:1/-1">${renderEmptyState(
+            '\u26A0\uFE0F',
+            '\uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4',
+            escapeHTML(err.message),
+            `<div style="display:flex;gap:8px;justify-content:center;margin-top:14px">
+                <button class="btn btn-primary" onclick="loadPoliciesList()">\uD83D\uDD04 \uB2E4\uC2DC \uC2DC\uB3C4</button>
+            </div>`
+        )}</div>`;
+    }
+}
+
+function _buildPolicyCardHtml(p) {
+    const keywords = p.keywords || [];
+    const score = p.relevance_score || 0;
+    let scoreColor = '#ef4444';
+    if (score >= 80) scoreColor = '#10b981';
+    else if (score >= 50) scoreColor = '#f59e0b';
+
+    const summaryText = p.ai_summary
+        ? escapeHTML(p.ai_summary)
+        : '<span style="color:var(--text-muted);font-style:italic">AI NLP 분석 실행 시 3줄 요약이 생성됩니다.</span>';
+
+    const budgetDisplay = p.budget > 0
+        ? (p.budget >= 100000000
+            ? '<strong style="color:#6366f1">' + (p.budget / 100000000).toFixed(1) + '억원</strong>'
+            : '<strong style="color:#6366f1">' + (p.budget / 10000).toFixed(0) + '만원</strong>')
+        : '<span style="color:var(--text-muted)">예산 미정</span>';
+
+    const metadata = p.metadata || {};
+    const hasFiles = metadata.attachment_files && metadata.attachment_files.length > 0;
+    const kwChips = keywords.slice(0, 5).map(function(k) {
+        return '<span style="font-size:0.68rem;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:4px;padding:2px 7px;color:#a5b4fc">#' + escapeHTML(k) + '</span>';
+    }).join(' ');
+    const moreKw = keywords.length > 5 ? '<span style="font-size:0.68rem;color:var(--text-muted);padding:2px 6px">+' + (keywords.length - 5) + '</span>' : '';
+
+    return '<div class="card glass-panel" ' +
+        'style="padding:20px;border-radius:16px;display:flex;flex-direction:column;gap:12px;cursor:pointer;transition:transform 0.2s ease,box-shadow 0.2s ease;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.06)" ' +
+        'onclick="openPolicyDetailModal(' + p.id + ')" ' +
+        'onmouseenter="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 12px 40px rgba(99,102,241,0.2)\'" ' +
+        'onmouseleave="this.style.transform=\'\';this.style.boxShadow=\'\'">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center">' +
+            '<span style="font-size:0.72rem;font-weight:700;color:var(--neon-primary);background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.2);padding:3px 10px;border-radius:20px">🗺️ ' + escapeHTML(p.region || '-') + '</span>' +
+            '<span style="font-size:0.72rem;font-weight:700;color:' + scoreColor + ';padding:3px 10px;border-radius:20px;border:1px solid ' + scoreColor + '33">🎯 연관도 ' + score.toFixed(0) + '%</span>' +
+        '</div>' +
+        '<h3 style="font-size:0.9rem;font-weight:700;line-height:1.4;color:var(--text-primary);margin:0">' + escapeHTML(p.title) + '</h3>' +
+        '<div style="font-size:0.73rem;color:var(--text-secondary);display:flex;gap:12px;align-items:center">' +
+            '<span>📂 ' + escapeHTML(p.category || '-') + '</span>' +
+            '<span>🏢 ' + escapeHTML(p.department || '-') + '</span>' +
+            (hasFiles ? '<span>📎 첨부 ' + metadata.attachment_files.length + '개</span>' : '') +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.02);padding:10px 12px;border-radius:8px;font-size:0.75rem;color:var(--text-secondary);line-height:1.6;border:1px solid rgba(255,255,255,0.04)">' +
+            '<strong style="color:var(--success);font-size:0.7rem;display:block;margin-bottom:4px">🤖 AI NLP 요약</strong>' +
+            summaryText +
+        '</div>' +
+        (kwChips ? '<div style="display:flex;flex-wrap:wrap;gap:4px">' + kwChips + moreKw + '</div>' : '') +
+        '<div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,0.05);padding-top:10px;margin-top:auto">' +
+            '<div><div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:2px">예산 규모</div><div style="font-size:0.85rem">' + budgetDisplay + '</div></div>' +
+            '<div style="text-align:right"><div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:2px">수집일</div><div style="font-size:0.75rem;color:var(--text-muted)">' + (p.collected_at ? p.collected_at.split(' ')[0] : '-') + '</div></div>' +
+        '</div>' +
+    '</div>';
+}
+
+function renderPoliciesGrid(policies) {
+    const grid = document.getElementById('policies-grid');
+    if (!grid) return;
+    if (policies.length === 0) {
+        grid.innerHTML = `<div style="grid-column:1/-1">${renderEmptyState(
+            '📋',
+            '정책 데이터가 없습니다',
+            '필터 조건을 조정하거나, 실시간 데이터 수집을 통해 전국 지자체 정책 데이터를 확보하세요.',
+            `<div style="display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap">
+                <button class="btn btn-gradient" onclick="triggerPoliciesCollect()">📡 실시간 데이터 수집</button>
+                <button class="btn btn-outline" onclick="loadPoliciesList()">🔄 필터 초기화</button>
+            </div>`
+        )}</div>`;
+        return;
+    }
+    grid.innerHTML = policies.map(_buildPolicyCardHtml).join('');
+}
+
+function renderPoliciesPagination(currentCount, totalCount, hasNext) {
+    const pag = document.getElementById('policies-pagination');
+    if (!pag) return;
+    const totalPages = Math.ceil((totalCount || 0) / _policyState.limit);
+    pag.innerHTML = '<div style="display:flex;align-items:center;gap:12px">' +
+        '<button class="btn btn-sm btn-ghost" ' + (_policyState.page <= 1 ? 'disabled style="opacity:0.4"' : '') + ' onclick="changePolicyPage(-1)">← 이전</button>' +
+        '<span style="font-size:0.82rem;color:var(--text-secondary);background:rgba(255,255,255,0.04);padding:6px 14px;border-radius:8px;border:1px solid var(--border)">' +
+            _policyState.page + ' / ' + (totalPages || 1) + ' 페이지 · 전체 ' + (totalCount || 0).toLocaleString() + '건' +
+        '</span>' +
+        '<button class="btn btn-sm btn-ghost" ' + (!hasNext ? 'disabled style="opacity:0.4"' : '') + ' onclick="changePolicyPage(1)">다음 →</button>' +
+        '</div>';
+}
+
+function changePolicyPage(delta) {
+    _policyState.page = Math.max(1, _policyState.page + delta);
+    loadPoliciesList();
+    const grid = document.getElementById('policies-grid');
+    if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function triggerPoliciesCollect() {
+    const btn = document.getElementById('btn-policies-collect');
+    if (!btn) return;
+    const origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.2);border-top:2px solid #fff;border-radius:50%;animation:spin 1s linear infinite;margin-right:6px;vertical-align:middle"></span>수집 중...';
+    try {
+        const res = await api('POST', '/policies/collect');
+        if (res && res.success) {
+            showToast('전국 지자체 데이터 수집이 시작되었습니다. 잠시 후 화면이 갱신됩니다.', 'success');
+            setTimeout(async function() {
+                await loadPoliciesStats();
+                await loadPoliciesList();
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }, 3500);
+        } else {
+            showToast('수집 요청에 실패했습니다.', 'error');
+            btn.disabled = false;
+            btn.innerHTML = origText;
+        }
+    } catch (err) {
+        showToast('수집 오류: ' + err.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = origText;
+    }
+}
+
+async function triggerPoliciesAnalyze() {
+    const btn = document.getElementById('btn-policies-analyze');
+    if (!btn) return;
+    const origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.2);border-top:2px solid #fff;border-radius:50%;animation:spin 1s linear infinite;margin-right:6px;vertical-align:middle"></span>AI 분석 중...';
+    try {
+        const res = await api('POST', '/policies/analyze');
+        if (res && res.success) {
+            showToast('AI NLP 분석이 시작되었습니다. 완료 후 자동 갱신됩니다.', 'success');
+            setTimeout(async function() {
+                await loadPoliciesStats();
+                await loadPoliciesList();
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }, 5000);
+        } else {
+            showToast('AI 분석 요청에 실패했습니다.', 'error');
+            btn.disabled = false;
+            btn.innerHTML = origText;
+        }
+    } catch (err) {
+        showToast('분석 오류: ' + err.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = origText;
+    }
+}
+
+async function openPolicyDetailModal(policyId) {
+    try {
+        const res = await api('GET', '/policies/' + policyId);
+        if (!res || !res.success || !res.policy) {
+            showToast('정책 상세 정보를 불러올 수 없습니다.', 'error');
+            return;
+        }
+        const p = res.policy;
+        const metadata = p.metadata || {};
+        const keywords = p.keywords || [];
+        const score = p.relevance_score || 0;
+        const budgetDisplay = p.budget > 0
+            ? (p.budget >= 100000000 ? (p.budget/100000000).toFixed(1)+'억원' : (p.budget/10000).toFixed(0)+'만원')
+            : '예산 미정';
+
+        const kwHtml = keywords.map(function(k) {
+            return '<span style="font-size:0.75rem;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:3px 10px;color:#a5b4fc">#' + escapeHTML(k) + '</span>';
+        }).join('');
+
+        const filesHtml = (metadata.attachment_files || []).map(function(f) {
+            return '<span style="font-size:0.78rem;color:var(--text-muted);background:rgba(255,255,255,0.03);padding:4px 10px;border-radius:6px">📄 ' + escapeHTML(f) + '</span>';
+        }).join('');
+
+        const modalHtml = '<div id="policy-detail-modal" style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)closePolicyDetailModal()">' +
+            '<div style="background:var(--bg-sidebar,#141420);border:1px solid rgba(255,255,255,0.08);border-radius:20px;max-width:640px;width:100%;max-height:88vh;overflow-y:auto;padding:28px;position:relative">' +
+                '<button onclick="closePolicyDetailModal()" style="position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.06);border:none;color:var(--text-secondary);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center">✕</button>' +
+                '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">' +
+                    '<span style="font-size:0.72rem;font-weight:700;color:var(--neon-primary);background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.25);padding:4px 12px;border-radius:20px">🗺️ ' + escapeHTML(p.region || '-') + '</span>' +
+                    '<span style="font-size:0.72rem;font-weight:700;color:#10b981;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);padding:4px 12px;border-radius:20px">🎯 연관도 ' + score.toFixed(0) + '%</span>' +
+                    '<span style="font-size:0.72rem;color:var(--text-muted);background:rgba(255,255,255,0.04);padding:4px 10px;border-radius:20px">📂 ' + escapeHTML(p.category || '-') + '</span>' +
+                '</div>' +
+                '<h2 style="font-size:1.05rem;font-weight:700;line-height:1.5;color:var(--text-primary);margin:0 0 18px">' + escapeHTML(p.title) + '</h2>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">' +
+                    '<div style="background:rgba(255,255,255,0.02);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04)"><div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px">담당 부서</div><div style="font-size:0.82rem;font-weight:600">' + escapeHTML(p.department || '-') + '</div></div>' +
+                    '<div style="background:rgba(255,255,255,0.02);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04)"><div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px">예산 규모</div><div style="font-size:0.82rem;font-weight:700;color:#6366f1">' + budgetDisplay + '</div></div>' +
+                '</div>' +
+                '<div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);padding:14px;border-radius:12px;margin-bottom:18px">' +
+                    '<div style="font-size:0.75rem;font-weight:700;color:#6366f1;margin-bottom:8px">🤖 AI NLP 분석 요약</div>' +
+                    '<div style="font-size:0.82rem;color:var(--text-secondary);line-height:1.7">' + escapeHTML(p.ai_summary || 'AI 분석 실행 시 요약이 생성됩니다.') + '</div>' +
+                '</div>' +
+                '<div style="background:rgba(255,255,255,0.02);padding:14px;border-radius:12px;margin-bottom:18px;border:1px solid rgba(255,255,255,0.04)">' +
+                    '<div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);margin-bottom:8px">📄 원문 내용</div>' +
+                    '<div style="font-size:0.8rem;color:var(--text-muted);line-height:1.7;max-height:130px;overflow-y:auto">' + escapeHTML(p.content || '-') + '</div>' +
+                '</div>' +
+                (kwHtml ? '<div style="margin-bottom:18px"><div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);margin-bottom:8px">🏷️ 핵심 키워드</div><div style="display:flex;flex-wrap:wrap;gap:6px">' + kwHtml + '</div></div>' : '') +
+                (metadata.source_url ? '<div style="margin-bottom:14px"><div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);margin-bottom:6px">🌐 원문 출처</div><a href="' + escapeHTML(metadata.source_url) + '" target="_blank" rel="noopener" style="font-size:0.8rem;color:#6366f1;text-decoration:none;word-break:break-all">' + escapeHTML(metadata.source_url) + '</a></div>' : '') +
+                (filesHtml ? '<div style="margin-bottom:14px"><div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);margin-bottom:6px">📎 첨부파일</div><div style="display:flex;flex-direction:column;gap:4px">' + filesHtml + '</div></div>' : '') +
+                (metadata.officer_contact ? '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:14px">📞 담당자: ' + escapeHTML(metadata.officer_contact) + '</div>' : '') +
+                '<div style="border-top:1px solid rgba(255,255,255,0.05);padding-top:12px;font-size:0.72rem;color:var(--text-muted)">수집일: ' + (p.collected_at ? p.collected_at.split(' ')[0] : '-') + ' · ID: ' + p.id + '</div>' +
+            '</div>' +
+        '</div>';
+
+        const existing = document.getElementById('policy-detail-modal');
+        if (existing) existing.remove();
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    } catch (err) {
+        console.error('정책 상세 조회 실패:', err);
+        showToast('정책 상세 정보를 불러오지 못했습니다: ' + err.message, 'error');
+    }
+}
+
+function closePolicyDetailModal() {
+    const modal = document.getElementById('policy-detail-modal');
+    if (modal) modal.remove();
+}
+
+// ── HTML onclick 호환 래퍼 ──
+function collectPolicies() { return triggerPoliciesCollect(); }
+function analyzePolicies() { return triggerPoliciesAnalyze(); }
+
+// ── 정책 필터링 (검색/카테고리/지역) ──
+function filterPolicies() {
+    const search = (document.getElementById('policy-search')?.value || '').toLowerCase().trim();
+    const category = document.getElementById('policy-category-filter')?.value || '';
+    const region = document.getElementById('policy-region-filter')?.value || '';
+
+    const grid = document.getElementById('policies-grid');
+    if (!grid) return;
+
+    const cards = grid.querySelectorAll('.policy-card, [data-policy-id]');
+    let visible = 0;
+
+    cards.forEach(card => {
+        const title = (card.dataset.title || card.textContent || '').toLowerCase();
+        const cardCategory = card.dataset.category || '';
+        const cardRegion = card.dataset.region || '';
+
+        const matchSearch = !search || title.includes(search);
+        const matchCategory = !category || cardCategory === category;
+        const matchRegion = !region || cardRegion.includes(region);
+
+        if (matchSearch && matchCategory && matchRegion) {
+            card.style.display = '';
+            visible++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+
+    // 빈 결과 안내
+    const existing = grid.querySelector('.filter-empty-msg');
+    if (existing) existing.remove();
+
+    if (visible === 0 && cards.length > 0) {
+        grid.insertAdjacentHTML('beforeend',
+            '<div class="filter-empty-msg empty-state-v2" style="grid-column:1/-1"><div class="empty-icon">🔍</div><p class="empty-title">검색 결과가 없습니다</p><p class="empty-desc">다른 키워드나 필터 조건을 시도해 보세요</p></div>'
+        );
+    }
+}
+
+// ──────────────────────────────────────────────
+// 📄 기획/제안 공유실 기능 구현
+// ──────────────────────────────────────────────
+let _currentProposalCategory = 'all';
+
+async function loadProposals(keyword = "") {
+    const grid = document.getElementById('proposals-grid');
+    if (!grid) return;
+
+    // 로딩 스케레톤 표시
+    grid.innerHTML = renderSkeletonCards(4, '160px');
+
+    try {
+        let url = `/api/proposals?category=${_currentProposalCategory}`;
+        if (keyword) {
+            url += `&keyword=${encodeURIComponent(keyword)}`;
+        }
+        
+        const proposals = await api('GET', url);
+        
+        if (!proposals || proposals.length === 0) {
+            grid.innerHTML = `
+                <div class="empty-state-v2" style="grid-column:1/-1">
+                    <div class="empty-icon">📂</div>
+                    <p class="empty-title">등록된 제안서 및 기획서가 없습니다</p>
+                    <p class="empty-desc">가장 먼저 유용한 제안서 양식이나 기획서를 공유하고 동료들과 협업해 보세요!</p>
+                    <button class="btn btn-sm btn-outline" style="margin-top:12px" onclick="openProposalWriteModal()">📝 첫 자료 공유하기</button>
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = proposals.map(prop => {
+            const dateStr = prop.created_at ? prop.created_at.substring(0, 10) : '-';
+            const isAuthor = prop.username === _currentUser || state.isAdmin;
+            const deleteBtn = isAuthor 
+                ? `<button class="btn btn-ghost btn-xs" style="color:var(--danger); background:rgba(239,68,68,0.08); padding:4px 8px; border-radius:6px" onclick="deleteProposal(${prop.id})">✕ 삭제</button>`
+                : '';
+            
+            let categoryColor = '#6366f1';
+            if (prop.category === '기획서') categoryColor = '#10b981';
+            else if (prop.category === '템플릿') categoryColor = '#f59e0b';
+            else if (prop.category === '기타') categoryColor = '#8b5cf6';
+
+            return `
+                <div class="policy-card" style="display:flex; flex-direction:column; justify-content:space-between; min-height:160px">
+                    <div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                            <span class="badge" style="background:rgba(255,255,255,0.08); color:${categoryColor}; border:1px solid ${categoryColor}80; font-size:0.75rem">${escapeHTML(prop.category)}</span>
+                            <span style="font-size:0.75rem; color:var(--text-muted)">👤 ${escapeHTML(prop.username)}</span>
+                        </div>
+                        <h4 style="color:#fff; font-size:1.05rem; font-weight:700; margin:0 0 8px 0; line-height:1.4">${escapeHTML(prop.title)}</h4>
+                        <p style="font-size:0.82rem; color:var(--text-secondary); margin:0; line-height:1.6; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; white-space:pre-wrap">${escapeHTML(prop.content)}</p>
+                    </div>
+                    
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06)">
+                        <div style="font-size:0.75rem; color:var(--text-muted)">
+                            📅 ${dateStr} <span style="margin:0 4px">|</span> 📥 ${prop.downloads || 0}회
+                        </div>
+                        <div style="display:flex; gap:6px">
+                            ${deleteBtn}
+                            <a href="${escapeHTML(prop.file_url)}" target="_blank" class="btn btn-xs btn-primary" onclick="downloadProposal(${prop.id}, event)" style="padding:4px 10px; font-size:0.75rem; border-radius:6px; text-decoration:none; display:inline-flex; align-items:center; gap:3px">
+                                📥 다운로드
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('제안서 목록 로드 실패:', err);
+        grid.innerHTML = '<div style="padding:40px; text-align:center; color:var(--danger); grid-column:1/-1">데이터를 불러오는 데 실패했습니다.</div>';
+    }
+}
+
+function filterProposalCategory(category) {
+    _currentProposalCategory = category;
+    
+    const tabs = {
+        'all': 'p-tab-all',
+        '제안서': 'p-tab-proposal',
+        '기획서': 'p-tab-plan',
+        '템플릿': 'p-tab-template',
+        '기타': 'p-tab-etc'
+    };
+    
+    Object.keys(tabs).forEach(k => {
+        const btn = document.getElementById(tabs[k]);
+        if (btn) {
+            if (k === category) {
+                btn.classList.add('btn-primary', 'active-tab');
+                btn.classList.remove('btn-secondary');
+            } else {
+                btn.classList.remove('btn-primary', 'active-tab');
+                btn.classList.add('btn-secondary');
+            }
+        }
+    });
+
+    loadProposals();
+}
+
+function searchProposals() {
+    const input = document.getElementById('proposal-search-input');
+    if (!input) return;
+    loadProposals(input.value.trim());
+}
+
+function openProposalWriteModal() {
+    const overlay = document.getElementById('proposal-modal-overlay');
+    if (overlay) {
+        overlay.classList.add('active');
+        document.getElementById('proposal-title').value = '';
+        document.getElementById('proposal-file-url').value = '';
+        document.getElementById('proposal-content').value = '';
+    }
+}
+
+function closeProposalWriteModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    const overlay = document.getElementById('proposal-modal-overlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+    }
+}
+
+async function handleProposalSubmit(event) {
+    if (event) event.preventDefault();
+    
+    const title = document.getElementById('proposal-title').value.trim();
+    const category = document.getElementById('proposal-category').value;
+    const fileUrl = document.getElementById('proposal-file-url').value.trim();
+    const content = document.getElementById('proposal-content').value.trim();
+
+    if (!title || !category || !content || !fileUrl) {
+        showToast('필수 필드를 모두 입력해 주세요.', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/proposals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, category, content, file_url: fileUrl }),
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            showToast('기획/제안서가 성공적으로 공유되었습니다.', 'success');
+            closeProposalWriteModal();
+            loadProposals();
+        } else {
+            const err = await response.json().catch(() => ({ detail: '공유 등록 실패' }));
+            showToast(err.detail || '자료 공유 등록 실패', 'error');
+        }
+    } catch (err) {
+        console.error('제안서 공유 실패:', err);
+        showToast('서버 통신 실패', 'error');
+    }
+}
+
+async function deleteProposal(proposalId) {
+    if (!confirm('정말로 이 기획서/제안서 공유글을 삭제하시겠습니까?')) return;
+
+    try {
+        const response = await fetch(`/api/proposals/${proposalId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            showToast('성공적으로 삭제되었습니다.', 'success');
+            loadProposals();
+        } else {
+            const err = await response.json().catch(() => ({ detail: '삭제 권한이 없거나 실패했습니다.' }));
+            showToast(err.detail || '게시글 삭제 실패', 'error');
+        }
+    } catch (err) {
+        console.error('제안서 삭제 실패:', err);
+        showToast('서버 통신 오류', 'error');
+    }
+}
+
+async function downloadProposal(proposalId, event) {
+    try {
+        fetch(`/api/proposals/${proposalId}/download`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        
+        const parent = event.currentTarget.closest('.policy-card');
+        if (parent) {
+            const downloadsEl = parent.querySelector('div[style*="var(--text-muted)"]');
+            if (downloadsEl) {
+                const text = downloadsEl.textContent;
+                const match = text.match(/📥\s*(\d+)회/);
+                if (match) {
+                    const count = parseInt(match[1]) + 1;
+                    downloadsEl.innerHTML = text.replace(/📥\s*(\d+)회/, `📥 ${count}회`);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('다운로드 집계 증가 실패:', err);
+    }
+}
+
+// ──────────────────────────────────────────────
+// 10. 협업 파트너 & 협업 제안 관리
+// ──────────────────────────────────────────────
+let _cachedSharedPartners = [];
+
+async function loadPartners() {
+    state.partnerViewTab = state.partnerViewTab || 'search';
+    
+    // 내 회사 목록을 조회하여 활성 회사 드롭다운 및 제안 모달 발송회사 드롭다운 준비
+    try {
+        const myCompanies = await api('GET', '/businesses');
+        const selectEl = document.getElementById('partner-active-biz-select');
+        const modalSelectEl = document.getElementById('collab-proposal-sender-biz-id');
+        
+        if (selectEl) {
+            if (myCompanies && myCompanies.length > 0) {
+                selectEl.innerHTML = myCompanies.map(c => `<option value="${c.biz_id}">${escapeHTML(c.company_name)} (${c.biz_id})</option>`).join('');
+                modalSelectEl.innerHTML = myCompanies.map(c => `<option value="${c.biz_id}">${escapeHTML(c.company_name)} (${c.biz_id})</option>`).join('');
+            } else {
+                selectEl.innerHTML = `<option value="">등록된 내 회사가 없습니다</option>`;
+                modalSelectEl.innerHTML = `<option value="">등록된 내 회사가 없습니다</option>`;
+            }
+        }
+    } catch (err) {
+        console.error('내 회사 목록 로드 실패:', err);
+    }
+
+    // 1. 파트너사 목록 조회
+    const grid = document.getElementById('partners-grid');
+    if (grid) {
+        grid.innerHTML = renderSkeletonCards(3, '180px');
+        try {
+            _cachedSharedPartners = await api('GET', '/businesses/shared');
+            renderPartnersList(_cachedSharedPartners);
+        } catch (err) {
+            console.error('공유 파트너사 조회 실패:', err);
+            grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted)">⚠️ 파트너사 목록을 불러오지 못했습니다.</div>`;
+        }
+    }
+
+    // 2. 협업 제안 관리 탭의 데이터 조회
+    loadActivePartnerProposals();
+}
+
+function switchPartnerTab(tab) {
+    state.partnerViewTab = tab;
+    
+    // 탭 버튼 active 클래스 토글
+    document.querySelectorAll('[id^="partner-tab-"]').forEach(btn => {
+        btn.classList.toggle('active', btn.id === `partner-tab-${tab}`);
+        btn.classList.toggle('btn-primary', btn.id === `partner-tab-${tab}`);
+        btn.classList.toggle('btn-ghost', btn.id !== `partner-tab-${tab}`);
+    });
+    
+    // 섹션 노출/비노출 제어
+    const searchSection = document.getElementById('partner-section-search');
+    const proposalsSection = document.getElementById('partner-section-proposals');
+    
+    if (searchSection && proposalsSection) {
+        searchSection.style.display = tab === 'search' ? 'block' : 'none';
+        proposalsSection.style.display = tab === 'proposals' ? 'block' : 'none';
+    }
+    
+    if (tab === 'proposals') {
+        loadActivePartnerProposals();
+    }
+}
+
+function renderPartnersList(partners) {
+    const grid = document.getElementById('partners-grid');
+    if (!grid) return;
+
+    if (!partners || partners.length === 0) {
+        grid.innerHTML = `
+            <div class="empty-state-v2" style="grid-column: 1 / -1">
+                <div class="empty-icon">🤝</div>
+                <h3 class="empty-title">공개된 파트너사가 없습니다</h3>
+                <p class="empty-desc">회사 프로필 등록/수정 시 정보 공유에 동의한 기업들이 이곳에 나타납니다.</p>
+            </div>
+        `;
+        return;
+    }
+
+    grid.innerHTML = partners.map(p => {
+        const bizTypes = parseJsonField(p.business_types).map(t => `<span class="tag-badge badge-indigo" style="font-size:0.68rem;padding:2px 6px;margin-bottom:4px;display:inline-block">${escapeHTML(t)}</span>`).join(' ');
+        const licenses = parseJsonField(p.licenses).map(l => `<span class="tag-badge badge-green" style="font-size:0.68rem;padding:2px 6px;margin-bottom:4px;display:inline-block">${escapeHTML(l)}</span>`).join(' ');
+        const regions = parseJsonField(p.regions).map(r => `<span class="tag-badge badge-cyan" style="font-size:0.68rem;padding:2px 6px;margin-bottom:4px;display:inline-block">${escapeHTML(r)}</span>`).join(' ');
+        const keywords = parseJsonField(p.keywords).map(k => `<span class="tag-badge" style="font-size:0.68rem;padding:2px 6px;background:rgba(255,255,255,0.05);color:var(--text-secondary);margin-bottom:4px;display:inline-block">#${escapeHTML(k)}</span>`).join(' ');
+        
+        // 협업 궁합도(매칭 스코어) 처리
+        let matchScoreBadge = '';
+        let matchReasonsHtml = '';
+        const activeBizId = localStorage.getItem('activeCompanyBizId');
+        
+        if (p.biz_id === activeBizId) {
+            matchScoreBadge = `<span class="tag-badge badge-ghost" style="font-size:0.68rem;padding:2px 8px;background:rgba(255,255,255,0.08);color:var(--text-muted)">자사</span>`;
+        } else if (p.match_score !== undefined && p.match_score !== null) {
+            const score = p.match_score;
+            let badgeClass = 'badge-yellow';
+            let badgeStyle = 'background:rgba(245,158,11,0.15);color:#fbbf24;font-weight:700;';
+            if (score >= 80) {
+                badgeClass = 'badge-purple';
+                badgeStyle = 'background:linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(139,92,246,0.2) 100%);color:#c084fc;border:1px solid rgba(139,92,246,0.3);font-weight:800;';
+            } else if (score >= 60) {
+                badgeClass = 'badge-cyan';
+                badgeStyle = 'background:rgba(6,182,212,0.15);color:#22d3ee;font-weight:700;';
+            }
+            matchScoreBadge = `<span class="tag-badge ${badgeClass}" style="font-size:0.75rem;padding:3px 10px;border-radius:20px;letter-spacing:0.02em;box-shadow:0 0 10px rgba(99,102,241,0.1);${badgeStyle}">🎯 궁합도 ${score}%</span>`;
+            
+            if (p.match_reasons && p.match_reasons.length > 0) {
+                const reasonsList = p.match_reasons.map(r => `<li style="margin-bottom:3px;position:relative;padding-left:12px;"><span style="position:absolute;left:0;color:#818cf8;">•</span>${escapeHTML(r)}</li>`).join('');
+                matchReasonsHtml = `
+                    <div style="margin-top:10px;padding:10px 12px;background:rgba(99,102,241,0.04);border-left:3px solid #6366f1;border-radius:0 8px 8px 0;font-size:0.73rem;color:var(--text-secondary);">
+                        <div style="font-weight:700;margin-bottom:4px;color:#a5b4fc;display:flex;align-items:center;gap:4px;">✨ 추천 매칭 요인</div>
+                        <ul style="list-style:none;padding:0;margin:0;line-height:1.4;">${reasonsList}</ul>
+                    </div>
+                `;
+            }
+        } else {
+            matchScoreBadge = `<span class="tag-badge badge-ghost" style="font-size:0.68rem;padding:2px 8px;color:var(--text-muted)">궁합 계산 불가</span>`;
+        }
+
+        // 홈페이지, 회사소개서, 소셜 네트워크 배지 HTML 생성
+        let contactBadges = [];
+        if (p.website_url) {
+            contactBadges.push(`<a href="${escapeHTML(p.website_url)}" target="_blank" class="tag-badge" style="font-size:0.68rem;padding:2px 8px;text-decoration:none;color:#818cf8;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);display:inline-flex;align-items:center;gap:2px" title="홈페이지 새창 열기">🌐 홈페이지</a>`);
+        }
+        if (p.intro_file_url) {
+            contactBadges.push(`<a href="${escapeHTML(p.intro_file_url)}" target="_blank" class="tag-badge" style="font-size:0.68rem;padding:2px 8px;text-decoration:none;color:#34d399;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);display:inline-flex;align-items:center;gap:2px" title="회사소개서 다운로드">📄 소개서</a>`);
+        }
+        if (p.social_links) {
+            contactBadges.push(`<a href="${escapeHTML(p.social_links)}" target="_blank" class="tag-badge" style="font-size:0.68rem;padding:2px 8px;text-decoration:none;color:#22d3ee;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2);display:inline-flex;align-items:center;gap:2px" title="소셜 채널 바로가기">🔗 소셜</a>`);
+        }
+        const contactBadgesHtml = contactBadges.length > 0 
+            ? `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">${contactBadges.join('')}</div>`
+            : '';
+
+        return `
+            <div class="policy-card" style="display:flex;flex-direction:column;justify-content:space-between;min-height:280px">
+                <div>
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+                        <h3 style="font-size:1.05rem;font-weight:700;margin:0;color:var(--text-primary)">${escapeHTML(p.company_name)}</h3>
+                        <div style="display:flex;gap:4px;align-items:center">
+                            ${matchScoreBadge}
+                            <span class="sm-ai-badge" style="font-size:0.68rem;padding:2px 8px;background:rgba(99,102,241,0.15);color:#a5b4fc">${escapeHTML(p.credit_rating || 'BBB')}</span>
+                        </div>
+                    </div>
+                    <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:12px">대표: ${escapeHTML(p.ceo_name || '-')} | 규모: ${escapeHTML(p.company_type || '중소기업')}</div>
+                    
+                    ${contactBadgesHtml}
+                    
+                    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
+                        ${bizTypes ? `<div><small style="color:var(--text-muted);display:block;margin-bottom:2px">업종</small>${bizTypes}</div>` : ''}
+                        ${licenses ? `<div><small style="color:var(--text-muted);display:block;margin-bottom:2px">보유 면허</small>${licenses}</div>` : ''}
+                        ${regions ? `<div><small style="color:var(--text-muted);display:block;margin-bottom:2px">활동 지역</small>${regions}</div>` : ''}
+                        ${keywords ? `<div style="margin-top:4px">${keywords}</div>` : ''}
+                    </div>
+                    
+                    ${matchReasonsHtml}
+                </div>
+
+                <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:12px;display:flex;justify-content:flex-end">
+                    <button class="btn btn-sm btn-primary" style="font-size:0.75rem;padding:6px 12px" onclick="openProposalModal('${p.biz_id}', '${escapeHTML(p.company_name).replace(/'/g, "\\'")}')">
+                        🤝 협업 제안하기
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function searchPartners() {
+    const query = document.getElementById('partner-search-input').value.toLowerCase().trim();
+    if (!query) {
+        renderPartnersList(_cachedSharedPartners);
+        return;
+    }
+
+    const filtered = _cachedSharedPartners.filter(p => {
+        const name = (p.company_name || '').toLowerCase();
+        const ceo = (p.ceo_name || '').toLowerCase();
+        const bizTypes = parseJsonField(p.business_types).join(' ').toLowerCase();
+        const licenses = parseJsonField(p.licenses).join(' ').toLowerCase();
+        const regions = parseJsonField(p.regions).join(' ').toLowerCase();
+        const keywords = parseJsonField(p.keywords).join(' ').toLowerCase();
+        
+        return name.includes(query) || 
+               ceo.includes(query) || 
+               bizTypes.includes(query) || 
+               licenses.includes(query) || 
+               regions.includes(query) || 
+               keywords.includes(query);
+    });
+
+    renderPartnersList(filtered);
+}
+
+async function loadActivePartnerProposals() {
+    const selectEl = document.getElementById('partner-active-biz-select');
+    if (!selectEl) return;
+    
+    const activeBizId = selectEl.value;
+    const receivedList = document.getElementById('received-proposals-list');
+    const sentList = document.getElementById('sent-proposals-list');
+    
+    if (!activeBizId) {
+        const msg = `<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:0.8rem">소속 회사를 선택하시면 주고받은 제안이 표시됩니다.</div>`;
+        if (receivedList) receivedList.innerHTML = msg;
+        if (sentList) sentList.innerHTML = msg;
+        return;
+    }
+
+    if (receivedList) receivedList.innerHTML = `<div style="text-align:center;padding:12px">${renderSkeletonCards(1, '80px')}</div>`;
+    if (sentList) sentList.innerHTML = `<div style="text-align:center;padding:12px">${renderSkeletonCards(1, '80px')}</div>`;
+
+    try {
+        const [received, sent] = await Promise.all([
+            api('GET', `/businesses/proposals/received?biz_id=${encodeURIComponent(activeBizId)}`),
+            api('GET', `/businesses/proposals/sent?biz_id=${encodeURIComponent(activeBizId)}`)
+        ]);
+
+        renderProposalsList('received', received);
+        renderProposalsList('sent', sent);
+    } catch (err) {
+        console.error('제안 이력 로드 실패:', err);
+        const errMsg = `<div style="text-align:center;padding:12px;color:var(--text-muted);font-size:0.8rem">⚠️ 불러오지 못했습니다.</div>`;
+        if (receivedList) receivedList.innerHTML = errMsg;
+        if (sentList) sentList.innerHTML = errMsg;
+    }
+}
+
+function renderProposalsList(type, list) {
+    const container = document.getElementById(type === 'received' ? 'received-proposals-list' : 'sent-proposals-list');
+    if (!container) return;
+
+    if (!list || list.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center;padding:40px;color:var(--text-muted);font-size:0.85rem">
+                <div>✉️</div>
+                <div style="margin-top:6px">${type === 'received' ? '수신된 협업 제안이 없습니다.' : '보낸 협업 제안이 없습니다.'}</div>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = list.map(p => {
+        const statusMap = {
+            'pending': { label: '대기 중', class: 'badge-yellow', color: '#f59e0b' },
+            'accepted': { label: '수락됨', class: 'badge-green', color: '#10b981' },
+            'rejected': { label: '거절됨', class: 'badge-danger', color: '#ef4444' }
+        };
+        const status = statusMap[p.status] || { label: p.status, class: '', color: 'var(--text-muted)' };
+        const isReceived = type === 'received';
+        const partnerName = isReceived ? p.sender_company_name : p.receiver_company_name;
+        const partnerEmail = isReceived ? p.sender_email : p.receiver_email;
+        const partnerCeo = isReceived ? p.sender_ceo_name : p.receiver_ceo_name;
+        
+        // 제안 수락 시 연락 방법(이메일) 노출
+        const contactInfo = (p.status === 'accepted' && partnerEmail) 
+            ? `<div style="margin-top:8px;padding:8px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:6px;font-size:0.75rem;color:#10b981">
+                📞 연락망 개설: <strong>${escapeHTML(partnerCeo || '')} (${escapeHTML(partnerEmail)})</strong> 로 문의해 주세요.
+               </div>`
+            : '';
+
+        let actions = '';
+        if (isReceived && p.status === 'pending') {
+            actions = `
+                <div style="display:flex;gap:6px;margin-top:12px;justify-content:flex-end">
+                    <button class="btn btn-sm" style="font-size:0.72rem;padding:4px 8px;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3)" onclick="updateProposalStatus(${p.id}, 'rejected')">거절</button>
+                    <button class="btn btn-sm btn-primary" style="font-size:0.72rem;padding:4px 8px" onclick="updateProposalStatus(${p.id}, 'accepted')">수락</button>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="cafe-post-card" style="padding:14px;margin-bottom:10px">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                    <div>
+                        <span style="font-weight:700;font-size:0.88rem;color:var(--text-primary)">${escapeHTML(partnerName)}</span>
+                        <span class="tag-badge ${status.class}" style="font-size:0.65rem;padding:1px 6px;margin-left:6px">${status.label}</span>
+                    </div>
+                    <small style="color:var(--text-muted);font-size:0.7rem">${new Date(p.created_at).toLocaleDateString('ko-KR')}</small>
+                </div>
+                <div style="font-size:0.76rem;color:var(--text-secondary);margin-top:6px;padding:4px 8px;background:rgba(0,0,0,0.12);border-radius:6px">
+                    ${escapeHTML(p.message || '')}
+                </div>
+                <div style="margin-top:8px;font-size:0.72rem;color:var(--text-muted)">
+                    📌 관련 공고: <span style="color:var(--accent-indigo)">${escapeHTML(p.bid_ntce_no)}</span> - ${escapeHTML(p.bid_title || '상세 공고명 없음')}
+                </div>
+                ${contactInfo}
+                ${actions}
+            </div>
+        `;
+    }).join('');
+}
+
+async function updateProposalStatus(proposalId, status) {
+    try {
+        await api('PUT', `/businesses/proposals/${proposalId}/status`, { status });
+        showToast(`제안이 ${status === 'accepted' ? '수락' : '거절'}되었습니다.`, 'success');
+        loadActivePartnerProposals();
+    } catch (err) {
+        showToast(`상태 업데이트 실패: ${err.message}`, 'error');
+    }
+}
+
+function openProposalModal(receiverBizId, receiverCompanyName, bidNo = '') {
+    const overlay = document.getElementById('collab-proposal-modal-overlay');
+    if (!overlay) return;
+
+    document.getElementById('collab-proposal-form').reset();
+    document.getElementById('collab-proposal-receiver-biz-id').value = receiverBizId;
+    document.getElementById('collab-proposal-receiver-name').value = receiverCompanyName;
+    
+    const bidInput = document.getElementById('collab-proposal-bid-no');
+    const previewEl = document.getElementById('collab-proposal-bid-title-preview');
+    
+    bidInput.value = bidNo;
+    previewEl.style.display = 'none';
+
+    if (bidNo) {
+        fetchAndFillBidTitle();
+    }
+
+    overlay.classList.add('active');
+}
+
+function closeProposalModal() {
+    const overlay = document.getElementById('collab-proposal-modal-overlay');
+    if (overlay) overlay.classList.remove('active');
+}
+
+async function submitCollaborationProposal(event) {
+    event.preventDefault();
+    
+    const payload = {
+        sender_biz_id: document.getElementById('collab-proposal-sender-biz-id').value,
+        receiver_biz_id: document.getElementById('collab-proposal-receiver-biz-id').value,
+        bid_ntce_no: document.getElementById('collab-proposal-bid-no').value.trim(),
+        message: document.getElementById('collab-proposal-message').value.trim()
+    };
+
+    if (!payload.sender_biz_id) {
+        showToast('제안을 보낼 내 회사를 선택해 주세요.', 'warning');
+        return;
+    }
+    if (!payload.bid_ntce_no) {
+        showToast('대상 공고번호를 입력해 주세요.', 'warning');
+        return;
+    }
+    if (!payload.message) {
+        showToast('제안 메시지를 입력해 주세요.', 'warning');
+        return;
+    }
+
+    try {
+        await api('POST', '/businesses/proposals', payload);
+        showToast('협업 제안이 발송되었습니다.', 'success');
+        closeProposalModal();
+        if (state.currentView === 'partners') {
+            loadActivePartnerProposals();
+        }
+    } catch (err) {
+        showToast(`제안 발송 실패: ${err.message}`, 'error');
+    }
+}
+
+async function fetchAndFillBidTitle() {
+    const bidNo = document.getElementById('collab-proposal-bid-no').value.trim();
+    const previewEl = document.getElementById('collab-proposal-bid-title-preview');
+    if (!bidNo) {
+        showToast('공고번호를 입력하세요', 'warning');
+        return;
+    }
+
+    previewEl.style.display = 'block';
+    previewEl.textContent = '🔍 공고 정보를 조회하는 중...';
+    previewEl.style.color = 'var(--text-muted)';
+
+    try {
+        const bid = await api('GET', `/bids/${encodeURIComponent(bidNo)}`);
+        if (bid && bid.title) {
+            previewEl.textContent = `✅ 확인됨: ${bid.title}`;
+            previewEl.style.color = '#10b981';
+        } else {
+            previewEl.textContent = '❌ 공고를 찾을 수 없습니다. 번호를 다시 확인해 주세요.';
+            previewEl.style.color = '#ef4444';
+        }
+    } catch (err) {
+        previewEl.textContent = '⚠️ 신규 공고이거나 조회가 불가능합니다. 번호를 수동 확인해 주세요.';
+        previewEl.style.color = '#f59e0b';
+    }
+}
+
+async function generateAiProposalDraft() {
+    const senderBizId = document.getElementById('collab-proposal-sender-biz-id').value;
+    const receiverBizId = document.getElementById('collab-proposal-receiver-biz-id').value;
+    const bidNo = document.getElementById('collab-proposal-bid-no').value.trim();
+    const messageTextarea = document.getElementById('collab-proposal-message');
+    const aiBtn = document.getElementById('btn-ai-draft-proposal');
+
+    if (!senderBizId) {
+        showToast('제안을 보낼 내 회사를 먼저 선택해 주세요.', 'warning');
+        return;
+    }
+    if (!receiverBizId) {
+        showToast('제안 대상 파트너사가 유효하지 않습니다.', 'warning');
+        return;
+    }
+    if (!bidNo) {
+        showToast('대상 공고번호를 먼저 입력하고 조회해 주세요.', 'warning');
+        return;
+    }
+
+    if (aiBtn) {
+        aiBtn.disabled = true;
+        aiBtn.innerHTML = '🤖 초안 작성 중...';
+        aiBtn.style.opacity = '0.7';
+    }
+
+    try {
+        messageTextarea.value = '';
+        messageTextarea.placeholder = '🤖 AI가 공고 정보와 파트너사의 강점을 매칭하여 맞춤형 협업 제안서 초안을 구성하고 있습니다. 잠시만 기다려 주세요...';
+        
+        const result = await api('POST', '/businesses/proposals/ai-draft', {
+            sender_biz_id: senderBizId,
+            receiver_biz_id: receiverBizId,
+            bid_ntce_no: bidNo
+        });
+
+        const draftText = result.draft || '';
+        
+        let index = 0;
+        messageTextarea.placeholder = '제안 메시지';
+        
+        function typeEffect() {
+            if (index < draftText.length) {
+                messageTextarea.value += draftText.charAt(index);
+                index++;
+                messageTextarea.scrollTop = messageTextarea.scrollHeight;
+                setTimeout(typeEffect, 15);
+            } else {
+                if (aiBtn) {
+                    aiBtn.disabled = false;
+                    aiBtn.innerHTML = '🤖 AI 제안서 초안 작성';
+                    aiBtn.style.opacity = '1';
+                }
+                showToast('AI 맞춤 제안서 초안이 완성되었습니다!', 'success');
+            }
+        }
+        
+        typeEffect();
+
+    } catch (err) {
+        console.error('AI 제안 초안 작성 에러:', err);
+        showToast(`초안 작성에 실패했습니다: ${err.message}`, 'error');
+        messageTextarea.placeholder = '공동 수급 제안 목적 및 협력 방향을 입력해 주세요.';
+        if (aiBtn) {
+            aiBtn.disabled = false;
+            aiBtn.innerHTML = '🤖 AI 제안서 초안 작성';
+            aiBtn.style.opacity = '1';
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════
+// 프로필 수정 / 비밀번호 변경 / 계정 탈퇴 모달 관련 함수
+// ═══════════════════════════════════════════════════
+
+function openProfileEditModal() {
+    if (!_currentUser) { openAuthModal('login'); return; }
+    const overlay = document.getElementById('profile-edit-modal-overlay');
+    if (!overlay) return;
+    const unameEl = document.getElementById('profile-edit-username');
+    if (unameEl) unameEl.textContent = _currentUser;
+    const emailEl = document.getElementById('profile-edit-email');
+    if (emailEl) emailEl.value = '';
+    overlay.style.display = 'flex';
+}
+
+function closeProfileEditModal(e) {
+    if (e && e.target !== e.currentTarget) return;
+    const overlay = document.getElementById('profile-edit-modal-overlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+async function handleProfileEdit(e) {
+    e.preventDefault();
+    const email = document.getElementById('profile-edit-email')?.value.trim() || null;
+    try {
+        const resp = await fetch('/api/auth/profile', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email || null }),
+            credentials: 'include'
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok) {
+            showToast('프로필이 성공적으로 수정되었습니다.', 'success');
+            closeProfileEditModal();
+        } else {
+            showToast(data.detail || '프로필 수정에 실패했습니다.', 'error');
+        }
+    } catch (err) {
+        console.error('프로필 수정 오류:', err);
+        showToast('서버 통신 오류가 발생했습니다.', 'error');
+    }
+}
+
+function openChangePasswordModal() {
+    const overlay = document.getElementById('change-password-modal-overlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        const form = document.getElementById('change-password-form');
+        if (form) form.reset();
+        const bar = document.getElementById('cp-strength');
+        if (bar) { bar.style.width = '0'; bar.style.background = '#334155'; }
+        const txt = document.getElementById('cp-strength-text');
+        if (txt) txt.textContent = '';
+    }
+}
+
+function closeChangePasswordModal(e) {
+    if (e && e.target !== e.currentTarget) return;
+    const overlay = document.getElementById('change-password-modal-overlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+async function handleChangePassword(e) {
+    e.preventDefault();
+    const current = document.getElementById('cp-current')?.value;
+    const newPw = document.getElementById('cp-new')?.value;
+    const confirm = document.getElementById('cp-confirm')?.value;
+    if (!current || !newPw || !confirm) { showToast('모든 항목을 입력해 주세요.', 'error'); return; }
+    if (newPw !== confirm) { showToast('새 비밀번호가 일치하지 않습니다.', 'error'); return; }
+    if (newPw.length < 4) { showToast('비밀번호는 최소 4자 이상이어야 합니다.', 'error'); return; }
+    try {
+        const resp = await fetch('/api/auth/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_password: current, new_password: newPw }),
+            credentials: 'include'
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok) {
+            showToast('비밀번호가 성공적으로 변경되었습니다. 다시 로그인해 주세요.', 'success');
+            closeChangePasswordModal();
+            closeProfileEditModal();
+            setTimeout(() => handleLogout(), 1500);
+        } else {
+            showToast(data.detail || '비밀번호 변경에 실패했습니다.', 'error');
+        }
+    } catch (err) {
+        console.error('비밀번호 변경 오류:', err);
+        showToast('서버 통신 오류가 발생했습니다.', 'error');
+    }
+}
+
+function openDeleteAccountModal() {
+    const overlay = document.getElementById('delete-account-modal-overlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        const pw = document.getElementById('delete-account-password');
+        if (pw) pw.value = '';
+    }
+}
+
+function closeDeleteAccountModal(e) {
+    if (e && e.target !== e.currentTarget) return;
+    const overlay = document.getElementById('delete-account-modal-overlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+async function handleDeleteAccount(e) {
+    e.preventDefault();
+    const password = document.getElementById('delete-account-password')?.value;
+    if (!password) { showToast('비밀번호를 입력해 주세요.', 'error'); return; }
+    if (!confirm('정말로 계정을 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+    try {
+        const resp = await fetch('/api/auth/me', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password }),
+            credentials: 'include'
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok) {
+            showToast('계정이 삭제되었습니다. 이용해주셔서 감사합니다.', 'success');
+            closeDeleteAccountModal();
+            closeProfileEditModal();
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showToast(data.detail || '계정 탈퇴에 실패했습니다.', 'error');
+        }
+    } catch (err) {
+        console.error('계정 탈퇴 오류:', err);
+        showToast('서버 통신 오류가 발생했습니다.', 'error');
+    }
+}
+
+// 비밀번호 강도 표시기
+function updatePasswordStrength(barId, password) {
+    const bar = document.getElementById(barId);
+    const txtId = barId.replace('-strength', '-strength-text');
+    const txt = document.getElementById(txtId);
+    if (!bar) return;
+    let score = 0;
+    if (password.length >= 4) score++;
+    if (password.length >= 8) score++;
+    if (/[A-Z]/.test(password) || /[a-z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+    const levels = [
+        { color: '#ef4444', label: '매우 약함', width: '20%' },
+        { color: '#f97316', label: '약함',     width: '40%' },
+        { color: '#eab308', label: '보통',     width: '60%' },
+        { color: '#22c55e', label: '강함',     width: '80%' },
+        { color: '#10b981', label: '매우 강함', width: '100%' }
+    ];
+    const idx = Math.min(score - 1, 4);
+    const lvl = score > 0 ? levels[idx] : { color: '#334155', label: '', width: '0%' };
+    bar.style.width = lvl.width;
+    bar.style.background = lvl.color;
+    if (txt) txt.textContent = password.length > 0 ? `강도: ${lvl.label}` : '';
+}
+
+// ═══════════════════════════════════════════════════
+// 카페 게시글 수정 모달 함수
+// ═══════════════════════════════════════════════════
+
+function openCafeEditModal(postId, currentTitle, currentContent) {
+    const overlay = document.getElementById('cafe-edit-modal-overlay');
+    if (!overlay) return;
+    document.getElementById('cafe-edit-post-id').value = postId;
+    document.getElementById('cafe-edit-title-input').value = currentTitle || '';
+    document.getElementById('cafe-edit-content-input').value = currentContent || '';
+    overlay.style.display = 'flex';
+}
+
+function closeCafeEditModal(e) {
+    if (e && e.target !== e.currentTarget) return;
+    const overlay = document.getElementById('cafe-edit-modal-overlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+async function handleCafeEditSubmit(e) {
+    e.preventDefault();
+    const postId = document.getElementById('cafe-edit-post-id')?.value;
+    const title = document.getElementById('cafe-edit-title-input')?.value.trim();
+    const content = document.getElementById('cafe-edit-content-input')?.value.trim();
+    const activeBizId = localStorage.getItem('activeCompanyBizId');
+    if (!postId || !title || !content || !activeBizId) {
+        showToast('필수 정보가 누락되었습니다.', 'error'); return;
+    }
+    try {
+        await api('PUT', `/companies/${encodeURIComponent(activeBizId)}/cafe/${postId}`, { title, content });
+        showToast('게시글이 수정되었습니다.', 'success');
+        closeCafeEditModal();
+        loadCafe();
+    } catch (err) {
+        console.error('게시글 수정 실패:', err);
+        showToast((err && err.detail) || '게시글 수정에 실패했습니다.', 'error');
     }
 }

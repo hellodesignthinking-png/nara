@@ -161,3 +161,84 @@ async def get_collaborations_for_admin(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="협업 현황 목록 조회 중 오류가 발생했습니다."
         )
+
+from pydantic import BaseModel
+class AdminUserPasswordResetRequest(BaseModel):
+    new_password: str
+
+@router.delete("/companies/{biz_id}", summary="회사 프로필 강제 삭제")
+async def delete_company_by_admin_route(
+    biz_id: str,
+    admin_user: str = Depends(get_admin_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    관리자가 특정 회사 정보를 강제로 삭제 처리합니다.
+    """
+    try:
+        success = db.delete_company_by_admin(biz_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="삭제할 대상 기업을 찾을 수 없습니다."
+            )
+        logger.info("회사 강제 삭제 성공: %s [관리자: %s]", biz_id, admin_user)
+        return {"message": f"회사 프로필(ID: {biz_id})이 강제 삭제되었습니다."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("회사 삭제 실패 [관리자: %s]: %s", admin_user, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="회사 삭제 도중 서버 오류가 발생했습니다."
+        )
+
+@router.post("/users/{username}/reset-password", summary="회원 비밀번호 강제 변경")
+async def reset_user_password_by_admin(
+    username: str,
+    req: AdminUserPasswordResetRequest,
+    admin_user: str = Depends(get_admin_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    관리자가 특정 회원의 비밀번호를 강제로 재설정합니다.
+    """
+    if len(req.new_password) < 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="비밀번호는 최소 4자 이상이어야 합니다."
+        )
+    
+    from .auth import hash_password
+    password_hash = hash_password(req.new_password)
+    
+    conn = db._ensure_connection()
+    try:
+        ph = "%s" if db.is_postgres else "?"
+        cursor = conn.execute(f"SELECT username FROM users WHERE username = {ph}", (username,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="비밀번호를 재설정할 대상 회원을 찾을 수 없습니다."
+            )
+        
+        if not db.is_postgres:
+            conn.execute("BEGIN TRANSACTION")
+        conn.execute(
+            f"UPDATE users SET password_hash = {ph} WHERE username = {ph}",
+            (password_hash, username)
+        )
+        conn.commit()
+        
+        logger.info("회원 비밀번호 강제 변경 완료: %s [관리자: %s]", username, admin_user)
+        return {"message": f"사용자 '{username}'의 비밀번호가 성공적으로 변경되었습니다."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.error("회원 비밀번호 강제 변경 실패 [관리자: %s]: %s", admin_user, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="비밀번호 변경 중 서버 오류가 발생했습니다."
+        )

@@ -74,6 +74,10 @@ def _business_profile_to_api_dict(profile: BusinessProfile) -> dict:
         "keywords": profile.keywords,                    # 파싱된 리스트
         "min_budget": profile.min_budget,
         "max_budget": profile.max_budget,
+        "is_shared": profile.is_shared,
+        "website_url": profile.website_url,
+        "intro_file_url": profile.intro_file_url,
+        "social_links": profile.social_links,
         "created_at": profile.created_at.strftime("%Y-%m-%d %H:%M:%S") if profile.created_at else None,
         "updated_at": profile.updated_at.strftime("%Y-%m-%d %H:%M:%S") if profile.updated_at else None,
     }
@@ -301,6 +305,35 @@ def get_active_company(request: Request, username: str = Depends(get_current_use
             detail="해당 회사 정보에 접근할 권한이 없습니다."
         )
         
+    return active_biz_id
+
+
+def get_optional_active_company(request: Request, db: DatabaseManager = Depends(get_db)):
+    """
+    get_active_company와 유사하나, 비로그인 상태 또는 회사가 없어도 에러를 던지지 않고 None을 반환합니다.
+    키워드 기반 기능에서 비로그인/회사 없이도 부분 작동이 가능하게 합니다.
+    """
+    # JWT 토큰 추출 (없으면 None 반환)
+    from .auth import decode_jwt
+    token = request.cookies.get("access_token")
+    if not token:
+        return None
+    payload = decode_jwt(token)
+    if not payload or not payload.get("sub"):
+        return None
+    username = payload["sub"]
+
+    active_biz_id = request.headers.get("X-Active-Company")
+    if not active_biz_id:
+        companies = db.get_user_companies(username)
+        if not companies:
+            return None
+        return companies[0]["biz_id"]
+
+    role = db.get_business_user_role(active_biz_id, username)
+    if not role:
+        return None
+
     return active_biz_id
 
 

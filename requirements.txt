@@ -46,3 +46,6 @@ schedule==1.2.2
 
 # 이메일 유효성 검사 (Pydantic EmailStr 사용에 필요)
 email-validator>=2.0.0
+
+# PostgreSQL 연동
+psycopg2-binary>=2.9.0

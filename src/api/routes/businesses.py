@@ -6,14 +6,20 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, Request
 
+from ._helpers import get_db, get_current_user, _business_profile_to_api_dict, _load_settings
 from src.config import load_config
 from src.models.schemas import BusinessProfile
 
 from src.models.database import DatabaseManager
-from ._helpers import get_db, get_current_user, get_active_company, _business_profile_to_api_dict, _load_settings
-from ._models import BusinessCreateRequest, MemberAddRequest, MemberRoleUpdateRequest, CafePostCreateRequest
+from ._models import (
+    BusinessCreateRequest, MemberAddRequest, MemberRoleUpdateRequest, 
+    CafePostCreateRequest, CafeCommentCreateRequest,
+    CollaborationProposalCreateRequest, CollaborationStatusUpdateRequest,
+    CollaborationAiDraftRequest
+)
+from src.analyzers.llm_analyzer import LLMAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +81,10 @@ async def create_business(
             keywords=request.keywords,
             min_budget=request.min_budget,
             max_budget=request.max_budget,
+            is_shared=request.is_shared,
+            website_url=request.website_url,
+            intro_file_url=request.intro_file_url,
+            social_links=request.social_links,
         )
         db.add_business(profile, username=username)
         logger.info("사업자 등록 완료: %s (%s) [유저: %s]", request.company_name, request.biz_id, username)
@@ -88,6 +98,111 @@ async def create_business(
     except Exception as e:
         logger.error("사업자 등록 실패: %s [유저: %s]", e, username)
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다")
+
+
+def calculate_matching_score(my_profile: BusinessProfile, partner_profile: BusinessProfile) -> tuple[int, list[str]]:
+    """자사와 파트너사 간의 협업 적합도 점수(0~100)와 매칭 사유를 연산합니다."""
+    score = 50  # 기본 점수
+    reasons = []
+    
+    # JSON 문자열 리스트 파싱 헬퍼
+    import json
+    def parse_list(val):
+        if not val:
+            return []
+        if isinstance(val, list):
+            return val
+        try:
+            parsed = json.loads(val)
+            return parsed if isinstance(parsed, list) else [val]
+        except Exception:
+            # 쉼표 구분자 폴백
+            return [v.strip() for v in str(val).split(",") if v.strip()]
+
+    my_lic = parse_list(my_profile.licenses)
+    other_lic = parse_list(partner_profile.licenses)
+    
+    # 1. 면허 상호보완성 분석
+    unique_other_lic = [l for l in other_lic if l not in my_lic]
+    if unique_other_lic:
+        # 최대 25점 가산 (면허 개당 8점)
+        points = min(len(unique_other_lic) * 8, 25)
+        score += points
+        reasons.append(f"자사에 없는 면허 자격({', '.join(unique_other_lic[:2])}) 보완 가능")
+    
+    # 2. 지역적 이점
+    my_reg = parse_list(my_profile.regions)
+    other_reg = parse_list(partner_profile.regions)
+    different_reg = [r for r in other_reg if r not in my_reg]
+    if different_reg:
+        score += 10
+        reasons.append(f"타 지역({', '.join(different_reg[:2])}) 소재 공고 입찰 가산점 확보")
+    elif any(r in my_reg for r in other_reg):
+        score += 5
+        reasons.append("동일한 활동 권역으로 밀접한 현장 협업 가능")
+
+    # 3. 신용등급 보너스
+    credit_scores = {"AAA": 15, "AA+": 14, "AA": 13, "AA-": 12, "A+": 11, "A": 10, "A-": 9, "BBB+": 8, "BBB": 7, "BBB-": 6}
+    my_credit_val = credit_scores.get(my_profile.credit_rating, 5)
+    other_credit_val = credit_scores.get(partner_profile.credit_rating, 5)
+    
+    if other_credit_val > my_credit_val:
+        score += 10
+        reasons.append(f"상대적으로 우수한 신용등급({partner_profile.credit_rating})을 활용한 입찰 심사 가점")
+    
+    # 4. 실적 규모 보완
+    my_rev = my_profile.annual_revenue or 0
+    other_rev = partner_profile.annual_revenue or 0
+    if other_rev > 0:
+        if my_rev > 0 and other_rev > my_rev:
+            score += 10
+            reasons.append("대규모 사업 입찰을 위한 연 매출 실적 보완")
+        else:
+            score += 5
+            reasons.append("수행 실적 기반의 안정적인 공동 컨소시엄 구축")
+
+    score = max(50, min(score, 100))
+    return int(score), reasons
+
+
+@router.get("/businesses/shared", summary="정보 공유 동의 기업 목록 조회")
+async def get_shared_businesses(
+    request: Request,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    정보 공유에 동의한 타 회원사 목록을 반환합니다.
+    자사 활성 회사(X-Active-Company 헤더) 기준 협업 궁합도 점수와 매칭 사유도 함께 연산하여 제공합니다.
+    """
+    try:
+        profiles = db.get_shared_businesses()
+        
+        # 활성 회사 프로필 로드
+        active_biz_id = request.headers.get("X-Active-Company")
+        my_profile = None
+        if active_biz_id:
+            my_profile = db.get_business(active_biz_id)
+
+        results = []
+        for p in profiles:
+            p_dict = _business_profile_to_api_dict(p)
+            
+            # 자사 활성 회사와의 매칭 궁합 점수 및 사유 연산
+            if my_profile and p.biz_id != active_biz_id:
+                score, reasons = calculate_matching_score(my_profile, p)
+                p_dict["match_score"] = score
+                p_dict["match_reasons"] = reasons
+            else:
+                p_dict["match_score"] = None
+                p_dict["match_reasons"] = []
+                
+            results.append(p_dict)
+            
+        return results
+    except Exception as e:
+        logger.error("공유 기업 목록 조회 실패: %s [유저: %s]", e, username)
+        raise HTTPException(status_code=500, detail="공유 기업 목록 조회에 실패했습니다.")
 
 
 @router.get("/businesses/{biz_id}", summary="사업자 상세 조회")
@@ -162,6 +277,10 @@ async def update_business(
             keywords=request.keywords,
             min_budget=request.min_budget,
             max_budget=request.max_budget,
+            is_shared=request.is_shared,
+            website_url=request.website_url,
+            intro_file_url=request.intro_file_url,
+            social_links=request.social_links,
         )
 
         success = db.update_business(profile)
@@ -477,7 +596,7 @@ async def list_cafe_posts(
     if not role:
         raise HTTPException(status_code=403, detail="해당 회사 소속 멤버만 카페를 이용할 수 있습니다.")
     
-    return db.get_cafe_posts(biz_id)
+    return db.get_cafe_posts(biz_id, username)
 
 
 @router.post("/companies/{biz_id}/cafe", summary="사내 카페 게시글 등록", status_code=201)
@@ -512,7 +631,7 @@ async def remove_cafe_post(
         raise HTTPException(status_code=403, detail="해당 회사 소속 멤버가 아닙니다.")
     
     # 게시글 조회하여 작성자 본인인지 확인
-    posts = db.get_cafe_posts(biz_id)
+    posts = db.get_cafe_posts(biz_id, username)
     post = next((p for p in posts if p["id"] == post_id), None)
     if not post:
         raise HTTPException(status_code=404, detail="게시글이 존재하지 않습니다.")
@@ -529,3 +648,348 @@ async def remove_cafe_post(
         raise HTTPException(status_code=500, detail="게시글 삭제에 실패했습니다.")
         
     return {"message": "게시글이 삭제되었습니다."}
+
+
+@router.get("/companies/{biz_id}/cafe/{post_id}/comments", summary="사내 카페 게시글 댓글 조회")
+async def list_cafe_comments(
+    biz_id: str,
+    post_id: int,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """특정 게시글의 댓글 목록을 조회합니다."""
+    role = db.get_business_user_role(biz_id, username)
+    if not role:
+        raise HTTPException(status_code=403, detail="해당 회사 소속 멤버만 댓글을 볼 수 있습니다.")
+    
+    return db.get_cafe_comments(post_id)
+
+
+@router.post("/companies/{biz_id}/cafe/{post_id}/comments", summary="사내 카페 게시글 댓글 등록", status_code=201)
+async def write_cafe_comment(
+    biz_id: str,
+    post_id: int,
+    req: CafeCommentCreateRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """게시글에 댓글을 추가합니다."""
+    role = db.get_business_user_role(biz_id, username)
+    if not role:
+        raise HTTPException(status_code=403, detail="해당 회사 소속 멤버만 댓글을 쓸 수 있습니다.")
+    
+    comment = db.create_cafe_comment(post_id, username, req.content)
+    if not comment:
+        raise HTTPException(status_code=500, detail="댓글 작성에 실패했습니다.")
+        
+    return comment
+
+
+@router.delete("/companies/{biz_id}/cafe/{post_id}/comments/{comment_id}", summary="사내 카페 게시글 댓글 삭제")
+async def remove_cafe_comment(
+    biz_id: str,
+    post_id: int,
+    comment_id: int,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """본인의 댓글 또는 회사 대표/관리자가 댓글을 삭제합니다."""
+    role = db.get_business_user_role(biz_id, username)
+    if not role:
+        raise HTTPException(status_code=403, detail="해당 회사 소속 멤버가 아닙니다.")
+        
+    comments = db.get_cafe_comments(post_id)
+    comment = next((c for c in comments if c["id"] == comment_id), None)
+    if not comment:
+        raise HTTPException(status_code=404, detail="댓글이 존재하지 않습니다.")
+        
+    is_author = comment["username"] == username
+    is_manager = role in ("owner", "admin")
+    
+    if not is_author and not is_manager:
+        raise HTTPException(status_code=403, detail="본인의 댓글이거나 관리자 권한이 있어야 삭제할 수 있습니다.")
+        
+    success = db.delete_cafe_comment(comment_id, username, is_admin=is_manager)
+    if not success:
+        raise HTTPException(status_code=500, detail="댓글 삭제에 실패했습니다.")
+        
+    return {"message": "댓글이 삭제되었습니다."}
+
+
+@router.post("/companies/{biz_id}/cafe/{post_id}/like", summary="사내 카페 게시글 좋아요 토글")
+async def toggle_cafe_post_like(
+    biz_id: str,
+    post_id: int,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """게시글의 좋아요를 누르거나 취소합니다."""
+    role = db.get_business_user_role(biz_id, username)
+    if not role:
+        raise HTTPException(status_code=403, detail="해당 회사 소속 멤버만 좋아요를 누를 수 있습니다.")
+        
+    result = db.toggle_cafe_post_like(post_id, username)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail="좋아요 처리에 실패했습니다.")
+        
+    return result
+
+@router.put("/companies/{biz_id}/cafe/{post_id}", summary="사내 카페 게시글 수정")
+async def edit_cafe_post(
+    biz_id: str,
+    post_id: int,
+    req: CafePostCreateRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """본인이 작성한 게시글의 제목과 내용을 수정합니다."""
+    role = db.get_business_user_role(biz_id, username)
+    if not role:
+        raise HTTPException(status_code=403, detail="해당 회사 소속 멤버가 아닙니다.")
+
+    # 게시글 존재 및 본인 확인
+    posts = db.get_cafe_posts(biz_id, username)
+    post = next((p for p in posts if p["id"] == post_id), None)
+    if not post:
+        raise HTTPException(status_code=404, detail="게시글이 존재하지 않습니다.")
+    if post["username"] != username:
+        raise HTTPException(status_code=403, detail="본인이 작성한 게시글만 수정할 수 있습니다.")
+
+    if not req.title.strip() or not req.content.strip():
+        raise HTTPException(status_code=400, detail="제목과 내용을 모두 입력해 주세요.")
+
+    success = db.update_cafe_post(post_id, biz_id, username, req.title.strip(), req.content.strip())
+    if not success:
+        raise HTTPException(status_code=500, detail="게시글 수정에 실패했습니다.")
+
+    return {"message": "게시글이 수정되었습니다."}
+
+
+
+
+@router.post("/businesses/proposals", summary="공동 수급/협업 제안 전송")
+async def create_collaboration_proposal(
+    request: CollaborationProposalCreateRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    타 회원사에게 특정 입찰 공고 공동수급 협업 제안을 발송합니다.
+    """
+    try:
+        # 권한 검증: 보낸 biz_id의 소유자/멤버인지 확인
+        role = db.get_business_user_role(request.sender_biz_id, username)
+        if not role:
+            raise HTTPException(status_code=403, detail="제안을 보낼 권한이 없습니다. (해당 회사 멤버 아님)")
+
+        # 자기 자신에게 보내는 제안 차단
+        if request.sender_biz_id == request.receiver_biz_id:
+            raise HTTPException(status_code=400, detail="자기 자신의 회사에는 제안을 보낼 수 없습니다.")
+
+        # 수신 회사 존재 여부 확인
+        receiver_biz = db.get_business(request.receiver_biz_id)
+        if not receiver_biz:
+            raise HTTPException(status_code=404, detail="수신 회사가 존재하지 않습니다.")
+
+        success = db.send_collaboration_proposal(
+            sender_biz_id=request.sender_biz_id,
+            receiver_biz_id=request.receiver_biz_id,
+            bid_ntce_no=request.bid_ntce_no,
+            message=request.message
+        )
+        if not success:
+            raise HTTPException(status_code=500, detail="협업 제안 전송에 실패했습니다.")
+            
+        return {"message": "협업 제안이 성공적으로 전송되었습니다."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("협업 제안 전송 실패: %s [유저: %s]", e, username)
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.")
+
+
+@router.get("/businesses/proposals/received", summary="받은 협업 제안 목록 조회")
+async def get_received_proposals(
+    biz_id: str = Query(..., description="조회할 회사 ID"),
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    특정 내 회사가 수신한 모든 협업 제안 목록을 조회합니다.
+    """
+    try:
+        role = db.get_business_user_role(biz_id, username)
+        if not role:
+            raise HTTPException(status_code=403, detail="조회 권한이 없습니다. (해당 회사 멤버 아님)")
+            
+        proposals = db.get_received_proposals(biz_id)
+        return proposals
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("수신 협업 제안 조회 실패: %s [유저: %s]", e, username)
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.")
+
+
+@router.get("/businesses/proposals/sent", summary="보낸 협업 제안 목록 조회")
+async def get_sent_proposals(
+    biz_id: str = Query(..., description="조회할 회사 ID"),
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    특정 내 회사가 타사에 발송한 모든 협업 제안 목록을 조회합니다.
+    """
+    try:
+        role = db.get_business_user_role(biz_id, username)
+        if not role:
+            raise HTTPException(status_code=403, detail="조회 권한이 없습니다. (해당 회사 멤버 아님)")
+            
+        proposals = db.get_sent_proposals(biz_id)
+        return proposals
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("송신 협업 제안 조회 실패: %s [유저: %s]", e, username)
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.")
+
+
+@router.put("/businesses/proposals/{proposal_id}/status", summary="협업 제안 상태 변경 (수락/거절)")
+async def update_proposal_status(
+    proposal_id: int,
+    request: CollaborationStatusUpdateRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    수신한 협업 제안을 수락(accepted)하거나 거절(rejected) 처리합니다.
+    """
+    try:
+        # 이 제안이 로그인한 유저의 회사에 온 것인지 확인하기 위해, 수신사 ID(receiver_biz_id)에 대해 권한이 있는지 체크
+        conn = db.get_connection()
+        ph = "%s" if db.is_postgres else "?"
+        cursor = conn.execute(f"SELECT receiver_biz_id FROM collaboration_proposals WHERE id = {ph}", (proposal_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="해당 협업 제안을 찾을 수 없습니다.")
+            
+        receiver_biz_id = row[0]
+        role = db.get_business_user_role(receiver_biz_id, username)
+        if not role or role not in ("owner", "admin"):
+            raise HTTPException(status_code=403, detail="제안 수락/거절은 해당 회사의 관리자(owner/admin)만 가능합니다.")
+
+        if request.status not in ("accepted", "rejected"):
+            raise HTTPException(status_code=400, detail="상태값은 'accepted' 또는 'rejected'만 가능합니다.")
+            
+        success = db.update_proposal_status(proposal_id, request.status)
+        if not success:
+            raise HTTPException(status_code=500, detail="제안 상태 변경에 실패했습니다.")
+            
+        status_kor = "수락" if request.status == "accepted" else "거절"
+        return {"message": f"제안이 {status_kor}되었습니다."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("제안 상태 변경 실패: %s [유저: %s]", e, username)
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.")
+
+
+@router.post("/businesses/proposals/ai-draft", summary="협업 제안서 AI 초안 작성")
+async def generate_collaboration_proposal_ai_draft(
+    request: CollaborationAiDraftRequest,
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """
+    대상 공고와 송/수신 회원사의 프로필 역량을 비교 분석하여, 맞춤형 협업 제안서 초안 텍스트를 AI 또는 룰 기반으로 생성합니다.
+    """
+    try:
+        # 권한 확인
+        role = db.get_business_user_role(request.sender_biz_id, username)
+        if not role:
+            raise HTTPException(status_code=403, detail="제안서 초안을 작성할 권한이 없습니다. (해당 회사 멤버 아님)")
+
+        sender = db.get_business(request.sender_biz_id)
+        receiver = db.get_business(request.receiver_biz_id)
+        bid = db.get_bid_by_no(request.bid_ntce_no)
+
+        if not sender or not receiver:
+            raise HTTPException(status_code=404, detail="사업자 프로필 정보를 조회할 수 없습니다.")
+        if not bid:
+            raise HTTPException(status_code=404, detail="입찰 공고 정보를 조회할 수 없습니다.")
+
+        # 폴백 템플릿 제안서 (API 키 누락 시 혹은 에러 시 사용)
+        fallback_draft = (
+            f"안녕하세요, {receiver.company_name} 대표님.\n"
+            f"{sender.company_name}에서 공동수급 참여를 정중히 제안드립니다.\n\n"
+            f"저희가 검토 중인 입찰 공고인 '{bid.title}'(공고번호: {bid.bid_ntce_no})에 대해, "
+            f"양사의 역량을 합쳐 컨소시엄을 구성하고자 합니다.\n\n"
+            f"특히, 이번 사업의 요구 조건인 '{bid.license_limit or '면허 사항'}'과 관련하여 "
+            f"귀사가 보유하신 우수한 면허/실적 역량이 큰 강점이 될 것으로 판단됩니다. "
+            f"저희 {sender.company_name}의 기술력 및 수행력과 귀사의 면허/지역적 이점을 결합한다면, "
+            f"적격심사 가산점 확보는 물론 투찰 성공률을 비약적으로 높일 수 있을 것입니다.\n\n"
+            f"공동수급 비율 및 구체적인 협력 조건(공동이행방식 또는 분담이행방식)에 대해서는 "
+            f"긍정적으로 협의 가능하오니 검토 후 회신 부탁드립니다. 감사합니다."
+        )
+
+        # AI 초안 생성 시도 (Gemini 또는 OpenAI 설정 확인)
+        config = load_config()
+        user_settings = db.get_user_ai_settings(username)
+        user_settings_dict = user_settings if user_settings else {}
+        llm_engine = user_settings_dict.get('llm_engine', getattr(config, 'llm_engine', 'gemini'))
+        
+        has_llm = False
+        api_key = ""
+        model_name = "gemini-2.5-flash"
+        
+        if llm_engine == "gemini":
+            api_key = getattr(config, "gemini_api_key", "")
+            model_name = getattr(config, "gemini_model", "gemini-2.5-flash")
+            has_llm = bool(api_key)
+        else:
+            api_key = getattr(config, "openai_api_key", "")
+            model_name = getattr(config, "openai_model", "gpt-4o-mini")
+            has_llm = bool(api_key)
+
+        if not has_llm:
+            logger.info("API 키 미설정으로 협업 제안서 룰 기반 템플릿 제공 [유저: %s]", username)
+            return {"draft": fallback_draft, "source": "template"}
+
+        try:
+            # 프롬프트 조립
+            prompt = (
+                f"당신은 대한민국 공공입찰 컨소시엄 및 공동수급 기획 비서입니다.\n"
+                f"다음 정보를 기반으로 정중하고 전문적인 '공동수급체 구성 제안 메시지'를 한글로 작성해 주세요.\n\n"
+                f"[송신 회사(제안사)]\n"
+                f"- 회사명: {sender.company_name}\n"
+                f"- 보유면허: {sender.licenses}\n"
+                f"- 활동지역: {sender.regions}\n\n"
+                f"[수신 회사(대상사)]\n"
+                f"- 회사명: {receiver.company_name}\n"
+                f"- 보유면허: {receiver.licenses}\n"
+                f"- 활동지역: {receiver.regions}\n\n"
+                f"[대상 입찰공고]\n"
+                f"- 공고명: {bid.title}\n"
+                f"- 공고번호: {bid.bid_ntce_no}\n"
+                f"- 요구 면허/지역제한: {bid.license_limit or '없음'} / {bid.region or '전국'}\n\n"
+                f"[메시지 요구사항]\n"
+                f"1. 수신사의 강점(예: 면허 보완, 지역 이점 등)을 언급하며 공동 수급으로 참여했을 때 상호 윈-윈할 수 있는 포인트를 강조해 주세요.\n"
+                f"2. 분량은 공백 포함 300~500자 내외로 너무 길지 않고 정중하며 간결하게 작성해 주세요.\n"
+                f"3. '~하고자 제안드립니다.' 형태로 격식 있고 신뢰감 있게 표현해 주세요. 인사는 빼고 핵심 메시지만 작성해 주세요."
+            )
+
+            analyzer = LLMAnalyzer(api_key=api_key, model=model_name, engine=llm_engine)
+            response_text = analyzer.generate(prompt)
+            if response_text and len(response_text.strip()) > 50:
+                return {"draft": response_text.strip(), "source": "ai"}
+            else:
+                return {"draft": fallback_draft, "source": "template_fallback"}
+        except Exception as ai_err:
+            logger.warning("AI 제안서 초안 생성 중 오류 발생, 템플릿으로 대체: %s", ai_err)
+            return {"draft": fallback_draft, "source": "template_error"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("협업 제안서 초안 작성 실패: %s [유저: %s]", e, username)
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.")

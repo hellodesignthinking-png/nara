@@ -5,7 +5,7 @@
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -18,6 +18,7 @@ from src.models.database import DatabaseManager
 from ._helpers import (
     get_db,
     get_active_company,
+    get_optional_active_company,
     get_current_user,
     _bid_to_api_dict,
     _bid_to_matcher_dict,
@@ -52,29 +53,56 @@ async def get_dashboard_stats(db: DatabaseManager = Depends(get_db)):
     try:
         stats = db.get_stats()
 
-        # 오늘 수집된 공고 수 계산
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        conn = db.get_connection()
-        cursor = conn.execute(
-            "SELECT COUNT(*) FROM bid_announcements WHERE DATE(collected_at) = ?",
-            (today_str,),
-        )
-        row = cursor.fetchone()
-        today_bids = row[0] if row else 0
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
+        now_str = now.strftime("%Y%m%d%H%M%S")
+        urgent_str = (now + timedelta(days=3)).strftime("%Y%m%d%H%M%S")
 
-        # 마감 임박 공고 수 (3일 이내)
-        cursor2 = conn.execute(
-            "SELECT COUNT(*) FROM bid_announcements WHERE bid_close_dt IS NOT NULL AND bid_close_dt != '' AND bid_close_dt >= datetime('now') AND bid_close_dt <= datetime('now', '+3 days')"
-        )
-        urgent_row = cursor2.fetchone()
-        urgent_count = urgent_row[0] if urgent_row else 0
+        conn = db.get_connection()
+
+        # 오늘 수집된 공고 수 (PostgreSQL/SQLite 모두 LIKE 사용 — DB 타입에 따라 자동 분기)
+        db_is_pg = getattr(db, 'is_postgres', False)
+        try:
+            if db_is_pg:
+                cursor = conn.execute(
+                    "SELECT COUNT(*) FROM bid_announcements WHERE collected_at::text LIKE %s",
+                    (f"{today_str}%",),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT COUNT(*) FROM bid_announcements WHERE collected_at LIKE ?",
+                    (f"{today_str}%",),
+                )
+            row = cursor.fetchone()
+            today_bids = row[0] if row else 0
+        except Exception:
+            today_bids = 0
+
+        # 마감 임박 공고 수
+        try:
+            if db_is_pg:
+                cursor2 = conn.execute(
+                    "SELECT COUNT(*) FROM bid_announcements WHERE bid_close_dt IS NOT NULL AND bid_close_dt != '' AND bid_close_dt >= %s AND bid_close_dt <= %s",
+                    (now_str, urgent_str),
+                )
+            else:
+                cursor2 = conn.execute(
+                    "SELECT COUNT(*) FROM bid_announcements WHERE bid_close_dt IS NOT NULL AND bid_close_dt != '' AND bid_close_dt >= ? AND bid_close_dt <= ?",
+                    (now_str, urgent_str),
+                )
+            urgent_row = cursor2.fetchone()
+            urgent_count = urgent_row[0] if urgent_row else 0
+        except Exception:
+            urgent_count = 0
 
         # 마지막 수집 시간
-        cursor3 = conn.execute(
-            "SELECT MAX(collected_at) FROM bid_announcements"
-        )
-        last_row = cursor3.fetchone()
-        last_collected_at = last_row[0] if last_row and last_row[0] else None
+        try:
+            cursor3 = conn.execute("SELECT MAX(collected_at) FROM bid_announcements")
+            last_row = cursor3.fetchone()
+            last_collected_at = last_row[0] if last_row and last_row[0] else None
+        except Exception:
+            last_collected_at = None
 
         return {
             "businesses": stats.get("business_profiles", 0),
@@ -93,7 +121,7 @@ async def get_dashboard_stats(db: DatabaseManager = Depends(get_db)):
 
 @router.get("/dashboard/recent", summary="최근 분석 결과")
 async def get_dashboard_recent(
-    active_biz_id: str = Depends(get_active_company),
+    active_biz_id: str = Depends(get_optional_active_company),
     db: DatabaseManager = Depends(get_db)
 ):
     """
@@ -105,23 +133,40 @@ async def get_dashboard_recent(
         conn = db.get_connection()
 
         # 최근 분석 결과 10건을 공고 정보와 JOIN
-        cursor = conn.execute(
-            """
-            SELECT
-                a.id, a.bid_ntce_no, a.biz_id,
-                a.relevance_score, a.match_score,
-                a.summary, a.strategy_report, a.competitors, a.analyzed_at,
-                b.title AS bid_title, b.org_name, b.budget, b.bid_close_dt,
-                bp.company_name
-            FROM analysis_results a
-            LEFT JOIN bid_announcements b ON a.bid_ntce_no = b.bid_ntce_no
-            LEFT JOIN business_profiles bp ON a.biz_id = bp.biz_id
-            WHERE a.biz_id = ?
-            ORDER BY a.analyzed_at DESC
-            LIMIT 10
-            """,
-            (active_biz_id,)
-        )
+        if active_biz_id:
+            cursor = conn.execute(
+                """
+                SELECT
+                    a.id, a.bid_ntce_no, a.biz_id,
+                    a.relevance_score, a.match_score,
+                    a.summary, a.strategy_report, a.competitors, a.analyzed_at,
+                    b.title AS bid_title, b.org_name, b.budget, b.bid_close_dt,
+                    bp.company_name
+                FROM analysis_results a
+                LEFT JOIN bid_announcements b ON a.bid_ntce_no = b.bid_ntce_no
+                LEFT JOIN business_profiles bp ON a.biz_id = bp.biz_id
+                WHERE a.biz_id = ?
+                ORDER BY a.analyzed_at DESC
+                LIMIT 10
+                """,
+                (active_biz_id,)
+            )
+        else:
+            cursor = conn.execute(
+                """
+                SELECT
+                    a.id, a.bid_ntce_no, a.biz_id,
+                    a.relevance_score, a.match_score,
+                    a.summary, a.strategy_report, a.competitors, a.analyzed_at,
+                    b.title AS bid_title, b.org_name, b.budget, b.bid_close_dt,
+                    bp.company_name
+                FROM analysis_results a
+                LEFT JOIN bid_announcements b ON a.bid_ntce_no = b.bid_ntce_no
+                LEFT JOIN business_profiles bp ON a.biz_id = bp.biz_id
+                ORDER BY a.analyzed_at DESC
+                LIMIT 10
+                """
+            )
         rows = cursor.fetchall()
 
         results = []
@@ -172,15 +217,20 @@ async def get_dashboard_charts(db: DatabaseManager = Depends(get_db)):
     """
     try:
         conn = db.get_connection()
+        db_is_pg = getattr(db, 'is_postgres', False)
+        thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 
         # 1) 최근 30일 일별 공고 추이 (전체)
-        cursor = conn.execute("""
-            SELECT DATE(collected_at) as date, COUNT(*) as count
-            FROM bid_announcements
-            WHERE collected_at >= DATE('now', '-30 days')
-            GROUP BY DATE(collected_at)
-            ORDER BY date ASC
-        """)
+        if db_is_pg:
+            cursor = conn.execute(
+                "SELECT DATE(collected_at) as date, COUNT(*) as count FROM bid_announcements WHERE collected_at >= %s GROUP BY DATE(collected_at) ORDER BY date ASC",
+                (thirty_days_ago,)
+            )
+        else:
+            cursor = conn.execute(
+                "SELECT DATE(collected_at) as date, COUNT(*) as count FROM bid_announcements WHERE collected_at >= ? GROUP BY DATE(collected_at) ORDER BY date ASC",
+                (thirty_days_ago,)
+            )
         daily_trend = [{"date": r["date"], "count": r["count"]} for r in cursor.fetchall()]
 
         # 2) 관심 키워드별 일별 공고 추이
@@ -189,14 +239,16 @@ async def get_dashboard_charts(db: DatabaseManager = Depends(get_db)):
         keyword_trends = {}
 
         for kw in keywords[:10]:  # 최대 10개 키워드
-            cursor = conn.execute("""
-                SELECT DATE(collected_at) as date, COUNT(*) as count
-                FROM bid_announcements
-                WHERE collected_at >= DATE('now', '-30 days')
-                  AND title LIKE ?
-                GROUP BY DATE(collected_at)
-                ORDER BY date ASC
-            """, (f"%{kw}%",))
+            if db_is_pg:
+                cursor = conn.execute(
+                    "SELECT DATE(collected_at) as date, COUNT(*) as count FROM bid_announcements WHERE collected_at >= %s AND title LIKE %s GROUP BY DATE(collected_at) ORDER BY date ASC",
+                    (thirty_days_ago, f"%{kw}%")
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT DATE(collected_at) as date, COUNT(*) as count FROM bid_announcements WHERE collected_at >= ? AND title LIKE ? GROUP BY DATE(collected_at) ORDER BY date ASC",
+                    (thirty_days_ago, f"%{kw}%")
+                )
             keyword_trends[kw] = [{"date": r["date"], "count": r["count"]} for r in cursor.fetchall()]
 
         # 3) 발주처별 예산 Top 10
@@ -244,10 +296,11 @@ async def get_dashboard_charts(db: DatabaseManager = Depends(get_db)):
 
 @router.get("/dashboard/top10", summary="오늘의 추천 사업 TOP 10")
 async def get_daily_top10(
-    active_biz_id: str = Depends(get_active_company),
-    username: str = Depends(get_current_user),
+    active_biz_id: str = Depends(get_optional_active_company),
     db: DatabaseManager = Depends(get_db)
 ):
+    # username은 옵셔널 (비로그인 허용)
+    username = None
     """
     수집된 공고를 키워드 + 사업자 프로필로 종합 평가하여
     사업 참여 가능성이 높은 순으로 TOP 10을 반환합니다.
@@ -282,9 +335,9 @@ async def get_daily_top10(
             return {"top10": [], "message": "키워드에 매칭되는 공고가 없습니다."}
 
         # ── 3. 사업자 매칭 ──
-        biz_profile = db.get_business(active_biz_id)
+        biz_profile = db.get_business(active_biz_id) if active_biz_id else None
         biz_dicts = [_biz_profile_to_matcher_dict(biz_profile)] if biz_profile else []
-        ai_settings = db.get_user_ai_settings(username)
+        ai_settings = db.get_user_ai_settings(username) if username else {}
 
         results = []
 
@@ -429,7 +482,7 @@ async def get_daily_top10(
 @router.get("/dashboard/curated", summary="키워드 큐레이션 공고 목록")
 async def get_curated_bids(
     limit: int = Query(50, ge=1, le=200, description="최대 반환 건수"),
-    active_biz_id: str = Depends(get_active_company),
+    active_biz_id: str = Depends(get_optional_active_company),
     db: DatabaseManager = Depends(get_db),
 ):
     """
@@ -471,10 +524,16 @@ async def get_curated_bids(
         analysis_status_map = {}
         if bid_nos:
             placeholders = ",".join("?" for _ in bid_nos)
-            cursor = conn.execute(
-                f"SELECT bid_ntce_no, strategy_report FROM analysis_results WHERE bid_ntce_no IN ({placeholders}) AND biz_id = ? ORDER BY analyzed_at DESC",
-                bid_nos + [active_biz_id],
-            )
+            if active_biz_id:
+                cursor = conn.execute(
+                    f"SELECT bid_ntce_no, strategy_report FROM analysis_results WHERE bid_ntce_no IN ({placeholders}) AND biz_id = ? ORDER BY analyzed_at DESC",
+                    bid_nos + [active_biz_id],
+                )
+            else:
+                cursor = conn.execute(
+                    f"SELECT bid_ntce_no, strategy_report FROM analysis_results WHERE bid_ntce_no IN ({placeholders}) ORDER BY analyzed_at DESC",
+                    bid_nos,
+                )
             for row in cursor.fetchall():
                 bno = row["bid_ntce_no"]
                 if bno not in analysis_status_map:  # 최신 결과만

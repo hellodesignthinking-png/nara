@@ -27,6 +27,10 @@ class BusinessCreateRequest(BaseModel):
     credit_rating: Optional[str] = Field("BBB", description="신용평가등급")
     company_type: Optional[str] = Field(None, description="기업 구분")
     has_sanctions: Optional[bool] = Field(False, description="제재 이력 여부")
+    is_shared: Optional[bool] = Field(False, description="회사 정보 공유 여부")
+    website_url: Optional[str] = Field(None, description="홈페이지 URL")
+    intro_file_url: Optional[str] = Field(None, description="회사소개서 경로")
+    social_links: Optional[str] = Field(None, description="소셜 네트워크 링크")
 
 
 
@@ -116,5 +120,31 @@ class CafePostCreateRequest(BaseModel):
     """사내 카페 게시글 작성 요청 본문"""
     title: str = Field(..., description="게시글 제목")
     content: str = Field(..., description="게시글 내용")
+
+
+class CafeCommentCreateRequest(BaseModel):
+    """사내 카페 댓글 작성 요청 본문"""
+    content: str = Field(..., description="댓글 내용")
+
+
+class CollaborationProposalCreateRequest(BaseModel):
+    """공동 수급/협업 제안 생성 요청 본문"""
+    sender_biz_id: str = Field(..., description="제안을 보내는 내 회사 사업자등록번호")
+    receiver_biz_id: str = Field(..., description="제안을 받는 상대 회사 사업자등록번호")
+    bid_ntce_no: str = Field(..., description="대상 공고번호")
+    message: str = Field("", description="제안 메시지")
+
+
+class CollaborationStatusUpdateRequest(BaseModel):
+    """협업 제안 상태 변경 요청 본문"""
+    status: str = Field(..., description="변경할 상태 (accepted 또는 rejected)")
+
+
+class CollaborationAiDraftRequest(BaseModel):
+    """공동 수급/협업 제안 AI 초안 생성 요청 본문"""
+    sender_biz_id: str = Field(..., description="제안 송신 사업자번호")
+    receiver_biz_id: str = Field(..., description="제안 수신 사업자번호")
+    bid_ntce_no: str = Field(..., description="대상 공고번호")
+
 
 

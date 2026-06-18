@@ -1,0 +1,1684 @@
+/* Premium CSS for NARA Analyzer */
+
+/* Global Typography & Font Family Override */
+body, button, input, select, textarea {
+    font-family: 'Outfit', 'Inter', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Theme variables with Electric Neo-Futurism aesthetic */
+:root {
+    --neon-primary: #00f0ff;     /* Electric Cyan */
+    --neon-accent: #bc00dd;      /* Electric Purple/Magenta */
+    --neon-primary-rgb: 0, 240, 255;
+    --neon-accent-rgb: 188, 0, 221;
+    --transition-premium: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Light Theme overrides for harmonic color tone */
+html[data-theme="light"] {
+    --neon-primary: #0070f3;     /* Sharp Royal Blue */
+    --neon-accent: #7928ca;      /* Deep Violet */
+    --neon-primary-rgb: 0, 112, 243;
+    --neon-accent-rgb: 121, 40, 202;
+}
+
+/* Base interactive elements micro-animations */
+button, .btn, .menu-item {
+    transition: var(--transition-premium);
+}
+button:active, .btn:active, .menu-item:active {
+    transform: scale(0.96) !important;
+}
+
+/* Pulse animation for diagram nodes */
+@keyframes pulse-node {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.07); opacity: 0.9; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* Flow line dash animation */
+@keyframes flow-line {
+    from { stroke-dashoffset: 200; }
+    to { stroke-dashoffset: 0; }
+}
+
+/* Apply to diagram elements */
+svg.flow-diagram g.flow-node {
+    cursor: pointer;
+    transition: var(--transition-premium);
+}
+svg.flow-diagram g.flow-node:hover {
+    filter: drop-shadow(0 0 10px var(--neon-primary));
+    animation: pulse-node 1.5s infinite;
+}
+svg.flow-diagram path.flow-line {
+    stroke: var(--neon-accent, #777);
+    stroke-width: 3;
+    stroke-dasharray: 200;
+    stroke-dashoffset: 200;
+    animation: flow-line 3s ease-out forwards;
+}
+
+/* Neon glow for primary buttons */
+.btn-primary {
+    background: var(--gradient-primary);
+    box-shadow: 0 0 12px rgba(var(--neon-primary-rgb), 0.4);
+    border: none !important;
+    position: relative;
+    z-index: 1;
+}
+.btn-primary::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(to right, var(--neon-primary), var(--neon-accent));
+    opacity: 0;
+    z-index: -1;
+    transition: opacity 0.3s ease;
+}
+.btn-primary:hover::after {
+    opacity: 0.2;
+}
+.btn-primary:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 0 20px rgba(var(--neon-primary-rgb), 0.6);
+    transform: translateY(-2px);
+}
+
+/* Premium Glassmorphism Cards with 3D Tilt */
+.feature-card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(var(--neon-primary-rgb), 0.2);
+    border-radius: var(--radius-lg, 16px);
+    transition: var(--transition-premium);
+    position: relative;
+    overflow: hidden;
+    transform-style: preserve-3d;
+    perspective: 1000px;
+}
+html[data-theme="light"] .feature-card {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(var(--neon-primary-rgb), 0.15);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+}
+.feature-card:hover {
+    transform: translateY(-8px) rotateX(2deg) rotateY(2deg);
+    box-shadow: 0 15px 35px rgba(var(--neon-primary-rgb), 0.25);
+    border-color: var(--neon-primary);
+}
+.feature-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 0%, rgba(var(--neon-primary-rgb), 0.2), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+}
+.feature-card:hover::before {
+    opacity: 1;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    .feature-card-grid {
+        grid-template-columns: 1fr !important;
+    }
+    svg.flow-diagram {
+        width: 100%;
+        height: auto;
+    }
+}
+
+/* Feature preview section style enhancements */
+.feature-preview-section {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border-radius: var(--radius-lg, 16px);
+    padding: 2.5rem;
+    margin-top: 2.5rem;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+html[data-theme="light"] .feature-preview-section {
+    background: rgba(0, 0, 0, 0.02);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+.feature-preview-section::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 30% 30%, rgba(var(--neon-primary-rgb), 0.08), transparent 60%);
+    pointer-events: none;
+    z-index: -1;
+}
+
+.feature-icon {
+    width: 52px;
+    height: 52px;
+    display: block;
+    margin: 0 auto 1rem;
+    filter: drop-shadow(0 0 8px rgba(var(--neon-primary-rgb), 0.7));
+    transition: transform 0.3s ease;
+}
+.feature-card:hover .feature-icon {
+    animation: icon-pulse 1.2s infinite;
+}
+
+@keyframes icon-pulse {
+    0% { transform: scale(1) rotate(0deg); }
+    50% { transform: scale(1.15) rotate(5deg); }
+    100% { transform: scale(1) rotate(0deg); }
+}
+
+/* Toast smooth animation */
+.toast-container {
+    transition: var(--transition-premium);
+}
+.toast {
+    animation: toast-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes toast-slide-in {
+    from { transform: translateY(100%) scale(0.9); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* ── 2-1. Lazy Load 이미지 페이드인 효과 ── */
+img[loading="lazy"] {
+    opacity: 0;
+    transition: opacity 0.6s ease;
+}
+img[loading="lazy"].loaded {
+    opacity: 1;
+}
+
+/* ── 2-2. IntersectionObserver 등장 애니메이션 (프리미엄 보강) ── */
+.observe-reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.observe-reveal.in-view {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* ── 2-3. Auth Modal Shake 애니메이션 ── */
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-10px); }
+    40% { transform: translateX(10px); }
+    60% { transform: translateX(-6px); }
+    80% { transform: translateX(6px); }
+}
+.shake {
+    animation: shake 0.4s ease-in-out;
+}
+
+/* ── 2-4. Skip Navigation Link 프리미엄 스타일 ── */
+.skip-nav {
+    position: absolute;
+    top: -100%;
+    left: 16px;
+    z-index: 9999;
+    padding: 12px 24px;
+    background: var(--neon-primary);
+    color: #000;
+    border-radius: 0 0 8px 8px;
+    font-weight: 600;
+    transition: top 0.2s ease;
+}
+.skip-nav:focus {
+    top: 0;
+}
+
+/* ── 2-5. Loading Spinner 프리미엄 스타일 ── */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+.loading-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(var(--neon-primary-rgb), 0.3);
+    border-top-color: var(--neon-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* ── 2-6. 카드 컨테이너 반응형 그리드 보강 ── */
+@media (max-width: 480px) {
+    .stat-card {
+        min-width: 100% !important;
+    }
+    .dashboard-hero {
+        padding: 16px !important;
+    }
+    .hero-title {
+        font-size: 1.3rem !important;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+    .feature-card-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ── 정책 뷰 고도화 스타일 ── */
+#view-policies .metric-card {
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+#view-policies .metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--neon-primary), var(--neon-accent));
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+#view-policies .metric-card:hover::before { opacity: 1; }
+#view-policies .metric-card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,240,255,0.1); }
+
+/* ── 정책 카드 그리드 ── */
+#policies-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+}
+@media (max-width: 768px) {
+    #policies-grid { grid-template-columns: 1fr !important; }
+}
+
+/* ── 페이지네이션 버튼 스타일 ── */
+#policies-pagination .btn {
+    font-size: 0.8rem;
+    padding: 6px 14px;
+}
+#policies-pagination .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ── 지역 차트 바 애니메이션 ── */
+#policies-region-chart div div {
+    transition: width 0.6s cubic-bezier(0.16,1,0.3,1) !important;
+}
+
+/* ── Toast 알림 강화 ── */
+.toast-container {
+    z-index: 99999 !important;
+}
+
+/* ── 비로그인 가이드 스타일 ── */
+.login-gate {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+.login-gate .lock-icon { font-size: 3rem; margin-bottom: 16px; display: block; }
+.login-gate h3 { color: var(--text-primary); font-size: 1.1rem; margin-bottom: 8px; }
+.login-gate p { font-size: 0.88rem; margin-bottom: 20px; }
+
+/* ── 메뉴 잠금 배지 (비로그인) ── */
+.menu-item-locked {
+    opacity: 0.65;
+    position: relative;
+}
+.menu-lock-badge {
+    font-size: 0.72rem;
+    opacity: 0.7;
+}
+
+/* ── 카드 호버 네온 테두리 효과 ── */
+.card.glass-panel {
+    border: 1px solid rgba(255,255,255,0.06);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
+}
+.card.glass-panel:hover {
+    border-color: rgba(0,240,255,0.2);
+    box-shadow: 0 8px 40px rgba(0,240,255,0.08);
+}
+
+/* ── 정책 상세 모달 ── */
+#policy-detail-modal {
+    animation: fadeIn 0.25s ease;
+}
+#policy-detail-modal > div {
+    animation: slideUp 0.3s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes slideUp {
+    from { transform: translateY(30px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* ── 공고 목록 스켈레톤 ── */
+.skeleton-card {
+    background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.03) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 12px;
+    min-height: 80px;
+}
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+/* ── 대시보드 통계 카드 카운터 애니메이션 ── */
+.stat-number {
+    font-variant-numeric: tabular-nums;
+    transition: all 0.3s ease;
+}
+
+/* ── 사이드바 active 상태 강화 ── */
+.menu-item.active {
+    background: linear-gradient(135deg, rgba(0,240,255,0.12), rgba(188,0,221,0.08)) !important;
+    border-left: 3px solid var(--neon-primary) !important;
+}
+
+/* ── 반응형: 모바일 정책 통계 그리드 ── */
+@media (max-width: 900px) {
+    #view-policies > .content-section > div:first-child {
+        grid-template-columns: 1fr 1fr !important;
+    }
+}
+@media (max-width: 600px) {
+    #view-policies > .content-section > div:first-child {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* ── 버튼 그라디언트 강화 ── */
+.btn-primary {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+    border: none !important;
+    box-shadow: 0 4px 15px rgba(99,102,241,0.3);
+    transition: all 0.3s ease !important;
+}
+.btn-primary:hover {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
+    box-shadow: 0 6px 20px rgba(99,102,241,0.4);
+    transform: translateY(-1px);
+}
+
+/* ── 수집/분석 버튼 호버 ── */
+#btn-policies-collect:hover, #btn-policies-analyze:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0,240,255,0.2);
+}
+
+/* ── 스크롤바 프리미엄 스타일 ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,240,255,0.3); }
+
+/* ── @keyframes 보강 ── */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+
+/* ══════════════════════════════════════════════════════
+   🎨 전략 분석 모달 - 전면 디자인 고도화
+   ══════════════════════════════════════════════════════ */
+
+/* ── 모달 기본 구조 강화 ── */
+.strategy-modal {
+    background: linear-gradient(160deg, #1e2340 0%, #0f172a 50%, #0c1220 100%) !important;
+    border: 1px solid rgba(99, 102, 241, 0.3) !important;
+    box-shadow:
+        0 30px 100px rgba(0, 0, 0, 0.7),
+        0 0 0 1px rgba(99, 102, 241, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+/* ── 헤더 강화 ── */
+.strategy-modal-header {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(168, 85, 247, 0.12) 100%) !important;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.25) !important;
+}
+
+.strategy-modal-header h2 {
+    color: #f8fafc !important;
+    font-size: 1.1rem !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em;
+}
+
+#strategy-modal-subtitle {
+    color: rgba(148, 163, 184, 0.9) !important;
+    font-size: 0.8rem !important;
+}
+
+/* ── 탭 전면 개선 ── */
+.strategy-modal-tabs {
+    background: rgba(15, 23, 42, 0.9) !important;
+    border: 1px solid rgba(99, 102, 241, 0.15) !important;
+    padding: 5px !important;
+    border-radius: 14px !important;
+    gap: 3px !important;
+}
+
+.strategy-modal-tab {
+    color: rgba(148, 163, 184, 0.85) !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    padding: 8px 14px !important;
+    border-radius: 10px !important;
+    letter-spacing: 0.01em;
+    transition: all 0.2s ease !important;
+}
+
+.strategy-modal-tab:hover:not(.active) {
+    background: rgba(99, 102, 241, 0.15) !important;
+    color: #c4b5fd !important;
+}
+
+.strategy-modal-tab.active {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 16px rgba(99, 102, 241, 0.5) !important;
+    font-weight: 700 !important;
+}
+
+/* ── 분석 텍스트 가독성 대폭 강화 ── */
+.strategy-text {
+    color: #e2e8f0 !important;
+    font-size: 0.91rem !important;
+    line-height: 1.85 !important;
+    letter-spacing: 0.01em;
+}
+
+.strategy-text h3 {
+    color: #c7d2fe !important;
+    font-size: 1.0rem !important;
+    font-weight: 700 !important;
+    margin: 22px 0 10px !important;
+    padding-bottom: 8px !important;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.25) !important;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.strategy-text h4 {
+    color: #a5b4fc !important;
+    font-size: 0.9rem !important;
+    font-weight: 700 !important;
+    margin: 14px 0 6px !important;
+}
+
+.strategy-text strong {
+    color: #f8fafc !important;
+    font-weight: 700 !important;
+    background: rgba(99, 102, 241, 0.08);
+    padding: 0 3px;
+    border-radius: 3px;
+}
+
+.strategy-text em {
+    color: #c4b5fd !important;
+    font-style: normal !important;
+    font-weight: 600 !important;
+}
+
+.strategy-text li {
+    color: #cbd5e1 !important;
+    font-size: 0.89rem !important;
+    line-height: 1.75 !important;
+    padding: 5px 0 5px 20px !important;
+}
+
+.strategy-text li::before {
+    color: #818cf8 !important;
+}
+
+/* ── 분석 중 메시지 ── */
+.strategy-text:empty::before,
+.strategy-panel .strategy-text:not([data-loaded="true"]) {
+    color: rgba(148, 163, 184, 0.7);
+}
+
+/* ── 모달 하단 버튼 바 ── */
+.strategy-modal > div:last-child {
+    background: rgba(15, 23, 42, 0.6) !important;
+    border-top: 1px solid rgba(99, 102, 241, 0.2) !important;
+    backdrop-filter: blur(8px);
+}
+
+/* ── 모달 바디 스크롤 ── */
+.strategy-modal-body {
+    padding: 20px 24px !important;
+}
+
+/* ── 분석 중 로딩 텍스트 ── */
+.strategy-text p:first-child {
+    color: rgba(148, 163, 184, 0.8);
+}
+
+/* ══ 라이트 모드 전략 모달 완전 재정의 ══ */
+[data-theme="light"] .strategy-modal {
+    background: linear-gradient(160deg, #f8fafc 0%, #f1f5f9 100%) !important;
+    border-color: rgba(99, 102, 241, 0.2) !important;
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(99, 102, 241, 0.08) !important;
+}
+
+[data-theme="light"] .strategy-modal-header {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.05) 100%) !important;
+    border-bottom-color: rgba(99, 102, 241, 0.12) !important;
+}
+
+[data-theme="light"] .strategy-modal-header h2 {
+    color: #0f172a !important;
+}
+
+[data-theme="light"] #strategy-modal-subtitle {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .strategy-modal-tabs {
+    background: rgba(241, 245, 249, 0.95) !important;
+    border-color: rgba(99, 102, 241, 0.12) !important;
+}
+
+[data-theme="light"] .strategy-modal-tab {
+    color: #64748b !important;
+}
+
+[data-theme="light"] .strategy-modal-tab:hover:not(.active) {
+    background: rgba(99, 102, 241, 0.08) !important;
+    color: #4f46e5 !important;
+}
+
+[data-theme="light"] .strategy-modal-tab.active {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 12px rgba(99, 102, 241, 0.35) !important;
+}
+
+[data-theme="light"] .strategy-text {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .strategy-text h3 {
+    color: #4338ca !important;
+    border-bottom-color: rgba(99, 102, 241, 0.15) !important;
+}
+
+[data-theme="light"] .strategy-text h4 {
+    color: #6366f1 !important;
+}
+
+[data-theme="light"] .strategy-text strong {
+    color: #0f172a !important;
+    background: rgba(99, 102, 241, 0.06);
+}
+
+[data-theme="light"] .strategy-text em {
+    color: #7c3aed !important;
+}
+
+[data-theme="light"] .strategy-text li {
+    color: #334155 !important;
+}
+
+[data-theme="light"] .strategy-text li::before {
+    color: #6366f1 !important;
+}
+
+[data-theme="light"] .strategy-panel {
+    color: #1e293b !important;
+}
+
+[data-theme="light"] .strategy-modal > div:last-child {
+    background: rgba(248, 250, 252, 0.95) !important;
+    border-top-color: rgba(99, 102, 241, 0.12) !important;
+}
+
+/* 라이트 모드 - 시뮬레이터 내부 */
+[data-theme="light"] .interactive-pricing-console {
+    background: #ffffff !important;
+    border-color: rgba(99, 102, 241, 0.15) !important;
+    color: #1e293b !important;
+}
+[data-theme="light"] .interactive-pricing-console > div {
+    color: #1e293b !important;
+}
+[data-theme="light"] #sim-quant-score,
+[data-theme="light"] #sim-price-score,
+[data-theme="light"] #sim-total-score {
+    color: #1e293b !important;
+}
+[data-theme="light"] #sim-ai-advice {
+    color: #64748b !important;
+    background: rgba(99, 102, 241, 0.04) !important;
+}
+
+/* ── 모달 내 버튼 색상 명시 ── */
+.strategy-modal .btn-prepare {
+    background: rgba(16, 185, 129, 0.15) !important;
+    color: #34d399 !important;
+    border: 1px solid rgba(16, 185, 129, 0.3) !important;
+}
+.strategy-modal .btn-accent {
+    background: rgba(99, 102, 241, 0.15) !important;
+    color: #a5b4fc !important;
+    border: 1px solid rgba(99, 102, 241, 0.3) !important;
+}
+[data-theme="light"] .strategy-modal .btn-prepare {
+    background: rgba(5, 150, 105, 0.1) !important;
+    color: #059669 !important;
+    border-color: rgba(5, 150, 105, 0.25) !important;
+}
+[data-theme="light"] .strategy-modal .btn-accent {
+    background: rgba(99, 102, 241, 0.1) !important;
+    color: #4f46e5 !important;
+    border-color: rgba(99, 102, 241, 0.25) !important;
+}
+
+/* ── 분석 결과 섹션 구분선 ── */
+.strategy-text hr {
+    border: none;
+    border-top: 1px solid rgba(99, 102, 241, 0.15);
+    margin: 16px 0;
+}
+[data-theme="light"] .strategy-text hr {
+    border-top-color: rgba(99, 102, 241, 0.12);
+}
+
+/* ── "분석 중..." 로딩 상태 ── */
+@keyframes analysis-pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+.strategy-panel .strategy-text:only-child:not(:has(*)) {
+    animation: analysis-pulse 1.5s ease-in-out infinite;
+    color: rgba(148, 163, 184, 0.6) !important;
+}
+
+
+/* ── 전략 모달 푸터 CSS 변수 ── */
+:root {
+    --strategy-footer-bg: rgba(15, 23, 42, 0.5);
+}
+[data-theme="light"] {
+    --strategy-footer-bg: rgba(248, 250, 252, 0.95);
+}
+
+/* ── 라이트 모드 전략 모달 푸터 버튼 override ── */
+[data-theme="light"] .strategy-modal-footer .btn-prepare {
+    background: rgba(5, 150, 105, 0.1) !important;
+    color: #059669 !important;
+    border-color: rgba(5, 150, 105, 0.25) !important;
+}
+[data-theme="light"] .strategy-modal-footer .btn-accent {
+    background: rgba(99, 102, 241, 0.1) !important;
+    color: #4f46e5 !important;
+    border-color: rgba(99, 102, 241, 0.25) !important;
+}
+[data-theme="light"] .strategy-modal-footer a[style*="fbbf24"] {
+    background: rgba(245, 158, 11, 0.08) !important;
+    color: #d97706 !important;
+    border-color: rgba(217, 119, 6, 0.2) !important;
+}
+
+/* ── 전략 텍스트 내 pre/code 블록 ── */
+.strategy-text pre,
+.strategy-text code {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 0.82rem;
+    color: #e2e8f0;
+    overflow-x: auto;
+    white-space: pre-wrap;
+}
+[data-theme="light"] .strategy-text pre,
+[data-theme="light"] .strategy-text code {
+    background: rgba(241, 245, 249, 0.8);
+    border-color: rgba(99, 102, 241, 0.12);
+    color: #1e293b;
+}
+
+/* ── AI 분석 결과 카드 스타일 강화 ── */
+.strategy-text .insight-card {
+    background: rgba(99, 102, 241, 0.06);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 12px 0;
+}
+[data-theme="light"] .strategy-text .insight-card {
+    background: rgba(99, 102, 241, 0.04);
+    border-color: rgba(99, 102, 241, 0.12);
+}
+
+/* ── 전략 모달 오버레이 블러 강화 ── */
+#strategy-modal-overlay {
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+}
+
+/* ══════════════════════════════════════════════════════
+   🎨 전략 분석 모달 완전 재설계 (sm-redesign)
+   ══════════════════════════════════════════════════════ */
+
+/* ── 오버레이 ── */
+#strategy-modal-overlay {
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    background: rgba(0, 0, 0, 0.75) !important;
+}
+
+/* ── 모달 컨테이너 ── */
+.strategy-modal.sm-redesign {
+    background: linear-gradient(160deg, #1a2040 0%, #0d1526 60%, #090e1a 100%) !important;
+    border: 1px solid rgba(99, 102, 241, 0.35) !important;
+    border-radius: 24px !important;
+    max-width: 960px !important;
+    width: 100%;
+    display: flex !important;
+    flex-direction: column !important;
+    max-height: 90vh !important;
+    box-shadow:
+        0 40px 120px rgba(0,0,0,0.8),
+        0 0 0 1px rgba(99,102,241,0.15),
+        inset 0 1px 0 rgba(255,255,255,0.06) !important;
+    overflow: hidden !important;
+    animation: smSlideUp 0.35s cubic-bezier(0.16,1,0.3,1) !important;
+}
+
+@keyframes smSlideUp {
+    from { transform: translateY(40px) scale(0.97); opacity: 0; }
+    to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* ── 헤더 ── */
+.sm-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 22px 28px 18px;
+    background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(168,85,247,0.08) 100%);
+    border-bottom: 1px solid rgba(99,102,241,0.2);
+    flex-shrink: 0;
+}
+
+.sm-header-left {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.sm-ai-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(168,85,247,0.25));
+    border: 1px solid rgba(99,102,241,0.4);
+    color: #c4b5fd;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 5px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+    margin-top: 3px;
+    letter-spacing: 0.03em;
+}
+
+.sm-title {
+    font-size: 1.1rem !important;
+    font-weight: 800 !important;
+    color: #f1f5f9 !important;
+    margin: 0 0 4px !important;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+}
+
+.sm-subtitle {
+    font-size: 0.78rem !important;
+    color: rgba(148,163,184,0.85) !important;
+    margin: 0 !important;
+    line-height: 1.4;
+    max-width: 600px;
+}
+
+.sm-close-btn {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #94a3b8;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 8px 10px;
+    line-height: 1;
+    border-radius: 10px;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+.sm-close-btn:hover {
+    background: rgba(239,68,68,0.2);
+    border-color: rgba(239,68,68,0.3);
+    color: #fca5a5;
+    transform: scale(1.05);
+}
+
+/* ── 탭 네비게이션 ── */
+.sm-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 10px 24px;
+    background: rgba(10,15,30,0.7);
+    border-bottom: 1px solid rgba(99,102,241,0.12);
+    overflow-x: auto;
+    flex-shrink: 0;
+    scrollbar-width: none;
+}
+.sm-tabs::-webkit-scrollbar { display: none; }
+
+.sm-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 18px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    cursor: pointer;
+    color: rgba(148,163,184,0.75);
+    transition: all 0.22s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.sm-tab-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.sm-tab-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.sm-tab:hover:not(.active) {
+    background: rgba(99,102,241,0.1);
+    color: #a5b4fc;
+    border-color: rgba(99,102,241,0.2);
+}
+
+.sm-tab.active {
+    background: linear-gradient(135deg, rgba(99,102,241,0.25), rgba(168,85,247,0.2));
+    border-color: rgba(99,102,241,0.4);
+    color: #c4b5fd;
+    box-shadow: 0 2px 16px rgba(99,102,241,0.2);
+}
+.sm-tab.active .sm-tab-icon { filter: drop-shadow(0 0 6px rgba(139,92,246,0.6)); }
+.sm-tab.active .sm-tab-label { color: #e0e7ff; font-weight: 700; }
+
+/* ── 탭 콘텐츠 영역 ── */
+.sm-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 28px;
+    min-height: 0;
+}
+
+.sm-content {
+    color: #e2e8f0 !important;
+    font-size: 0.91rem !important;
+    line-height: 1.9 !important;
+    letter-spacing: 0.01em;
+}
+
+/* ── 로딩 상태 ── */
+.sm-loading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 32px 16px;
+    color: rgba(148,163,184,0.7);
+    font-size: 0.88rem;
+}
+
+.sm-loading-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(99,102,241,0.2);
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: smSpin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes smSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* 콘텐츠 있으면 로딩 숨기기 */
+.sm-content:not(:empty) + .sm-loading,
+.sm-content:not(:empty) ~ .sm-loading { display: none; }
+.strategy-panel .sm-loading { margin-bottom: 0; }
+.strategy-panel .sm-content:not(:empty) ~ .sm-loading { display: none !important; }
+
+/* ── 텍스트 스타일 ── */
+.sm-content h3 {
+    color: #c7d2fe !important;
+    font-size: 1.0rem;
+    font-weight: 800;
+    margin: 24px 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(99,102,241,0.2);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: -0.01em;
+}
+
+.sm-content h4 {
+    color: #a5b4fc !important;
+    font-size: 0.88rem;
+    font-weight: 700;
+    margin: 16px 0 6px;
+}
+
+.sm-content strong {
+    color: #f1f5f9 !important;
+    font-weight: 700;
+    padding: 1px 4px;
+    background: rgba(99,102,241,0.1);
+    border-radius: 3px;
+}
+
+.sm-content em {
+    color: #c4b5fd !important;
+    font-style: normal;
+    font-weight: 600;
+}
+
+.sm-content p {
+    color: #cbd5e1 !important;
+    margin: 8px 0;
+    line-height: 1.85;
+}
+
+.sm-content ul, .sm-content ol {
+    padding-left: 4px;
+    margin: 10px 0;
+    list-style: none;
+}
+
+.sm-content li {
+    position: relative;
+    padding: 6px 0 6px 20px;
+    color: #cbd5e1 !important;
+    font-size: 0.9rem;
+    line-height: 1.75;
+    border-bottom: 1px solid rgba(99,102,241,0.06);
+}
+.sm-content li:last-child { border-bottom: none; }
+.sm-content li::before {
+    content: '▸';
+    position: absolute;
+    left: 0;
+    color: #818cf8;
+    font-weight: 700;
+}
+
+/* ── 실시간 시뮬레이터 ── */
+.sm-simulator {
+    margin-top: 24px;
+    padding: 20px;
+    background: rgba(15,23,42,0.6);
+    border: 1px solid rgba(99,102,241,0.2);
+    border-radius: 16px;
+    font-size: 0.85rem;
+}
+
+.sm-sim-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 700;
+    font-size: 0.88rem;
+    color: #e2e8f0;
+    margin-bottom: 16px;
+}
+
+.sm-sim-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: #dc2626;
+    color: #fff;
+}
+
+.sm-sim-slider-wrap { margin-bottom: 16px; }
+
+.sm-sim-slider-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #e2e8f0;
+    font-size: 0.82rem;
+}
+
+.sm-sim-rate {
+    color: #818cf8;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.sm-sim-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.68rem;
+    color: rgba(148,163,184,0.6);
+    margin-top: 6px;
+}
+
+.sm-sim-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.sm-sim-card {
+    padding: 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(99,102,241,0.12);
+    border-radius: 10px;
+}
+
+.sm-sim-card-label {
+    font-size: 0.72rem;
+    color: rgba(148,163,184,0.7);
+    margin-bottom: 4px;
+}
+
+.sm-sim-card-val {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #f1f5f9;
+}
+.sm-sim-card-val.accent { color: #818cf8; }
+
+.sm-sim-total {
+    grid-column: span 2;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(16,185,129,0.05));
+    border: 1px solid rgba(99,102,241,0.2);
+    border-radius: 12px;
+}
+
+.sm-sim-total-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #e2e8f0;
+}
+
+.sm-sim-total-sub {
+    font-size: 0.68rem;
+    color: rgba(148,163,184,0.6);
+    margin-top: 2px;
+}
+
+.sm-sim-total-val {
+    font-size: 1.6rem;
+    font-weight: 900;
+    color: #dc2626;
+}
+
+.sm-sim-advice {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: rgba(99,102,241,0.06);
+    border-radius: 8px;
+    font-size: 0.74rem;
+    color: rgba(148,163,184,0.7);
+    font-style: italic;
+    line-height: 1.5;
+}
+
+/* ── 하단 액션 버튼 ── */
+.sm-footer {
+    display: flex;
+    gap: 8px;
+    padding: 14px 24px;
+    background: rgba(10,15,30,0.8);
+    border-top: 1px solid rgba(99,102,241,0.15);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.sm-action-btn {
+    flex: 1;
+    min-width: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.22s ease;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.sm-action-btn:hover { transform: translateY(-2px); }
+.sm-action-btn span { font-size: 0.8rem; }
+
+.sm-btn-green {
+    background: rgba(16,185,129,0.12);
+    color: #34d399;
+    border-color: rgba(16,185,129,0.25);
+}
+.sm-btn-green:hover {
+    background: rgba(16,185,129,0.22);
+    box-shadow: 0 4px 16px rgba(16,185,129,0.2);
+}
+
+.sm-btn-purple {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 4px 14px rgba(99,102,241,0.3);
+}
+.sm-btn-purple:hover {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    box-shadow: 0 6px 20px rgba(99,102,241,0.45);
+}
+
+.sm-btn-indigo {
+    background: rgba(99,102,241,0.12);
+    color: #a5b4fc;
+    border-color: rgba(99,102,241,0.25);
+}
+.sm-btn-indigo:hover {
+    background: rgba(99,102,241,0.22);
+    box-shadow: 0 4px 16px rgba(99,102,241,0.15);
+}
+
+.sm-btn-amber {
+    background: rgba(251,191,36,0.1);
+    color: #fbbf24;
+    border-color: rgba(251,191,36,0.22);
+}
+.sm-btn-amber:hover {
+    background: rgba(251,191,36,0.2);
+    box-shadow: 0 4px 16px rgba(251,191,36,0.15);
+}
+
+/* ══ 라이트 모드 완전 지원 ══ */
+[data-theme="light"] .strategy-modal.sm-redesign {
+    background: linear-gradient(160deg, #ffffff 0%, #f8fafc 60%, #f1f5f9 100%) !important;
+    border-color: rgba(99,102,241,0.2) !important;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.15), 0 0 0 1px rgba(99,102,241,0.1) !important;
+}
+
+[data-theme="light"] .sm-header {
+    background: linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(168,85,247,0.04) 100%);
+    border-bottom-color: rgba(99,102,241,0.12);
+}
+
+[data-theme="light"] .sm-title { color: #0f172a !important; }
+[data-theme="light"] .sm-subtitle { color: #64748b !important; }
+
+[data-theme="light"] .sm-ai-badge {
+    background: rgba(99,102,241,0.1);
+    border-color: rgba(99,102,241,0.2);
+    color: #4f46e5;
+}
+
+[data-theme="light"] .sm-close-btn {
+    background: rgba(0,0,0,0.04);
+    border-color: rgba(0,0,0,0.08);
+    color: #64748b;
+}
+[data-theme="light"] .sm-close-btn:hover {
+    background: rgba(239,68,68,0.08);
+    color: #dc2626;
+}
+
+[data-theme="light"] .sm-tabs {
+    background: rgba(248,250,252,0.9);
+    border-bottom-color: rgba(99,102,241,0.1);
+}
+
+[data-theme="light"] .sm-tab { color: #64748b; }
+[data-theme="light"] .sm-tab:hover:not(.active) {
+    background: rgba(99,102,241,0.06);
+    color: #4f46e5;
+    border-color: rgba(99,102,241,0.15);
+}
+[data-theme="light"] .sm-tab.active {
+    background: rgba(99,102,241,0.1);
+    border-color: rgba(99,102,241,0.3);
+    color: #4f46e5;
+}
+[data-theme="light"] .sm-tab.active .sm-tab-label { color: #4338ca; }
+
+[data-theme="light"] .sm-body { background: transparent; }
+
+[data-theme="light"] .sm-content { color: #1e293b !important; }
+[data-theme="light"] .sm-content h3 {
+    color: #4338ca !important;
+    border-bottom-color: rgba(99,102,241,0.15);
+}
+[data-theme="light"] .sm-content h4 { color: #6366f1 !important; }
+[data-theme="light"] .sm-content strong {
+    color: #0f172a !important;
+    background: rgba(99,102,241,0.07);
+}
+[data-theme="light"] .sm-content em { color: #7c3aed !important; }
+[data-theme="light"] .sm-content p { color: #334155 !important; }
+[data-theme="light"] .sm-content li { color: #334155 !important; border-bottom-color: rgba(99,102,241,0.06); }
+[data-theme="light"] .sm-content li::before { color: #6366f1; }
+
+[data-theme="light"] .sm-loading { color: #94a3b8; }
+[data-theme="light"] .sm-loading-spinner {
+    border-color: rgba(99,102,241,0.15);
+    border-top-color: #6366f1;
+}
+
+[data-theme="light"] .sm-simulator {
+    background: rgba(241,245,249,0.8);
+    border-color: rgba(99,102,241,0.15);
+}
+
+[data-theme="light"] .sm-sim-header { color: #1e293b; }
+[data-theme="light"] .sm-sim-slider-label { color: #1e293b; }
+[data-theme="light"] .sm-sim-rate { color: #6366f1; }
+[data-theme="light"] .sm-sim-ticks { color: #94a3b8; }
+[data-theme="light"] .sm-sim-card {
+    background: #ffffff;
+    border-color: rgba(99,102,241,0.1);
+}
+[data-theme="light"] .sm-sim-card-label { color: #64748b; }
+[data-theme="light"] .sm-sim-card-val { color: #1e293b; }
+[data-theme="light"] .sm-sim-card-val.accent { color: #6366f1; }
+[data-theme="light"] .sm-sim-total {
+    background: linear-gradient(135deg, rgba(99,102,241,0.05), rgba(16,185,129,0.03));
+    border-color: rgba(99,102,241,0.15);
+}
+[data-theme="light"] .sm-sim-total-label { color: #1e293b; }
+[data-theme="light"] .sm-sim-total-sub { color: #64748b; }
+[data-theme="light"] .sm-sim-advice { color: #64748b; background: rgba(99,102,241,0.04); }
+
+[data-theme="light"] .sm-footer {
+    background: rgba(248,250,252,0.9);
+    border-top-color: rgba(99,102,241,0.1);
+}
+[data-theme="light"] .sm-btn-green {
+    background: rgba(5,150,105,0.08);
+    color: #059669;
+    border-color: rgba(5,150,105,0.2);
+}
+[data-theme="light"] .sm-btn-indigo {
+    background: rgba(99,102,241,0.08);
+    color: #4f46e5;
+    border-color: rgba(99,102,241,0.2);
+}
+[data-theme="light"] .sm-btn-amber {
+    background: rgba(217,119,6,0.06);
+    color: #d97706;
+    border-color: rgba(217,119,6,0.18);
+}
+
+/* ── 반응형 ── */
+@media (max-width: 768px) {
+    .strategy-modal.sm-redesign {
+        border-radius: 16px !important;
+        max-height: 95vh !important;
+    }
+    .sm-header { padding: 16px 18px 14px; }
+    .sm-tabs { padding: 8px 14px; }
+    .sm-tab { padding: 6px 12px; }
+    .sm-tab-label { font-size: 0.65rem; }
+    .sm-body { padding: 16px 18px; }
+    .sm-footer { padding: 10px 16px; gap: 6px; }
+    .sm-action-btn { padding: 8px 10px; font-size: 0.75rem; min-width: 80px; }
+    .sm-sim-grid { grid-template-columns: 1fr; }
+    .sm-sim-total { grid-column: span 1; }
+}
+
+
+/* ══════════════════════════════════════════════
+   Phase 3: 전체 CSS 디자인 시스템 완성
+   ══════════════════════════════════════════════ */
+
+/* 1. 전역 타이포그래피 강화 */
+[data-theme="light"] body {
+    color: #1e293b;
+}
+[data-theme="light"] .view-title,
+[data-theme="light"] h1,
+[data-theme="light"] h2,
+[data-theme="light"] h3 {
+    color: #0f172a !important;
+}
+
+/* 2. 분석 카드 디자인 강화 */
+.analysis-card {
+    background: linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(15,23,42,0.5) 100%);
+    border: 1px solid rgba(99,102,241,0.15);
+    border-radius: 16px;
+    padding: 20px 22px;
+    transition: all 0.25s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+.analysis-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #6366f1, #8b5cf6, #06b6d4);
+    opacity: 0;
+    transition: opacity 0.25s;
+}
+.analysis-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(99,102,241,0.35);
+    box-shadow: 0 12px 40px rgba(99,102,241,0.15);
+}
+.analysis-card:hover::before { opacity: 1; }
+
+/* 3. 카페 게시글 카드 */
+.cafe-post-card {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(99,102,241,0.12);
+    border-radius: 14px;
+    padding: 18px 20px;
+    transition: all 0.2s ease;
+    margin-bottom: 12px;
+}
+.cafe-post-card:hover {
+    background: rgba(99,102,241,0.05);
+    border-color: rgba(99,102,241,0.25);
+    transform: translateX(4px);
+}
+[data-theme="light"] .cafe-post-card {
+    background: #ffffff;
+    border-color: rgba(99,102,241,0.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+[data-theme="light"] .cafe-post-card:hover {
+    background: rgba(99,102,241,0.03);
+    box-shadow: 0 4px 16px rgba(99,102,241,0.08);
+}
+
+/* 4. 정책 카드 */
+.policy-card {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(99,102,241,0.12);
+    border-radius: 14px;
+    padding: 18px 20px;
+    cursor: pointer;
+    transition: all 0.22s ease;
+    position: relative;
+    overflow: hidden;
+}
+.policy-card:hover {
+    background: rgba(99,102,241,0.06);
+    border-color: rgba(99,102,241,0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(99,102,241,0.12);
+}
+[data-theme="light"] .policy-card {
+    background: #ffffff;
+    border-color: rgba(99,102,241,0.1);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+[data-theme="light"] .policy-card:hover {
+    box-shadow: 0 8px 24px rgba(99,102,241,0.1);
+}
+
+/* 5. 대시보드 KPI 카드 강화 */
+.stat-card {
+    position: relative;
+    overflow: hidden;
+}
+.stat-card::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -50%;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle, rgba(99,102,241,0.1) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+/* 6. 관심공고 칸반 보드 */
+.fav-kanban {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    padding: 16px 0;
+}
+.fav-kanban-col {
+    background: rgba(15,23,42,0.5);
+    border: 1px solid rgba(99,102,241,0.12);
+    border-radius: 14px;
+    padding: 16px;
+    min-height: 200px;
+}
+.fav-kanban-col-header {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #a5b4fc;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(99,102,241,0.12);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+[data-theme="light"] .fav-kanban-col {
+    background: #f8fafc;
+    border-color: rgba(99,102,241,0.1);
+}
+[data-theme="light"] .fav-kanban-col-header {
+    color: #6366f1;
+}
+
+/* 7. 사이드바 메뉴 hover 강화 */
+.menu-item {
+    transition: all 0.2s ease;
+    position: relative;
+}
+.menu-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 0;
+    background: linear-gradient(180deg, #6366f1, #8b5cf6);
+    border-radius: 0 3px 3px 0;
+    transition: height 0.2s ease;
+}
+.menu-item.active::before,
+.menu-item:hover::before {
+    height: 70%;
+}
+
+/* 8. 모바일 최적화 */
+@media (max-width: 768px) {
+    .view-bids .bid-filters-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .stat-cards-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+    .analysis-card { padding: 14px 16px; }
+    .sm-sim-grid { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 480px) {
+    .stat-cards-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* 9. 빈 상태 통일 스타일 */
+.empty-state-v2 {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 24px;
+    text-align: center;
+    gap: 12px;
+    min-height: 280px;
+}
+.empty-state-v2 .empty-icon {
+    font-size: 3rem;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 0 16px rgba(99,102,241,0.3));
+    animation: empty-float 3s ease-in-out infinite;
+}
+@keyframes empty-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+.empty-state-v2 .empty-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    margin: 0;
+}
+.empty-state-v2 .empty-desc {
+    font-size: 0.85rem;
+    color: rgba(148,163,184,0.8);
+    margin: 0;
+    line-height: 1.6;
+}
+[data-theme="light"] .empty-state-v2 .empty-title { color: #1e293b !important; }
+[data-theme="light"] .empty-state-v2 .empty-desc { color: #64748b !important; }
+
+/* 10. 토스트 알림 개선 */
+.toast {
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    font-weight: 600 !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3) !important;
+    border-radius: 12px !important;
+}
+
+/* 11. 전략 모달 로딩 스피너 감지 로직 */
+#stab-summary-content:not(:empty) ~ #stab-summary-loading,
+#stab-past-content:not(:empty) ~ #stab-past-loading,
+#stab-competitor-content:not(:empty) ~ #stab-competitor-loading,
+#stab-strategy-content:not(:empty) ~ #stab-strategy-loading,
+#stab-proposal-content:not(:empty) ~ #stab-proposal-loading {
+    display: none !important;
+}
+
+/* 12. 스켈레톤 shimmer 애니메이션 (renderSkeletonCards 헬퍼용) */
+@keyframes skeleton-shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+.skeleton-card {
+    pointer-events: none;
+}
+
+/* 13. 정책 카드 호버 효과 강화 */
+.policy-card-hover {
+    transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease !important;
+}
+.policy-card-hover:hover {
+    transform: translateY(-4px) scale(1.01) !important;
+    box-shadow: 0 16px 48px rgba(99,102,241,0.22) !important;
+}
+
+/* 14. 차트 로딩 플레이스홀더 */
+.chart-loading-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 40px 20px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+.chart-loading-placeholder .chart-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(99,102,241,0.15);
+    border-top-color: var(--neon-primary);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+}
+
+/* 15. 카페 폼 강화 */
+.cafe-write-card input:focus,
+.cafe-write-card textarea:focus {
+    border-color: var(--neon-primary) !important;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.15) !important;
+    outline: none !important;
+}
+.cafe-write-card input,
+.cafe-write-card textarea {
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+/* 사이드바 메뉴 스크롤 */
+.nav-menu {
+    overflow-y: auto;
+    scrollbar-width: none;
+    flex: 1;
+}
+.nav-menu::-webkit-scrollbar { display: none; }
+
+/* 📺 YouTube Education Widget Grid Layout */
+.youtube-video-slider {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+@media (max-width: 768px) {
+    .youtube-video-slider {
+        grid-template-columns: 1fr;
+    }
+}
+
