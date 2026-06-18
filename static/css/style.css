@@ -5808,7 +5808,8 @@ textarea:focus-visible {
 [data-theme="light"] .menu-item:hover span,
 [data-theme="light"] .menu-item:hover .menu-label { color: #ffffff !important; }
 [data-theme="light"] .sidebar-footer,
-[data-theme="light"] .sidebar-footer-info { color: rgba(255, 255, 255, 0.5) !important; border-top-color: rgba(255, 255, 255, 0.08) !important; }
+[data-theme="light"] .sidebar-footer-info,
+[data-theme="light"] .sidebar-version { color: rgba(255, 255, 255, 0.5) !important; border-top-color: rgba(255, 255, 255, 0.08) !important; }
 
 /* 제안서 헤더 라이트 */
 [data-theme="light"] .proposal-header {
@@ -6148,16 +6149,7 @@ textarea:focus-visible {
 [data-theme="light"] .badge-warning { background: rgba(245,158,11,0.08) !important; color: #d97706 !important; border-color: rgba(245,158,11,0.2) !important; }
 [data-theme="light"] .badge-danger  { background: rgba(239,68,68,0.08)  !important; color: #dc2626 !important; border-color: rgba(239,68,68,0.2)  !important; }
 
-/* ── 사이드바 메뉴 텍스트 ───────────────────────────── */
-[data-theme="light"] .menu-item span,
-[data-theme="light"] .menu-item .menu-label,
-[data-theme="light"] .menu-item { color: #475569 !important; }
-[data-theme="light"] .menu-item.active span,
-[data-theme="light"] .menu-item.active .menu-label,
-[data-theme="light"] .menu-item.active { color: #4f46e5 !important; }
-[data-theme="light"] .menu-item:hover span,
-[data-theme="light"] .menu-item:hover .menu-label { color: #4f46e5 !important; }
-[data-theme="light"] .sidebar-version { color: #94a3b8 !important; }
+/* ── 사이드바 메뉴 텍스트 (다크 고정으로 인해 라이트 테마 오버라이드 삭제) ───────────────────────────── */
 
 /* ── 툴팁 & 드롭다운 ────────────────────────────────── */
 [data-theme="light"] .dropdown-menu {
