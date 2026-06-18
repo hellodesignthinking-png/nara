@@ -6201,6 +6201,217 @@ textarea:focus-visible {
     border: 1px solid rgba(99,102,241,0.1) !important;
 }
 
+/* ══════════════════════════════════════════════════════
+   🤖 AI 전략 분석 모달 라이트 테마 전면 수정
+   ══════════════════════════════════════════════════════ */
+
+/* 모달 전체 배경 & 헤더 */
+[data-theme="light"] .strategy-modal {
+    background: #ffffff !important;
+    border: 1px solid rgba(99, 102, 241, 0.15) !important;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.12), 0 0 60px rgba(99,102,241,0.06) !important;
+}
+[data-theme="light"] .strategy-modal-header {
+    background: linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(168,85,247,0.04) 100%) !important;
+    border-bottom: 1px solid rgba(99,102,241,0.1) !important;
+}
+[data-theme="light"] .strategy-modal-header h2 {
+    color: #0f172a !important;
+}
+[data-theme="light"] .strategy-modal-header .close-btn {
+    background: rgba(0,0,0,0.04) !important;
+    border: 1px solid rgba(0,0,0,0.08) !important;
+    color: #64748b !important;
+}
+[data-theme="light"] .strategy-modal-header .close-btn:hover {
+    background: rgba(239,68,68,0.08) !important;
+    color: #dc2626 !important;
+}
+
+/* 모달 바디 */
+[data-theme="light"] .strategy-modal-body {
+    background: #ffffff !important;
+    color: #1e293b !important;
+}
+
+/* 탭 바 (가장 문제가 되는 부분: 다크 배경) */
+[data-theme="light"] .strategy-modal-tabs {
+    background: #f1f5f9 !important;
+    border: 1px solid rgba(99,102,241,0.1) !important;
+}
+[data-theme="light"] .strategy-modal-tab {
+    color: #64748b !important;
+    background: transparent !important;
+}
+[data-theme="light"] .strategy-modal-tab.active {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 12px rgba(99,102,241,0.3) !important;
+}
+[data-theme="light"] .strategy-modal-tab:hover:not(.active) {
+    background: rgba(99,102,241,0.08) !important;
+    color: #4f46e5 !important;
+}
+
+/* 분석 패널 본문 텍스트 */
+[data-theme="light"] .strategy-panel {
+    color: #1e293b !important;
+}
+[data-theme="light"] .strategy-panel.active {
+    background: transparent !important;
+}
+[data-theme="light"] .strategy-text {
+    color: #1e293b !important;
+}
+[data-theme="light"] .strategy-text h3 {
+    color: #4f46e5 !important;
+    border-bottom-color: rgba(99,102,241,0.15) !important;
+}
+[data-theme="light"] .strategy-text h4 {
+    color: #6366f1 !important;
+}
+[data-theme="light"] .strategy-text strong {
+    color: #0f172a !important;
+}
+[data-theme="light"] .strategy-text em {
+    color: #7c3aed !important;
+}
+[data-theme="light"] .strategy-text li {
+    color: #334155 !important;
+}
+[data-theme="light"] .strategy-text li::before {
+    color: #6366f1 !important;
+}
+
+/* 스코어 바 */
+[data-theme="light"] .score-bar-track {
+    background: #e2e8f0 !important;
+}
+[data-theme="light"] .score-bar-label {
+    color: #64748b !important;
+}
+[data-theme="light"] .score-bar-value {
+    color: #1e293b !important;
+    font-weight: 600;
+}
+
+/* 수평 바 차트 */
+[data-theme="light"] .hbar-row .hbar-track {
+    background: #e2e8f0 !important;
+}
+[data-theme="light"] .hbar-label {
+    color: #475569 !important;
+}
+
+/* PS 섹션 (사업요약, 수행사·KPI 등 카드) */
+[data-theme="light"] .ps-section {
+    background: #ffffff !important;
+    border: 1px solid rgba(99,102,241,0.1) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04) !important;
+}
+[data-theme="light"] .ps-section:hover {
+    box-shadow: 0 4px 16px rgba(99,102,241,0.08) !important;
+}
+[data-theme="light"] .ps-section-header {
+    background: linear-gradient(135deg, rgba(99,102,241,0.04), rgba(168,85,247,0.02)) !important;
+    border-bottom: 1px solid rgba(99,102,241,0.08) !important;
+}
+[data-theme="light"] .ps-section-header h4 {
+    color: #0f172a !important;
+}
+[data-theme="light"] .ps-section-icon {
+    background: rgba(99,102,241,0.08) !important;
+}
+[data-theme="light"] .ps-content {
+    color: #334155 !important;
+}
+
+/* 콜아웃 박스 */
+[data-theme="light"] .ps-callout-primary {
+    background: rgba(99,102,241,0.05) !important;
+    color: #3730a3 !important;
+}
+[data-theme="light"] .ps-callout-success {
+    background: rgba(16,185,129,0.05) !important;
+    color: #065f46 !important;
+}
+[data-theme="light"] .ps-callout-warning {
+    background: rgba(245,158,11,0.05) !important;
+    color: #92400e !important;
+}
+
+/* 인사이트 박스 */
+[data-theme="light"] .ps-insight-box {
+    background: #f8fafc !important;
+    color: #334155 !important;
+    border: 1px solid rgba(99,102,241,0.08) !important;
+}
+[data-theme="light"] .ps-meta-small {
+    color: #94a3b8 !important;
+}
+
+/* Win Theme 카드 */
+[data-theme="light"] .ps-win-theme-card {
+    background: linear-gradient(135deg, rgba(99,102,241,0.04), rgba(139,92,246,0.02)) !important;
+    border: 1px solid rgba(99,102,241,0.1) !important;
+}
+[data-theme="light"] .ps-win-theme-card-title {
+    color: #0f172a !important;
+}
+[data-theme="light"] .ps-win-theme-card-desc {
+    color: #475569 !important;
+}
+
+/* 키워드 칩 */
+[data-theme="light"] .keyword-chip {
+    background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.08)) !important;
+    color: #4f46e5 !important;
+    border: 1px solid rgba(99,102,241,0.15) !important;
+}
+
+/* 분석 로딩 상태 */
+[data-theme="light"] .strategy-loading,
+[data-theme="light"] .analysis-loading {
+    color: #64748b !important;
+}
+
+/* 시뮬레이터 바 */
+[data-theme="light"] .sim-bar-label { color: #64748b !important; }
+[data-theme="light"] .sim-bar-track {
+    background: #e2e8f0 !important;
+}
+
+/* Compliance 테이블 */
+[data-theme="light"] .ps-compliance-table-wrap {
+    border-color: rgba(99,102,241,0.1) !important;
+}
+[data-theme="light"] .ps-compliance-table th {
+    background: #f1f5f9 !important;
+    color: #475569 !important;
+}
+[data-theme="light"] .ps-compliance-table td {
+    color: #334155 !important;
+    border-color: rgba(99,102,241,0.08) !important;
+}
+
+/* 문서 업로드 영역 */
+[data-theme="light"] .doc-upload-area {
+    background: rgba(99,102,241,0.02) !important;
+    border-color: rgba(99,102,241,0.15) !important;
+}
+[data-theme="light"] .doc-upload-title { color: #0f172a !important; }
+[data-theme="light"] .doc-upload-desc,
+[data-theme="light"] .doc-upload-formats { color: #94a3b8 !important; }
+
+/* 제안서 전략 모달 */
+[data-theme="light"] .proposal-strategy-modal {
+    background: #ffffff !important;
+    border: 1px solid rgba(99,102,241,0.12) !important;
+}
+
+/* ══════════════════════════════════════════════════════
+   🖥️ 실시간 시뮬레이터 라이트 테마 대응
+   ══════════════════════════════════════════════════════ */
 /* 실시간 시뮬레이터 라이트 테마 대응 */
 [data-theme="light"] .interactive-pricing-console {
     background: #f8fafc !important;
