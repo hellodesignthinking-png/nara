@@ -12,8 +12,7 @@ services:
     # (disk는 SQLite 사용 시에만 필요)
     envVars:
       # ── 서버 설정 ──────────────────────────────
-      - key: PORT
-        value: "8000"
+      # PORT는 Render가 자동 주입 (제거 시 Render가 알아서 설정)
       - key: IS_PRODUCTION
         value: "true"
       - key: CORS_ORIGINS
