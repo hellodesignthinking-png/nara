@@ -215,14 +215,20 @@ a:hover { text-decoration: underline; }
     transition: var(--transition);
     margin-bottom: 4px;
     position: relative;
-    color: var(--text-secondary);
+    color: rgba(255, 255, 255, 0.78);
     font-weight: 500;
     font-size: 0.93rem;
 }
+.menu-item .menu-label {
+    color: rgba(255, 255, 255, 0.78);
+}
 
 .menu-item:hover {
-    background: rgba(99, 102, 241, 0.08);
-    color: var(--text-primary);
+    background: rgba(99, 102, 241, 0.12);
+    color: #ffffff;
+}
+.menu-item:hover .menu-label {
+    color: #ffffff;
 }
 
 .menu-item.active {
@@ -6129,9 +6135,13 @@ textarea:focus-visible {
 
 /* ── 사이드바 메뉴 텍스트 ───────────────────────────── */
 [data-theme="light"] .menu-item span,
-[data-theme="light"] .menu-label { color: #475569 !important; }
+[data-theme="light"] .menu-item .menu-label,
+[data-theme="light"] .menu-item { color: #475569 !important; }
 [data-theme="light"] .menu-item.active span,
-[data-theme="light"] .menu-item.active .menu-label { color: #4f46e5 !important; }
+[data-theme="light"] .menu-item.active .menu-label,
+[data-theme="light"] .menu-item.active { color: #4f46e5 !important; }
+[data-theme="light"] .menu-item:hover span,
+[data-theme="light"] .menu-item:hover .menu-label { color: #4f46e5 !important; }
 [data-theme="light"] .sidebar-version { color: #94a3b8 !important; }
 
 /* ── 툴팁 & 드롭다운 ────────────────────────────────── */
