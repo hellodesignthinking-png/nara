@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260622vBrutal">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260622vOverhaul">
 </head>
 <body>
     <a href="#main-content" class="skip-nav">메인 콘텐츠로 건너뛰기</a>
@@ -238,7 +238,7 @@
                 </div>
                 <div class="stat-card stat-card-link" style="--delay: 2" onclick="navigate('analysis')">
                     <div class="stat-card-header" style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:8px">
-                        <div class="stat-icon" style="--gradient: linear-gradient(135deg, #6366f1, #4f46e5)">✅</div>
+                        <div class="stat-icon" style="--gradient: linear-gradient(135deg, #ff6000, #ff6000)">✅</div>
                         <span class="live-indicator completed"><span class="live-dot pulse-indigo"></span>COMPLETED</span>
                     </div>
                     <div class="stat-info">
@@ -269,7 +269,7 @@
                         </h3>
                         <span style="font-size:0.75rem; color:var(--text-muted)">최근 수집되어 동기화된 국가 공고의 발생 시간별 이력을 다이어그램으로 시각화합니다.</span>
                     </div>
-                    <span class="badge badge-accent" id="timeline-sync-time" style="font-size:0.7rem; background:rgba(99, 102, 241, 0.12)">동기화 완료</span>
+                    <span class="badge badge-accent" id="timeline-sync-time" style="font-size:0.7rem; background:rgba(255, 96, 0, 0.12)">동기화 완료</span>
                 </div>
                 
                 <!-- 타임라인 연결 가이드선과 스크롤 박스 -->
@@ -630,11 +630,11 @@
                 <!-- JS에서 컬럼별 동적 렌더링 -->
             </div>
             <!-- 파이프라인 프로그레스 바 -->
-            <div id="fav-pipeline-progress-wrap" style="display:none;margin-top:12px;padding:14px 18px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:12px">
+            <div id="fav-pipeline-progress-wrap" style="display:none;margin-top:12px;padding:14px 18px;background:rgba(255,96,0,0.04);border:1px solid rgba(255,96,0,0.12);border-radius:12px">
                 <div style="display:flex;gap:3px;height:8px;border-radius:4px;overflow:hidden;margin-bottom:8px">
-                    <div id="fav-progress-reviewing" style="height:100%;background:#6366f1;transition:width 0.4s ease"></div>
+                    <div id="fav-progress-reviewing" style="height:100%;background:#ff6000;transition:width 0.4s ease"></div>
                     <div id="fav-progress-proceeding" style="height:100%;background:#06b6d4;transition:width 0.4s ease"></div>
-                    <div id="fav-progress-partnered" style="height:100%;background:#8b5cf6;transition:width 0.4s ease"></div>
+                    <div id="fav-progress-partnered" style="height:100%;background:#ff8033;transition:width 0.4s ease"></div>
                     <div id="fav-progress-completed" style="height:100%;background:#10b981;transition:width 0.4s ease"></div>
                     <div id="fav-progress-abandoned" style="height:100%;background:#ef4444;transition:width 0.4s ease"></div>
                 </div>
@@ -874,7 +874,7 @@
                     </div>
 
                     <!-- LLM 선택 -->
-                    <div class="api-key-card" style="border-color:rgba(99,102,241,0.15)">
+                    <div class="api-key-card" style="border-color:rgba(255,96,0,0.15)">
                         <div class="api-key-header">
                             <span>⚙️</span>
                             <div>
@@ -1147,7 +1147,7 @@
                                             <strong class="mock-score-badge" style="background:rgba(16,185,129,0.15);color:#10b981;font-size:0.75rem;padding:3px 8px;border-radius:12px">94% 매칭</strong>
                                         </div>
                                         <div class="mock-score-progress" style="height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;margin-bottom:12px">
-                                            <div style="width:94%;height:100%;background:linear-gradient(90deg, #6366f1, #10b981);border-radius:3px"></div>
+                                            <div style="width:94%;height:100%;background:linear-gradient(90deg, #ff6000, #10b981);border-radius:3px"></div>
                                         </div>
                                         <div class="mock-score-reasons" style="display:flex;flex-direction:column;gap:4px;font-size:0.72rem;color:var(--text-muted)">
                                             <div>• 지역제한(서울) 충족 (+15점)</div>
@@ -1190,7 +1190,7 @@
                                                 <strong style="font-size:0.78rem;color:#fff">한울정보기술(주)</strong>
                                                 <small style="color:var(--text-muted);font-size:0.68rem">신용: A+</small>
                                             </div>
-                                            <div class="mock-match-tag" style="font-size:0.7rem;color:#6366f1;margin-top:6px;background:rgba(99,102,241,0.08);padding:2px 6px;border-radius:4px;display:inline-block">📍 경기 지역 공동도급 혜택 확보</div>
+                                            <div class="mock-match-tag" style="font-size:0.7rem;color:#ff6000;margin-top:6px;background:rgba(255,96,0,0.08);padding:2px 6px;border-radius:4px;display:inline-block">📍 경기 지역 공동도급 혜택 확보</div>
                                         </div>
                                     </div>
                                 </div>
@@ -1229,7 +1229,7 @@
             <!-- 종합 통계 그리드 -->
             <div class="stats-grid" style="margin-bottom:28px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
                 <div class="stat-card" style="--delay:0">
-                    <div class="stat-icon" style="--gradient:linear-gradient(135deg,#4f46e5,#818cf8)">👥</div>
+                    <div class="stat-icon" style="--gradient:linear-gradient(135deg,#ff6000,#ff8033)">👥</div>
                     <div class="stat-info">
                         <span class="stat-value" id="admin-stat-users">0</span>
                         <span class="stat-label">총 가입 회원</span>
@@ -1893,7 +1893,7 @@
                         </div>
                     </div>
 
-                    <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;border:1px dashed rgba(99,102,241,0.3);padding:10px;border-radius:8px;background:rgba(99,102,241,0.03)">
+                    <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;border:1px dashed rgba(255,96,0,0.3);padding:10px;border-radius:8px;background:rgba(255,96,0,0.03)">
                         <input type="checkbox" id="form-is-shared" style="width:16px;height:16px;cursor:pointer" checked>
                         <label for="form-is-shared" style="cursor:pointer;font-weight:700;color:#a5b4fc;margin-bottom:0">🤝 다른 회원사들과 회사 정보(업종, 면허, 지역 등)를 공유하고 협업 파트너 추천을 허용합니다.</label>
                     </div>
@@ -2037,9 +2037,9 @@
                         <div style="margin-bottom:16px">
                             <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-weight:600">
                                 <span>투찰률 (%) 설정:</span>
-                                <span id="sim-rate-val" style="color:var(--accent-indigo, #6366f1);font-size:1rem">88.0%</span>
+                                <span id="sim-rate-val" style="color:var(--accent-indigo, #ff6000);font-size:1rem">88.0%</span>
                             </div>
-                            <input type="range" id="sim-rate-slider" min="78" max="98" step="0.1" value="88.0" style="width:100%;accent-color:var(--accent-indigo, #6366f1);cursor:pointer" oninput="updateInteractiveBidSimulation()">
+                            <input type="range" id="sim-rate-slider" min="78" max="98" step="0.1" value="88.0" style="width:100%;accent-color:var(--accent-indigo, #ff6000);cursor:pointer" oninput="updateInteractiveBidSimulation()">
                             <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-muted);margin-top:4px">
                                 <span>78% (최저 가격배점)</span>
                                 <span>88% (적격 권장)</span>
@@ -2055,11 +2055,11 @@
                             </div>
                             <div style="padding:10px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid var(--border)">
                                 <div style="color:var(--text-muted)">투찰 가격 점수 (예상)</div>
-                                <div id="sim-price-score" style="font-size:1.1rem;font-weight:700;margin-top:4px;color:var(--accent-indigo, #6366f1)">0.0 / 40.0</div>
+                                <div id="sim-price-score" style="font-size:1.1rem;font-weight:700;margin-top:4px;color:var(--accent-indigo, #ff6000)">0.0 / 40.0</div>
                             </div>
                             
                             <!-- 💰 수익 기대금액 시뮬레이터 위젯 추가 (지원매치 벤치마크) -->
-                            <div style="padding:10px;background:rgba(99,102,241,0.03);border-radius:8px;border:1px solid rgba(99,102,241,0.15)">
+                            <div style="padding:10px;background:rgba(255,96,0,0.03);border-radius:8px;border:1px solid rgba(255,96,0,0.15)">
                                 <div style="color:var(--text-muted)">예상 투찰 제안가</div>
                                 <div id="sim-bid-price" style="font-size:1.05rem;font-weight:700;margin-top:4px;color:var(--text)">0 원</div>
                             </div>
@@ -2068,7 +2068,7 @@
                                 <div id="sim-net-profit" style="font-size:1.05rem;font-weight:700;margin-top:4px;color:#10b981">0 원</div>
                             </div>
 
-                            <div style="grid-column: span 2;padding:12px;background:linear-gradient(to right, rgba(99,102,241,0.05), rgba(16,185,129,0.05));border-radius:8px;border:1px solid rgba(99,102,241,0.2);display:flex;justify-content:space-between;align-items:center;gap:12px">
+                            <div style="grid-column: span 2;padding:12px;background:linear-gradient(to right, rgba(255,96,0,0.05), rgba(16,185,129,0.05));border-radius:8px;border:1px solid rgba(255,96,0,0.2);display:flex;justify-content:space-between;align-items:center;gap:12px">
                                 <div style="display:flex;align-items:center;gap:12px;flex:1">
                                     <!-- 🌀 SVG 실시간 원형 게이지 차트 (둘레 125.6) -->
                                     <div class="sim-gauge-wrap" style="position:relative;width:48px;height:48px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -2089,7 +2089,7 @@
                         </div>
                         
                         <!-- AI 투찰 자문 리포트 -->
-                        <div id="sim-ai-advice" style="margin-top:12px;padding:8px 10px;background:rgba(99,102,241,0.04);border-radius:6px;font-size:0.75rem;color:var(--text-muted);font-style:italic">
+                        <div id="sim-ai-advice" style="margin-top:12px;padding:8px 10px;background:rgba(255,96,0,0.04);border-radius:6px;font-size:0.75rem;color:var(--text-muted);font-style:italic">
                             ※ 슬라이더를 드래그하여 낙찰 가격 시나리오를 점검하세요.
                         </div>
                     </div>
@@ -2214,8 +2214,8 @@
                     <div id="fav-partner-suggest"></div>
                     
                     <!-- 💡 공동수급(협업) 입찰 전략 팁 카드 추가 -->
-                    <div class="collaboration-tip-box" style="margin-top:12px;padding:12px;background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(16,185,129,0.06) 100%);border-radius:10px;border:1px solid rgba(99,102,241,0.15);font-size:0.78rem;line-height:1.45">
-                        <div style="font-weight:700;color:var(--accent-indigo, #6366f1);display:flex;align-items:center;gap:4px;margin-bottom:6px;font-size:0.82rem">
+                    <div class="collaboration-tip-box" style="margin-top:12px;padding:12px;background:linear-gradient(135deg, rgba(255,96,0,0.06) 0%, rgba(16,185,129,0.06) 100%);border-radius:10px;border:1px solid rgba(255,96,0,0.15);font-size:0.78rem;line-height:1.45">
+                        <div style="font-weight:700;color:var(--accent-indigo, #ff6000);display:flex;align-items:center;gap:4px;margin-bottom:6px;font-size:0.82rem">
                             <span>💡</span> 공동도급(협업) 낙찰 극대화 전략
                         </div>
                         <ul style="margin:0;padding-left:16px;color:var(--text);display:flex;flex-direction:column;gap:4px">
@@ -2249,7 +2249,7 @@
                             <div style="border-top:1px dashed var(--border);padding-top:10px;margin-top:6px;display:flex;flex-direction:column;gap:8px">
                                 <div style="display:flex;justify-content:space-between;align-items:center">
                                     <span style="font-size:0.78rem;color:var(--text-secondary)">지분 합산 평가액:</span>
-                                    <strong id="sim-eval-revenue" style="font-size:0.85rem;color:var(--accent-indigo, #6366f1)">0 원</strong>
+                                    <strong id="sim-eval-revenue" style="font-size:0.85rem;color:var(--accent-indigo, #ff6000)">0 원</strong>
                                 </div>
                                 <div style="display:flex;justify-content:space-between;align-items:center">
                                     <span style="font-size:0.78rem;color:var(--text-secondary)">합산 신인도 가점:</span>
@@ -2280,14 +2280,14 @@
                             <div style="border-top:1px dashed var(--border);padding-top:10px;margin-top:6px;display:flex;flex-direction:column;gap:8px">
                                 <div style="display:flex;justify-content:space-between;align-items:center">
                                     <span style="font-size:0.78rem;color:var(--text-secondary)">합산 인정 실적계:</span>
-                                    <strong id="synergy-total-exp" style="font-size:0.85rem;color:var(--accent-indigo, #6366f1)">0억 원</strong>
+                                    <strong id="synergy-total-exp" style="font-size:0.85rem;color:var(--accent-indigo, #ff6000)">0억 원</strong>
                                 </div>
                                 <div style="display:flex;justify-content:space-between;align-items:center">
                                     <span style="font-size:0.78rem;color:var(--text-secondary)">공고 예산 대비 충족율:</span>
                                     <strong id="synergy-satisfaction-rate" style="font-size:0.85rem;color:var(--success, #10b981)">0%</strong>
                                 </div>
                                 <div class="progress-bar-wrap" style="height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;margin-top:4px">
-                                    <div id="synergy-progress-bar" style="width:0%;height:100%;background:var(--accent-indigo, #6366f1);transition:width 0.3s ease"></div>
+                                    <div id="synergy-progress-bar" style="width:0%;height:100%;background:var(--accent-indigo, #ff6000);transition:width 0.3s ease"></div>
                                 </div>
                                 <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
                                     <span id="synergy-status-badge" class="badge badge-danger" style="font-size:0.72rem;padding:2px 8px;border-radius:4px">실적 부족</span>
@@ -2374,7 +2374,7 @@
                     </div>
                     <button type="submit" class="btn btn-prepare" style="width:100%; font-size:0.9rem; padding:12px; margin-top:10px; border-radius:8px">🔑 로그인</button>
                     <div style="text-align:center; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
-                        아직 계정이 없으신가요? <a href="#" onclick="toggleAuthForm(event, 'register')" style="color:var(--accent-indigo, #6366f1); font-weight:600; text-decoration:underline;">회원가입하기</a>
+                        아직 계정이 없으신가요? <a href="#" onclick="toggleAuthForm(event, 'register')" style="color:var(--accent-indigo, #ff6000); font-weight:600; text-decoration:underline;">회원가입하기</a>
                     </div>
                     <div style="text-align:center; margin-top:10px; font-size:0.78rem; display:flex; justify-content:center; gap:12px;">
                         <a href="#" onclick="toggleAuthForm(event, 'find-username')" style="color:var(--text-secondary); text-decoration:none;">🔍 아이디 찾기</a>
@@ -2403,7 +2403,7 @@
                     </div>
                     <button type="submit" class="btn btn-prepare" style="width:100%; font-size:0.9rem; padding:12px; margin-top:10px; border-radius:8px">📝 회원가입 완료</button>
                     <div style="text-align:center; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
-                        이미 계정이 있으신가요? <a href="#" onclick="toggleAuthForm(event, 'login')" style="color:var(--accent-indigo, #6366f1); font-weight:600; text-decoration:underline;">로그인하기</a>
+                        이미 계정이 있으신가요? <a href="#" onclick="toggleAuthForm(event, 'login')" style="color:var(--accent-indigo, #ff6000); font-weight:600; text-decoration:underline;">로그인하기</a>
                     </div>
                 </form>
 
@@ -2414,9 +2414,9 @@
                         <input type="email" id="find-email" class="fav-detail-input" style="width:100%; box-sizing:border-box; border-radius: 8px; padding:10px;" required placeholder="example@domain.com">
                     </div>
                     <button type="submit" class="btn btn-prepare" style="width:100%; font-size:0.9rem; padding:12px; margin-top:10px; border-radius:8px">🔍 아이디 찾기</button>
-                    <div id="find-username-result" style="display:none; padding:12px; border-radius:8px; background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.2); text-align:center; font-size:0.85rem; color:#a5b4fc; font-weight:700;"></div>
+                    <div id="find-username-result" style="display:none; padding:12px; border-radius:8px; background:rgba(255,96,0,0.1); border:1px solid rgba(255,96,0,0.2); text-align:center; font-size:0.85rem; color:#a5b4fc; font-weight:700;"></div>
                     <div style="text-align:center; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
-                        <a href="#" onclick="toggleAuthForm(event, 'login')" style="color:var(--accent-indigo, #6366f1); font-weight:600; text-decoration:underline;">로그인 화면으로 돌아가기</a>
+                        <a href="#" onclick="toggleAuthForm(event, 'login')" style="color:var(--accent-indigo, #ff6000); font-weight:600; text-decoration:underline;">로그인 화면으로 돌아가기</a>
                     </div>
                 </form>
 
@@ -2440,7 +2440,7 @@
                     </div>
                     <button type="submit" class="btn btn-prepare" style="width:100%; font-size:0.9rem; padding:12px; margin-top:10px; border-radius:8px">🔑 비밀번호 재설정 완료</button>
                     <div style="text-align:center; margin-top:8px; font-size:0.8rem; color:var(--text-muted);">
-                        <a href="#" onclick="toggleAuthForm(event, 'login')" style="color:var(--accent-indigo, #6366f1); font-weight:600; text-decoration:underline;">로그인 화면으로 돌아가기</a>
+                        <a href="#" onclick="toggleAuthForm(event, 'login')" style="color:var(--accent-indigo, #ff6000); font-weight:600; text-decoration:underline;">로그인 화면으로 돌아가기</a>
                     </div>
                 </form>
             </div>
@@ -2571,7 +2571,7 @@
                 <h2 id="profile-edit-title" style="color:#fff; font-size:1.2rem; font-weight:700; margin:0">👤 내 프로필 수정</h2>
                 <button onclick="closeProfileEditModal()" style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:1.4rem;cursor:pointer">✕</button>
             </div>
-            <div style="padding:14px; background:rgba(99,102,241,0.08); border-radius:10px; margin-bottom:16px">
+            <div style="padding:14px; background:rgba(255,96,0,0.08); border-radius:10px; margin-bottom:16px">
                 <div style="font-size:0.8rem;color:rgba(255,255,255,0.5);margin-bottom:4px">현재 사용자명</div>
                 <div id="profile-edit-username" style="font-size:1rem;color:#a5b4fc;font-weight:600"></div>
             </div>
@@ -2634,6 +2634,6 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=20260622vBrutal"></script>
+    <script src="/static/js/app.js?v=20260622vOverhaul"></script>
 </body>
 </html>

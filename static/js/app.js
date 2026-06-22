@@ -117,7 +117,7 @@ function renderEmptyState(icon, title, message, actionHtml = '') {
 // ──────────────────────────────────────────────
 function renderSkeletonCards(count = 3, height = '120px') {
     return Array(count).fill(0).map(() => `
-        <div class="skeleton-card" style="height:${height};border-radius:12px;background:linear-gradient(90deg,rgba(99,102,241,0.06) 25%,rgba(99,102,241,0.12) 50%,rgba(99,102,241,0.06) 75%);background-size:200% 100%;animation:skeleton-shimmer 1.5s ease-in-out infinite;margin-bottom:12px">
+        <div class="skeleton-card" style="height:${height};border-radius:12px;background:linear-gradient(90deg,rgba(255,96,0,0.06) 25%,rgba(255,96,0,0.12) 50%,rgba(255,96,0,0.06) 75%);background-size:200% 100%;animation:skeleton-shimmer 1.5s ease-in-out infinite;margin-bottom:12px">
         </div>
     `).join('');
 }
@@ -159,7 +159,7 @@ const state = {
 const FAV_STATUSES = {
     reviewing: { label: '⭐ 검토중', color: '#f59e0b' },
     proceeding: { label: '🚀 사업진행', color: '#3b82f6' },
-    partnered: { label: '🤝 협업진행', color: '#8b5cf6' },
+    partnered: { label: '🤝 협업진행', color: '#ff8033' },
     completed: { label: '✅ 완료', color: '#10b981' },
     abandoned: { label: '❌ 포기', color: '#ef4444' },
 };
@@ -571,7 +571,7 @@ function loadFavorites() {
                                 : `<div class="fav-card-next-task all-done">✅ 입찰 준비 완료!</div>`;
                             return `<div class="fav-progress-bar">
                                 <div class="fav-progress-track">
-                                    <div class="fav-progress-fill" style="width:${pct}%;background:${pct===100?'var(--success)':'var(--accent-indigo, #6366f1)'}"></div>
+                                    <div class="fav-progress-fill" style="width:${pct}%;background:${pct===100?'var(--success)':'var(--accent-indigo, #ff6000)'}"></div>
                                 </div>
                                 <span class="fav-progress-text">${done}/${cl.length}</span>
                             </div>
@@ -749,7 +749,7 @@ function openFavDetail(bidNo) {
                 <span style="font-size:0.78rem;color:var(--text-muted)">준비 ${clPct}%</span>
             </div>
             <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:6px 0 12px">
-                <div style="width:${clPct}%;height:100%;background:${clPct===100?'var(--success)':'var(--accent-indigo, #6366f1)'};border-radius:3px;transition:width 0.3s"></div>
+                <div style="width:${clPct}%;height:100%;background:${clPct===100?'var(--success)':'var(--accent-indigo, #ff6000)'};border-radius:3px;transition:width 0.3s"></div>
             </div>
         </div>
         <div class="bqv-row"><span class="bqv-label">🏢 발주기관</span><span class="bqv-value">${escapeHTML(fav.org_name || '-')}</span></div>
@@ -811,7 +811,7 @@ function openFavDetail(bidNo) {
                                         onclick="addSuggestedPartner('${nameEsc}', '${roleEsc}', '${contactEsc}')">
                                         + 추가
                                     </button>
-                                    <button class="btn btn-sm btn-primary" style="padding:2px 8px;font-size:0.72rem;height:24px;background:rgba(99,102,241,0.2);color:#a5b4fc;border:1px solid rgba(99,102,241,0.4)" 
+                                    <button class="btn btn-sm btn-primary" style="padding:2px 8px;font-size:0.72rem;height:24px;background:rgba(255,96,0,0.2);color:#a5b4fc;border:1px solid rgba(255,96,0,0.4)" 
                                         onclick="openProposalModal('${p.biz_id}', '${nameEsc}', '${bidNo}')">
                                         🤝 제안
                                     </button>
@@ -826,8 +826,8 @@ function openFavDetail(bidNo) {
                 const suggestions = suggestPartners(bidNo);
                 if (suggestions && suggestions.length > 0) {
                     html += `
-                        <div style="margin-top:10px;padding:12px;background:rgba(99,102,241,0.04);border-radius:10px;border:1px dashed rgba(99,102,241,0.25)">
-                            <div style="font-size:0.8rem;color:var(--accent-indigo, #6366f1);font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                        <div style="margin-top:10px;padding:12px;background:rgba(255,96,0,0.04);border-radius:10px;border:1px dashed rgba(255,96,0,0.25)">
+                            <div style="font-size:0.8rem;color:var(--accent-indigo, #ff6000);font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px">
                                 <span>💡</span> 이전 협업사 추천
                             </div>
                             <div style="display:flex;gap:6px;flex-wrap:wrap">`;
@@ -874,7 +874,7 @@ function openFavDetail(bidNo) {
         checklistEl.innerHTML = `
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                 <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
-                    <div style="width:${progress}%;height:100%;background:${progress===100?'var(--success)':'var(--accent-indigo, #6366f1)'};border-radius:3px;transition:width 0.3s"></div>
+                    <div style="width:${progress}%;height:100%;background:${progress===100?'var(--success)':'var(--accent-indigo, #ff6000)'};border-radius:3px;transition:width 0.3s"></div>
                 </div>
                 <span style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap">${doneCount}/${checklist.length} (${progress}%)</span>
             </div>
@@ -1091,7 +1091,7 @@ function toggleChecklistItem(bidNo, index, checked) {
         const fill = progressBar.querySelector('div[style*="width"]');
         if (fill) {
             fill.style.width = pct + '%';
-            fill.style.background = pct === 100 ? 'var(--success)' : 'var(--accent-indigo, #6366f1)';
+            fill.style.background = pct === 100 ? 'var(--success)' : 'var(--accent-indigo, #ff6000)';
         }
         const pctText = progressBar.querySelector('.fav-progress-header span:last-child');
         if (pctText) pctText.textContent = `준비 ${pct}%`;
@@ -1105,7 +1105,7 @@ function toggleChecklistItem(bidNo, index, checked) {
         const barFill = checklistEl.querySelector('div[style*="width"]');
         if (barFill) {
             barFill.style.width = pct + '%';
-            barFill.style.background = pct === 100 ? 'var(--success)' : 'var(--accent-indigo, #6366f1)';
+            barFill.style.background = pct === 100 ? 'var(--success)' : 'var(--accent-indigo, #ff6000)';
         }
     }
 }
@@ -3933,8 +3933,8 @@ async function loadCharts() {
 }
 
 const CHART_COLORS = [
-    '#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ef4444',
-    '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#84cc16',
+    '#ff6000', '#06b6d4', '#10b981', '#f59e0b', '#ef4444',
+    '#ff8033', '#ec4899', '#14b8a6', '#f97316', '#84cc16',
 ];
 
 function renderDailyTrend(totalData, keywordTrends) {
@@ -4028,15 +4028,15 @@ function renderDailyTrend(totalData, keywordTrends) {
         <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;min-height:220px">
             <defs>
                 <linearGradient id="totalGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="rgba(99,102,241,0.25)"/>
-                    <stop offset="100%" stop-color="rgba(99,102,241,0.02)"/>
+                    <stop offset="0%" stop-color="rgba(255,96,0,0.25)"/>
+                    <stop offset="100%" stop-color="rgba(255,96,0,0.02)"/>
                 </linearGradient>
             </defs>
             ${yGridSvg}
             ${yLabelSvg}
             ${xLabelSvg}
             <path d="${totalArea}" fill="url(#totalGrad)"/>
-            <path d="${totalLine}" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+            <path d="${totalLine}" fill="none" stroke="#ff6000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
     `;
 
     // 키워드별 라인
@@ -4059,7 +4059,7 @@ function renderDailyTrend(totalData, keywordTrends) {
     // 전체 공고 포인트 (각 날짜)
     totalValues.forEach((v, i) => {
         if (v > 0) {
-            svgContent += `<circle cx="${toX(i)}" cy="${toY(v)}" r="3" fill="var(--accent-indigo, #6366f1)" stroke="var(--text-primary, #0f172a)" stroke-width="1.5" opacity="0.8">
+            svgContent += `<circle cx="${toX(i)}" cy="${toY(v)}" r="3" fill="var(--accent-indigo, #ff6000)" stroke="var(--text-primary, #0f172a)" stroke-width="1.5" opacity="0.8">
                 <title>${allDates[i].slice(5)}: ${v}건</title>
             </circle>`;
         }
@@ -4069,7 +4069,7 @@ function renderDailyTrend(totalData, keywordTrends) {
 
     // 범례
     let legendHtml = `<div class="chart-legend">
-        <span class="legend-item"><span class="legend-dot" style="background:var(--accent-indigo, #6366f1)"></span> 전체 공고</span>`;
+        <span class="legend-item"><span class="legend-dot" style="background:var(--accent-indigo, #ff6000)"></span> 전체 공고</span>`;
     kwNames.forEach((kw, idx) => {
         const hasData = kwDataSets[idx]?.some(v => v > 0);
         if (!hasData) return;
@@ -4983,7 +4983,7 @@ async function loadKeywordSearchPanel() {
             container.innerHTML = `
                 <div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0">
                     ⚙️ 설정에서 관심 키워드를 등록하면 여기에 표시됩니다.
-                    <a onclick="navigate('settings')" style="color:var(--accent-indigo, #6366f1);cursor:pointer;font-weight:600">설정 바로가기 →</a>
+                    <a onclick="navigate('settings')" style="color:var(--accent-indigo, #ff6000);cursor:pointer;font-weight:600">설정 바로가기 →</a>
                 </div>`;
             return;
         }
@@ -6135,10 +6135,10 @@ function renderKanbanBoard() {
     const favs = getFavorites();
     
     const stages = [
-        { id: 'reviewing', label: '⭐ 검토중', color: '#6366f1' },
+        { id: 'reviewing', label: '⭐ 검토중', color: '#ff6000' },
         { id: 'proceeding', label: '🚀 사업진행', color: '#06b6d4' },
         { id: 'partnered', label: '🤝 협업진행', color: '#10b981' },
-        { id: 'completed', label: '✅ 완료', color: '#8b5cf6' },
+        { id: 'completed', label: '✅ 완료', color: '#ff8033' },
         { id: 'abandoned', label: '❌ 포기', color: '#ef4444' }
     ];
     
@@ -6471,7 +6471,7 @@ function calculateConsortiumSynergy() {
     if (progressEl) {
         const progressWidth = Math.min(100, satisfactionRate);
         progressEl.style.width = `${progressWidth}%`;
-        progressEl.style.background = satisfactionRate >= 100 ? 'var(--success, #10b981)' : 'var(--accent-indigo, #6366f1)';
+        progressEl.style.background = satisfactionRate >= 100 ? 'var(--success, #10b981)' : 'var(--accent-indigo, #ff6000)';
     }
 
     const badgeEl = document.getElementById('synergy-status-badge');
@@ -7867,7 +7867,7 @@ async function loadAdminUsers() {
                 <td style="color:var(--text-muted)">${escapeHTML(u.email || '-')}</td>
                 <td><span style="font-size:0.78rem">${escapeHTML(u.ai_persona_role || '-')}</span></td>
                 <td><span style="font-size:0.75rem;color:var(--text-muted)">${u.company_count ? u.company_count + '개 소속' : '미가입'}</span></td>
-                <td>${u.is_admin ? '<span style="color:#6366f1;font-weight:700">🔑 관리자</span>' : '<span style="color:var(--text-muted)">일반</span>'}</td>
+                <td>${u.is_admin ? '<span style="color:#ff6000;font-weight:700">🔑 관리자</span>' : '<span style="color:var(--text-muted)">일반</span>'}</td>
                 <td style="font-size:0.8rem;color:var(--text-muted)">${u.created_at ? u.created_at.slice(0,10) : '-'}</td>
                 <td style="text-align:right">
                     <div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">
@@ -8131,7 +8131,7 @@ async function loadAdminBidsStats() {
         const grid = document.getElementById('admin-bids-stats');
         if (grid) {
             grid.innerHTML = `
-                <div class="stat-card" style="--delay:0"><div class="stat-icon" style="--gradient:linear-gradient(135deg,#4f46e5,#818cf8)">📋</div><div class="stat-info"><span class="stat-value">${stats.total||0}</span><span class="stat-label">총 공고 수</span></div></div>
+                <div class="stat-card" style="--delay:0"><div class="stat-icon" style="--gradient:linear-gradient(135deg,#ff6000,#ff8033)">📋</div><div class="stat-info"><span class="stat-value">${stats.total||0}</span><span class="stat-label">총 공고 수</span></div></div>
                 <div class="stat-card" style="--delay:1"><div class="stat-icon" style="--gradient:linear-gradient(135deg,#059669,#34d399)">📅</div><div class="stat-info"><span class="stat-value">${stats.today||0}</span><span class="stat-label">오늘 수집</span></div></div>
                 <div class="stat-card" style="--delay:2"><div class="stat-icon" style="--gradient:linear-gradient(135deg,#d97706,#fbbf24)">🕐</div><div class="stat-info"><span class="stat-value" style="font-size:0.9rem">${stats.last_collected ? stats.last_collected.slice(0,16) : '-'}</span><span class="stat-label">마지막 수집</span></div></div>
             `;
@@ -8181,7 +8181,7 @@ async function loadAdminSystemInfo() {
         ];
         grid.innerHTML = items.map(item => `
             <div class="stat-card" style="--delay:0;cursor:default">
-                <div class="stat-icon" style="--gradient:linear-gradient(135deg,#4f46e5,#8b5cf6);font-size:1.2rem">${item.icon}</div>
+                <div class="stat-icon" style="--gradient:linear-gradient(135deg,#ff6000,#ff8033);font-size:1.2rem">${item.icon}</div>
                 <div class="stat-info">
                     <span class="stat-value" style="font-size:1rem">${escapeHTML(item.value)}</span>
                     <span class="stat-label">${escapeHTML(item.label)}</span>
@@ -8342,7 +8342,7 @@ async function loadCafe() {
 
             return `
                 <div class="cafe-post-card" style="background: var(--bg-card-solid); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow); transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;"
-                    onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 32px rgba(99,102,241,0.15)';this.style.borderColor='rgba(99,102,241,0.3)'"
+                    onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 32px rgba(255,96,0,0.15)';this.style.borderColor='rgba(255,96,0,0.3)'"
                     onmouseleave="this.style.transform='';this.style.boxShadow='';this.style.borderColor=''">
                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
                         <div>
@@ -8754,7 +8754,7 @@ async function saveEmailSettings() {
         background:linear-gradient(135deg, var(--accent), var(--accent-purple));
         color:white; border:none; font-size:1.2rem; font-weight:700;
         cursor:pointer; opacity:0; transform:translateY(20px);
-        transition:all 0.3s ease; box-shadow:0 4px 16px rgba(99,102,241,0.4);
+        transition:all 0.3s ease; box-shadow:0 4px 16px rgba(255,96,0,0.4);
         display:flex; align-items:center; justify-content:center;
     `;
     document.body.appendChild(btn);
@@ -8848,7 +8848,7 @@ async function saveEmailSettings() {
         draw() {
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(99, 102, 241, ${this.alpha})`;
+            ctx.fillStyle = `rgba(255, 96, 0, ${this.alpha})`;
             ctx.fill();
         }
     }
@@ -9179,21 +9179,21 @@ function _buildPolicyCardHtml(p) {
 
     const budgetDisplay = p.budget > 0
         ? (p.budget >= 100000000
-            ? '<strong style="color:#6366f1">' + (p.budget / 100000000).toFixed(1) + '억원</strong>'
-            : '<strong style="color:#6366f1">' + (p.budget / 10000).toFixed(0) + '만원</strong>')
+            ? '<strong style="color:#ff6000">' + (p.budget / 100000000).toFixed(1) + '억원</strong>'
+            : '<strong style="color:#ff6000">' + (p.budget / 10000).toFixed(0) + '만원</strong>')
         : '<span style="color:var(--text-muted)">예산 미정</span>';
 
     const metadata = p.metadata || {};
     const hasFiles = metadata.attachment_files && metadata.attachment_files.length > 0;
     const kwChips = keywords.slice(0, 5).map(function(k) {
-        return '<span style="font-size:0.68rem;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);border-radius:4px;padding:2px 7px;color:#a5b4fc">#' + escapeHTML(k) + '</span>';
+        return '<span style="font-size:0.68rem;background:rgba(255,96,0,0.12);border:1px solid rgba(255,96,0,0.2);border-radius:4px;padding:2px 7px;color:#a5b4fc">#' + escapeHTML(k) + '</span>';
     }).join(' ');
     const moreKw = keywords.length > 5 ? '<span style="font-size:0.68rem;color:var(--text-muted);padding:2px 6px">+' + (keywords.length - 5) + '</span>' : '';
 
     return '<div class="card glass-panel" ' +
         'style="padding:20px;border-radius:16px;display:flex;flex-direction:column;gap:12px;cursor:pointer;transition:transform 0.2s ease,box-shadow 0.2s ease;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.06)" ' +
         'onclick="openPolicyDetailModal(' + p.id + ')" ' +
-        'onmouseenter="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 12px 40px rgba(99,102,241,0.2)\'" ' +
+        'onmouseenter="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 12px 40px rgba(255,96,0,0.2)\'" ' +
         'onmouseleave="this.style.transform=\'\';this.style.boxShadow=\'\'">' +
         '<div style="display:flex;justify-content:space-between;align-items:center">' +
             '<span style="font-size:0.72rem;font-weight:700;color:var(--neon-primary);background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.2);padding:3px 10px;border-radius:20px">🗺️ ' + escapeHTML(p.region || '-') + '</span>' +
@@ -9327,7 +9327,7 @@ async function openPolicyDetailModal(policyId) {
             : '예산 미정';
 
         const kwHtml = keywords.map(function(k) {
-            return '<span style="font-size:0.75rem;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:3px 10px;color:#a5b4fc">#' + escapeHTML(k) + '</span>';
+            return '<span style="font-size:0.75rem;background:rgba(255,96,0,0.1);border:1px solid rgba(255,96,0,0.2);border-radius:6px;padding:3px 10px;color:#a5b4fc">#' + escapeHTML(k) + '</span>';
         }).join('');
 
         const filesHtml = (metadata.attachment_files || []).map(function(f) {
@@ -9345,10 +9345,10 @@ async function openPolicyDetailModal(policyId) {
                 '<h2 style="font-size:1.05rem;font-weight:700;line-height:1.5;color:var(--text-primary);margin:0 0 18px">' + escapeHTML(p.title) + '</h2>' +
                 '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">' +
                     '<div style="background:rgba(255,255,255,0.02);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04)"><div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px">담당 부서</div><div style="font-size:0.82rem;font-weight:600">' + escapeHTML(p.department || '-') + '</div></div>' +
-                    '<div style="background:rgba(255,255,255,0.02);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04)"><div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px">예산 규모</div><div style="font-size:0.82rem;font-weight:700;color:#6366f1">' + budgetDisplay + '</div></div>' +
+                    '<div style="background:rgba(255,255,255,0.02);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.04)"><div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:4px">예산 규모</div><div style="font-size:0.82rem;font-weight:700;color:#ff6000">' + budgetDisplay + '</div></div>' +
                 '</div>' +
-                '<div style="background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);padding:14px;border-radius:12px;margin-bottom:18px">' +
-                    '<div style="font-size:0.75rem;font-weight:700;color:#6366f1;margin-bottom:8px">🤖 AI NLP 분석 요약</div>' +
+                '<div style="background:rgba(255,96,0,0.06);border:1px solid rgba(255,96,0,0.15);padding:14px;border-radius:12px;margin-bottom:18px">' +
+                    '<div style="font-size:0.75rem;font-weight:700;color:#ff6000;margin-bottom:8px">🤖 AI NLP 분석 요약</div>' +
                     '<div style="font-size:0.82rem;color:var(--text-secondary);line-height:1.7">' + escapeHTML(p.ai_summary || 'AI 분석 실행 시 요약이 생성됩니다.') + '</div>' +
                 '</div>' +
                 '<div style="background:rgba(255,255,255,0.02);padding:14px;border-radius:12px;margin-bottom:18px;border:1px solid rgba(255,255,255,0.04)">' +
@@ -9356,7 +9356,7 @@ async function openPolicyDetailModal(policyId) {
                     '<div style="font-size:0.8rem;color:var(--text-muted);line-height:1.7;max-height:130px;overflow-y:auto">' + escapeHTML(p.content || '-') + '</div>' +
                 '</div>' +
                 (kwHtml ? '<div style="margin-bottom:18px"><div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);margin-bottom:8px">🏷️ 핵심 키워드</div><div style="display:flex;flex-wrap:wrap;gap:6px">' + kwHtml + '</div></div>' : '') +
-                (metadata.source_url ? '<div style="margin-bottom:14px"><div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);margin-bottom:6px">🌐 원문 출처</div><a href="' + escapeHTML(metadata.source_url) + '" target="_blank" rel="noopener" style="font-size:0.8rem;color:#6366f1;text-decoration:none;word-break:break-all">' + escapeHTML(metadata.source_url) + '</a></div>' : '') +
+                (metadata.source_url ? '<div style="margin-bottom:14px"><div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);margin-bottom:6px">🌐 원문 출처</div><a href="' + escapeHTML(metadata.source_url) + '" target="_blank" rel="noopener" style="font-size:0.8rem;color:#ff6000;text-decoration:none;word-break:break-all">' + escapeHTML(metadata.source_url) + '</a></div>' : '') +
                 (filesHtml ? '<div style="margin-bottom:14px"><div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);margin-bottom:6px">📎 첨부파일</div><div style="display:flex;flex-direction:column;gap:4px">' + filesHtml + '</div></div>' : '') +
                 (metadata.officer_contact ? '<div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:14px">📞 담당자: ' + escapeHTML(metadata.officer_contact) + '</div>' : '') +
                 '<div style="border-top:1px solid rgba(255,255,255,0.05);padding-top:12px;font-size:0.72rem;color:var(--text-muted)">수집일: ' + (p.collected_at ? p.collected_at.split(' ')[0] : '-') + ' · ID: ' + p.id + '</div>' +
@@ -9460,10 +9460,10 @@ async function loadProposals(keyword = "") {
                 ? `<button class="btn btn-ghost btn-xs" style="color:var(--danger); background:rgba(239,68,68,0.08); padding:4px 8px; border-radius:6px" onclick="deleteProposal(${prop.id})">✕ 삭제</button>`
                 : '';
             
-            let categoryColor = '#6366f1';
+            let categoryColor = '#ff6000';
             if (prop.category === '기획서') categoryColor = '#10b981';
             else if (prop.category === '템플릿') categoryColor = '#f59e0b';
-            else if (prop.category === '기타') categoryColor = '#8b5cf6';
+            else if (prop.category === '기타') categoryColor = '#ff8033';
 
             return `
                 <div class="policy-card" style="display:flex; flex-direction:column; justify-content:space-between; min-height:160px">
@@ -9730,17 +9730,17 @@ function renderPartnersList(partners) {
             let badgeStyle = 'background:rgba(245,158,11,0.15);color:#fbbf24;font-weight:700;';
             if (score >= 80) {
                 badgeClass = 'badge-purple';
-                badgeStyle = 'background:linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(139,92,246,0.2) 100%);color:#c084fc;border:1px solid rgba(139,92,246,0.3);font-weight:800;';
+                badgeStyle = 'background:linear-gradient(135deg, rgba(255,96,0,0.2) 0%, rgba(139,92,246,0.2) 100%);color:#c084fc;border:1px solid rgba(139,92,246,0.3);font-weight:800;';
             } else if (score >= 60) {
                 badgeClass = 'badge-cyan';
                 badgeStyle = 'background:rgba(6,182,212,0.15);color:#22d3ee;font-weight:700;';
             }
-            matchScoreBadge = `<span class="tag-badge ${badgeClass}" style="font-size:0.75rem;padding:3px 10px;border-radius:20px;letter-spacing:0.02em;box-shadow:0 0 10px rgba(99,102,241,0.1);${badgeStyle}">🎯 궁합도 ${score}%</span>`;
+            matchScoreBadge = `<span class="tag-badge ${badgeClass}" style="font-size:0.75rem;padding:3px 10px;border-radius:20px;letter-spacing:0.02em;box-shadow:0 0 10px rgba(255,96,0,0.1);${badgeStyle}">🎯 궁합도 ${score}%</span>`;
             
             if (p.match_reasons && p.match_reasons.length > 0) {
-                const reasonsList = p.match_reasons.map(r => `<li style="margin-bottom:3px;position:relative;padding-left:12px;"><span style="position:absolute;left:0;color:#818cf8;">•</span>${escapeHTML(r)}</li>`).join('');
+                const reasonsList = p.match_reasons.map(r => `<li style="margin-bottom:3px;position:relative;padding-left:12px;"><span style="position:absolute;left:0;color:#ff8033;">•</span>${escapeHTML(r)}</li>`).join('');
                 matchReasonsHtml = `
-                    <div style="margin-top:10px;padding:10px 12px;background:rgba(99,102,241,0.04);border-left:3px solid #6366f1;border-radius:0 8px 8px 0;font-size:0.73rem;color:var(--text-secondary);">
+                    <div style="margin-top:10px;padding:10px 12px;background:rgba(255,96,0,0.04);border-left:3px solid #ff6000;border-radius:0 8px 8px 0;font-size:0.73rem;color:var(--text-secondary);">
                         <div style="font-weight:700;margin-bottom:4px;color:#a5b4fc;display:flex;align-items:center;gap:4px;">✨ 추천 매칭 요인</div>
                         <ul style="list-style:none;padding:0;margin:0;line-height:1.4;">${reasonsList}</ul>
                     </div>
@@ -9753,7 +9753,7 @@ function renderPartnersList(partners) {
         // 홈페이지, 회사소개서, 소셜 네트워크 배지 HTML 생성
         let contactBadges = [];
         if (p.website_url) {
-            contactBadges.push(`<a href="${escapeHTML(p.website_url)}" target="_blank" class="tag-badge" style="font-size:0.68rem;padding:2px 8px;text-decoration:none;color:#818cf8;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);display:inline-flex;align-items:center;gap:2px" title="홈페이지 새창 열기">🌐 홈페이지</a>`);
+            contactBadges.push(`<a href="${escapeHTML(p.website_url)}" target="_blank" class="tag-badge" style="font-size:0.68rem;padding:2px 8px;text-decoration:none;color:#ff8033;background:rgba(255,96,0,0.1);border:1px solid rgba(255,96,0,0.2);display:inline-flex;align-items:center;gap:2px" title="홈페이지 새창 열기">🌐 홈페이지</a>`);
         }
         if (p.intro_file_url) {
             contactBadges.push(`<a href="${escapeHTML(p.intro_file_url)}" target="_blank" class="tag-badge" style="font-size:0.68rem;padding:2px 8px;text-decoration:none;color:#34d399;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);display:inline-flex;align-items:center;gap:2px" title="회사소개서 다운로드">📄 소개서</a>`);
@@ -9772,7 +9772,7 @@ function renderPartnersList(partners) {
                         <h3 style="font-size:1.05rem;font-weight:700;margin:0;color:var(--text-primary)">${escapeHTML(p.company_name)}</h3>
                         <div style="display:flex;gap:4px;align-items:center">
                             ${matchScoreBadge}
-                            <span class="sm-ai-badge" style="font-size:0.68rem;padding:2px 8px;background:rgba(99,102,241,0.15);color:#a5b4fc">${escapeHTML(p.credit_rating || 'BBB')}</span>
+                            <span class="sm-ai-badge" style="font-size:0.68rem;padding:2px 8px;background:rgba(255,96,0,0.15);color:#a5b4fc">${escapeHTML(p.credit_rating || 'BBB')}</span>
                         </div>
                     </div>
                     <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:12px">대표: ${escapeHTML(p.ceo_name || '-')} | 규모: ${escapeHTML(p.company_type || '중소기업')}</div>
