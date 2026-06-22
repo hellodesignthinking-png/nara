@@ -329,6 +329,8 @@ async def delete_business(
 async def parse_business_document(
     file: UploadFile = File(..., description="사업자등록증 또는 재무제표 파일"),
     doc_type: str = Query("auto", description="문서 유형: registration, financial, auto"),
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
 ):
     """
     사업자등록증 또는 재무제표를 업로드하면 AI가 자동으로 정보를 추출합니다.
@@ -349,17 +351,21 @@ async def parse_business_document(
         raise HTTPException(status_code=413, detail="파일 크기가 20MB를 초과합니다.")
 
     filename = file.filename or "unknown.pdf"
-    logger.info("사업자 문서 업로드: %s (%d bytes, type=%s)", filename, len(content), doc_type)
+    logger.info("사업자 문서 업로드: %s (%d bytes, type=%s) [유저: %s]", filename, len(content), doc_type, username)
 
     try:
         from src.parsers.business_doc_parser import BusinessDocParser
 
         config = load_config()
-        user_settings = _load_settings()
-        llm_engine = user_settings.get('llm_engine', getattr(config, 'llm_engine', 'gemini'))
+        user_ai_settings = db.get_user_ai_settings(username) or {}
+        user_openai = user_ai_settings.get("openai_api_key")
+        user_gemini = user_ai_settings.get("gemini_api_key")
+        user_engine = user_ai_settings.get("llm_engine")
+        
+        llm_engine = user_engine or getattr(config, 'llm_engine', 'gemini')
         parser = BusinessDocParser(
-            openai_api_key=config.openai_api_key,
-            gemini_api_key=getattr(config, 'gemini_api_key', ''),
+            openai_api_key=user_openai or config.openai_api_key,
+            gemini_api_key=user_gemini or getattr(config, 'gemini_api_key', ''),
             engine=llm_engine,
         )
         result = parser.parse_business_doc(content, filename, doc_type)
@@ -380,6 +386,8 @@ async def parse_business_document(
 @router.post("/businesses/parse-docs", summary="복수 문서 업로드 → 정보 병합")
 async def parse_multiple_business_docs(
     files: list[UploadFile] = File(..., description="사업자등록증 + 재무제표 등 복수 파일"),
+    username: str = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
 ):
     """
     여러 문서를 한 번에 업로드하여 정보를 병합합니다.
@@ -398,11 +406,15 @@ async def parse_multiple_business_docs(
         from src.parsers.business_doc_parser import BusinessDocParser
 
         config = load_config()
-        user_settings = _load_settings()
-        llm_engine = user_settings.get('llm_engine', getattr(config, 'llm_engine', 'gemini'))
+        user_ai_settings = db.get_user_ai_settings(username) or {}
+        user_openai = user_ai_settings.get("openai_api_key")
+        user_gemini = user_ai_settings.get("gemini_api_key")
+        user_engine = user_ai_settings.get("llm_engine")
+        
+        llm_engine = user_engine or getattr(config, 'llm_engine', 'gemini')
         parser = BusinessDocParser(
-            openai_api_key=config.openai_api_key,
-            gemini_api_key=getattr(config, 'gemini_api_key', ''),
+            openai_api_key=user_openai or config.openai_api_key,
+            gemini_api_key=user_gemini or getattr(config, 'gemini_api_key', ''),
             engine=llm_engine,
         )
 
@@ -936,18 +948,23 @@ async def generate_collaboration_proposal_ai_draft(
         config = load_config()
         user_settings = db.get_user_ai_settings(username)
         user_settings_dict = user_settings if user_settings else {}
-        llm_engine = user_settings_dict.get('llm_engine', getattr(config, 'llm_engine', 'gemini'))
+        
+        user_openai_api_key = user_settings_dict.get("openai_api_key")
+        user_gemini_api_key = user_settings_dict.get("gemini_api_key")
+        user_llm_engine = user_settings_dict.get("llm_engine")
+        
+        llm_engine = user_llm_engine or getattr(config, 'llm_engine', 'gemini')
         
         has_llm = False
         api_key = ""
         model_name = "gemini-2.5-flash"
         
         if llm_engine == "gemini":
-            api_key = getattr(config, "gemini_api_key", "")
+            api_key = user_gemini_api_key or getattr(config, "gemini_api_key", "")
             model_name = getattr(config, "gemini_model", "gemini-2.5-flash")
             has_llm = bool(api_key)
         else:
-            api_key = getattr(config, "openai_api_key", "")
+            api_key = user_openai_api_key or getattr(config, "openai_api_key", "")
             model_name = getattr(config, "openai_model", "gpt-4o-mini")
             has_llm = bool(api_key)
 

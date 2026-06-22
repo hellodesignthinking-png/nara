@@ -203,6 +203,7 @@ async def get_bids(
     org_name: Optional[str] = Query(None, description="발주기관명 검색"),
     limit: int = Query(50, ge=1, le=500, description="최대 반환 건수"),
     smart_fetch: bool = Query(False, description="True면 DB 결과 부족 시 API 수집 후 저장"),
+    only_private: bool = Query(False, description="True면 수의계약 가능 용역만 필터링"),
     db: DatabaseManager = Depends(get_db),
 ):
     """
@@ -212,7 +213,7 @@ async def get_bids(
     - smart_fetch=true: DB 결과가 부족하면 API 수집 후 DB에 저장하고 반환
     """
     try:
-        bids = db.search_bids(keyword=keyword, org_name=org_name, limit=limit)
+        bids = db.search_bids(keyword=keyword, org_name=org_name, limit=limit, only_private=only_private)
 
         # 스마트 페치: DB에 결과가 없거나 부족하면 API 수집 후 저장
         if smart_fetch and keyword and len(bids) < 5:
@@ -233,7 +234,7 @@ async def get_bids(
                     saved = db.save_bids(new_bids)
                     logger.info("스마트 페치: %d건 수집 → %d건 신규 저장 (키워드: %s)", len(new_bids), saved, keyword)
                     # 저장 후 다시 DB에서 조회
-                    bids = db.search_bids(keyword=keyword, org_name=org_name, limit=limit)
+                    bids = db.search_bids(keyword=keyword, org_name=org_name, limit=limit, only_private=only_private)
             except Exception as fetch_err:
                 logger.warning("스마트 페치 수집 실패 (DB 결과 반환): %s", fetch_err)
 

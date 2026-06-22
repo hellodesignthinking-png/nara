@@ -239,7 +239,7 @@ class BidAnnouncement:
             bid_close_dt=data.get("bid_close_dt", data.get("bidClseDt")),
             category=category,
             bid_method=data.get("bid_method", data.get("bidMethdNm")),
-            contract_method=data.get("contract_method", data.get("cntrctMthdNm")),
+            contract_method=data.get("contract_method", data.get("cntrctCnclsMthdNm", data.get("cntrctMthdNm"))),
             region=data.get("region", data.get("rgstTyNm")),
             license_limit=data.get("license_limit", data.get("lmtGrpNm")),
             rfp_url=data.get("rfp_url"),

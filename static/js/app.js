@@ -537,13 +537,12 @@ function loadFavorites() {
             else if (daysLeft !== null && daysLeft <= 7) deadlineClass = 'soon';
             const deadlineBadge = daysLeft !== null ? `<span class="fav-card-deadline ${deadlineClass}">${formatDaysLeft(f.bid_close_dt)}</span>` : '';
 
-            // AI 적합도 배지 렌더링
-            let scoreColor = '#ef4444';
-            if (f.match_score >= 80) scoreColor = '#10b981';
-            else if (f.match_score >= 50) scoreColor = '#eab308';
-            const scoreDisplay = f.match_score !== undefined
-                ? `<span class="fav-score-badge" style="background:rgba(255,255,255,0.04); border:1px solid ${scoreColor}; color:${scoreColor}; padding:2px 8px; border-radius:12px; font-size:0.72rem; font-weight:700; display:inline-flex; align-items:center; gap:4px">🎯 적합도 ${Math.round(f.match_score)}%</span>`
-                : '';
+            // AI 적합도 배지 렌더링 (지원매치 등급화 벤치마크)
+            let scoreDisplay = '';
+            if (f.match_score !== undefined) {
+                const gradeInfo = getFitGrade(f.match_score);
+                scoreDisplay = `<span class="fav-score-badge" style="background:rgba(255,255,255,0.04); border:1px solid ${gradeInfo.color}; color:${gradeInfo.color}; padding:2px 8px; border-radius:12px; font-size:0.72rem; font-weight:700; display:inline-flex; align-items:center; gap:4px">${gradeInfo.emoji} ${gradeInfo.grade}등급 (${Math.round(f.match_score)}%)</span>`;
+            }
 
             return `
                 <div class="fav-pipeline-card ${isExpired ? 'expired' : ''}" onclick="openFavDetail('${escapeHTML(f.bid_ntce_no)}')">
@@ -1569,8 +1568,8 @@ async function loadDashboard() {
     try {
         dashboardStats = await api('GET', '/dashboard/stats');
         if (dashboardStats) {
-            animateCounter('stat-businesses', dashboardStats.businesses || 0);
             animateCounter('stat-bids', dashboardStats.bids || 0);
+            animateCounterFloat('stat-avg-score', dashboardStats.avg_score || 0.0);
             animateCounter('stat-analyses', dashboardStats.analyses || 0);
             animateCounter('stat-urgent', dashboardStats.urgent_count || 0);
 
@@ -1595,7 +1594,7 @@ async function loadDashboard() {
         }
     } catch (err) {
         console.warn('대시보드 통계 로드 실패:', err.message);
-        ['stat-businesses', 'stat-bids', 'stat-analyses', 'stat-urgent'].forEach(id => {
+        ['stat-bids', 'stat-avg-score', 'stat-analyses', 'stat-urgent'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.textContent = '-';
         });
@@ -1671,7 +1670,12 @@ async function loadDashboard() {
 
             const allDone = steps.every(s => s.done);
             if (allDone) {
-                guideEl.innerHTML = '<span style="color:var(--success)">✅ 모든 설정이 완료되었습니다! 공고를 검토하고 입찰에 참여하세요.</span>';
+                guideEl.innerHTML = `
+                    <div class="onboard-complete-wrap">
+                        <span class="onboard-complete-icon">✨</span>
+                        <span class="onboard-complete-text">모든 설정 완료! 공고를 검토하고 입찰에 참여해 보세요.</span>
+                    </div>
+                `;
             } else {
                 guideEl.innerHTML = steps.map((s, i) => `
                     <span class="onboard-step ${s.done ? 'done' : ''}" onclick="${s.action}" style="cursor:${s.done ? 'default' : 'pointer'}">
@@ -1729,14 +1733,20 @@ async function loadDashboard() {
 
     if (nextAction && nextTextEl) {
         const d = getDaysLeft(nextAction.fav.bid_close_dt);
-        const title = nextAction.fav.title?.substring(0, 28) || nextAction.fav.bid_ntce_no;
-        nextTextEl.textContent = `${title} → ${nextAction.item.label}`;
+        const title = nextAction.fav.title || nextAction.fav.bid_ntce_no;
+        nextTextEl.innerHTML = `
+            <div class="next-action-wrapper">
+                <span class="next-action-title-chip" title="${escapeHTML(title)}">${escapeHTML(title)}</span>
+                <span class="next-action-arrow">→</span>
+                <span class="next-action-task-badge">${escapeHTML(nextAction.item.label)}</span>
+            </div>
+        `;
         if (heroNextAction) {
             heroNextAction.onclick = () => openFavDetail(nextAction.fav.bid_ntce_no);
             heroNextAction.style.cursor = 'pointer';
         }
     } else if (nextTextEl) {
-        nextTextEl.textContent = favs.length > 0 ? '체크리스트를 채워보세요' : '공고를 수집해보세요';
+        nextTextEl.innerHTML = `<span style="color:var(--text-muted); font-size:0.85rem">${favs.length > 0 ? '체크리스트를 채워보세요' : '공고를 수집해보세요'}</span>`;
     }
 
     // 입찰 파이프라인 요약
@@ -1783,6 +1793,9 @@ async function loadDashboard() {
     } else if (pipelineEl) {
         pipelineEl.style.display = 'none';
     }
+
+    // 🔔 실시간 공고 수집 세로 타임라인 다이어그램 로드
+    renderCollectionTimeline();
 }
 
 function renderRecentAnalyses(analyses) {
@@ -1940,6 +1953,16 @@ function renderBids(bids) {
         }
 
         const isCompared = compareList.some(item => item.bidNo === bid.bid_ntce_no);
+        
+        // 수의계약 여부 판정 (로컬 바인딩용)
+        const contractMethod = bid.contract_method || '';
+        const title = bid.title || '';
+        const budget = parseFloat(bid.budget) || 0;
+        const isPrivate = contractMethod.includes('수의') || 
+                          title.includes('소액수의') || 
+                          title.includes('수의계약') || 
+                          (budget <= 20000000 && budget > 0);
+
         return `
         <tr data-bid-no="${escapeHTML(bid.bid_ntce_no)}" class="bid-row-toggle ${isFav ? 'bid-row-fav' : ''} ${badgeClass === 'closed' ? 'bid-row-expired' : ''}" style="cursor:pointer">
             <td>
@@ -1952,12 +1975,21 @@ function renderBids(bids) {
             </td>
             <td class="td-title" title="${escapeHTML(bid.title || '')}">
                 ${isFav ? '<span style="color:#f59e0b">⭐</span> ' : ''}${escapeHTML(bid.title || '-')}
-                <div class="td-keywords">${kwChips}${bid.license_limit ? `<span class="kw-chip" style="background:rgba(239,68,68,0.1);color:var(--danger);border-color:rgba(239,68,68,0.3)">⚠ ${escapeHTML(bid.license_limit.substring(0, 20))}</span>` : ''}</div>
+                <div class="td-keywords">
+                    ${kwChips}
+                    ${isPrivate ? `<span class="kw-chip" style="background:rgba(245,158,11,0.15);color:#d97706;border-color:rgba(245,158,11,0.3)">🪙 소액수의</span>` : ''}
+                    ${bid.license_limit ? `<span class="kw-chip" style="background:rgba(239,68,68,0.1);color:var(--danger);border-color:rgba(239,68,68,0.3)">⚠ ${escapeHTML(bid.license_limit.substring(0, 20))}</span>` : ''}
+                </div>
             </td>
             <td>${escapeHTML(bid.org_name || '-')}</td>
             <td class="td-budget">${displayBudget(bid.budget)}</td>
             <td><span class="bid-status-badge ${badgeClass}">${daysLeftText}</span></td>
-            <td><span class="relevance-badge ${parseInt(score) >= 70 ? 'score-high' : parseInt(score) >= 40 ? 'score-mid' : 'score-low'}">${score}점</span></td>
+            <td>
+                <div style="display:inline-flex;align-items:center;gap:4px">
+                    <span class="grade-badge ${getFitGrade(parseInt(score)).class}" title="적합도 등급: ${getFitGrade(parseInt(score)).grade}">${getFitGrade(parseInt(score)).grade}</span>
+                    <span class="relevance-badge ${parseInt(score) >= 70 ? 'score-high' : parseInt(score) >= 40 ? 'score-mid' : 'score-low'}">${score}점</span>
+                </div>
+            </td>
             <td style="text-align:center">
                 <button class="btn-mini-fav ${isFav ? 'active' : ''}"
                     onclick="event.stopPropagation(); toggleFavFromBid('${escapeHTML(bid.bid_ntce_no)}', this.closest('tr').querySelector('.td-title').textContent.trim(), '${escapeHTML((bid.org_name||'').replace(/'/g,''))}', '${bid.budget||''}', '${escapeHTML(bid.bid_close_dt||'')}', this); this.textContent=this.classList.contains('active')?'⭐':'☆'; this.closest('tr').classList.toggle('bid-row-fav')"
@@ -2028,7 +2060,7 @@ function renderBids(bids) {
                         </div>
                         <div class="bid-detail-item">
                             <span class="bid-detail-label">적합도</span>
-                            <span class="bid-detail-value"><span class="relevance-badge ${parseInt(score) >= 70 ? 'score-high' : parseInt(score) >= 40 ? 'score-mid' : 'score-low'}">${score}점 ${getScoreGrade(parseInt(score))}</span></span>
+                            <span class="bid-detail-value"><span class="relevance-badge ${parseInt(score) >= 70 ? 'score-high' : parseInt(score) >= 40 ? 'score-mid' : 'score-low'}"><span class="grade-badge ${getFitGrade(parseInt(score)).class}" style="width:16px;height:16px;font-size:0.65rem;margin-right:2px">${getFitGrade(parseInt(score)).grade}</span>${score}점 (${getScoreGrade(parseInt(score))})</span></span>
                         </div>
                         ${bid.bid_begin_dt ? `<div class="bid-detail-item">
                             <span class="bid-detail-label">입찰개시</span>
@@ -3090,6 +3122,286 @@ function formatDate(dateStr) {
         console.warn('날짜 포맷 실패', e);
         return dateStr;
     }
+}
+
+// AI 제안서 다운로드 전역 변수
+let _lastProposalOutline = '';
+let _lastProposalBidNo = '';
+let _lastProposalBidTitle = '';
+
+async function renderCollectionTimeline(bidsData) {
+    const container = document.getElementById('live-collection-timeline');
+    if (!container) return;
+
+    let list = bidsData;
+    if (!list || list.length === 0) {
+        try {
+            // 비동기로 최신 공고 리스트 조회
+            list = await api('GET', '/bids?limit=10');
+        } catch (e) {
+            list = [];
+        }
+    }
+    if (!list || list.length === 0) {
+        list = window._bids || [];
+    }
+
+    if (!list || list.length === 0) {
+        container.innerHTML = `<div style="color:var(--text-muted); font-size:0.82rem; text-align:center; padding:30px 0">⏳ 수집된 입찰 공고가 없습니다. 키워드를 먼저 등록해 보세요.</div>`;
+        return;
+    }
+
+    // 최근 수집일(collected_at) 또는 등록일 순으로 최대 4개 정렬
+    const sorted = [...list].sort((a, b) => {
+        const dateA = a.collected_at || a.bid_begin_dt || '';
+        const dateB = b.collected_at || b.bid_begin_dt || '';
+        return dateB.localeCompare(dateA);
+    }).slice(0, 4);
+
+    let html = '';
+    sorted.forEach((item, index) => {
+        const timeStr = item.collected_at ? item.collected_at.substring(11, 16) : '오늘';
+        const dateStr = item.collected_at ? item.collected_at.substring(5, 10).replace('-', '/') : '';
+        const budgetDisplay = item.budget ? displayBudget(item.budget) : '자체예산';
+        const isRecent = index === 0;
+
+        html += `
+            <div class="timeline-item ${isRecent ? 'recent' : ''}">
+                <div class="timeline-dot"></div>
+                <div class="timeline-content" onclick="openBidDetail('${escapeHTML(item.bid_ntce_no)}')">
+                    <div class="timeline-meta">
+                        <div class="timeline-title">${escapeHTML(item.title)}</div>
+                        <div class="timeline-desc">
+                            <span>🏢 ${escapeHTML(item.org_name || '기관')}</span>
+                            <span>💰 ${budgetDisplay}</span>
+                        </div>
+                    </div>
+                    <div class="timeline-time">${dateStr} ${timeStr}</div>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function renderRadarChart(containerId, scores) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // 기본 축 정의 및 값 세팅 (scores가 없거나 부족할 때를 대비한 Fallback)
+    const axes = [
+        { name: '기술 적합성', value: scores.tech || 80 },
+        { name: '예산 타당성', value: scores.budget || 75 },
+        { name: '실적 충족도', value: scores.perf || 85 },
+        { name: '리스크 관리', value: scores.risk || 70 },
+        { name: '공동수급 강도', value: scores.collab || 80 }
+    ];
+
+    const width = 220;
+    const height = 220;
+    const cx = width / 2;
+    const cy = height / 2;
+    const r = 70; // 최대 반지름
+    const totalAxes = axes.length;
+
+    // 1. 그리드 및 축선 계산
+    let svgContent = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
+    
+    // 그라데이션 정의 (캐릿 오렌지 톤 연계)
+    svgContent += `
+        <defs>
+            <radialGradient id="radar-grad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="rgba(255, 96, 0, 0.08)"/>
+                <stop offset="100%" stop-color="rgba(255, 96, 0, 0.3)"/>
+            </radialGradient>
+        </defs>
+    `;
+
+    // 2. 동심 다각형 그리드 그리기 (5단계: 20%, 40%, 60%, 80%, 100%)
+    for (let g = 1; g <= 5; g++) {
+        const radius = (r / 5) * g;
+        const points = [];
+        for (let i = 0; i < totalAxes; i++) {
+            const angle = (Math.PI * 2 / totalAxes) * i - Math.PI / 2;
+            const x = cx + radius * Math.cos(angle);
+            const y = cy + radius * Math.sin(angle);
+            points.push(`${x},${y}`);
+        }
+        svgContent += `<polygon points="${points.join(' ')}" class="radar-grid-poly" />`;
+    }
+
+    // 2-2. 눈금 수치 드로잉 (Y축 방향 중심선에 텍스트 눈금 가이드 오버레이)
+    for (let g = 2; g <= 5; g++) {
+        const radius = (r / 5) * g;
+        const val = g * 20;
+        const scaleY = cy - radius + 2.5; 
+        svgContent += `<text x="${cx + 5}" y="${scaleY}" style="font-size:6.5px;fill:var(--text-muted);opacity:0.4;font-weight:700;font-family:monospace" text-anchor="start">${val}</text>`;
+    }
+
+    // 3. 축선 및 레이블 그리기
+    for (let i = 0; i < totalAxes; i++) {
+        const angle = (Math.PI * 2 / totalAxes) * i - Math.PI / 2;
+        const destX = cx + r * Math.cos(angle);
+        const destY = cy + r * Math.sin(angle);
+        
+        // 축선
+        svgContent += `<line x1="${cx}" y1="${cy}" x2="${destX}" y2="${destY}" class="radar-axis-line" />`;
+        
+        // 레이블 배치 위치 (반지름보다 약간 바깥쪽)
+        const labelRadius = r + 15;
+        const labelX = cx + labelRadius * Math.cos(angle);
+        let labelY = cy + labelRadius * Math.sin(angle);
+        
+        // 위치 미세 보정 (레이블 겹침 방지)
+        if (Math.abs(Math.cos(angle)) < 0.1) {
+            // 상하 축인 경우
+            labelY += Math.sin(angle) > 0 ? 5 : -5;
+        }
+        
+        svgContent += `<text x="${labelX}" y="${labelY}" class="radar-label">${axes[i].name}</text>`;
+    }
+
+    // 4. 데이터 영역 다각형 그리기
+    const dataPoints = [];
+    axes.forEach((axis, i) => {
+        const angle = (Math.PI * 2 / totalAxes) * i - Math.PI / 2;
+        const valPercent = Math.min(100, Math.max(0, axis.value)) / 100;
+        const x = cx + (r * valPercent) * Math.cos(angle);
+        const y = cy + (r * valPercent) * Math.sin(angle);
+        dataPoints.push(`${x},${y}`);
+    });
+    
+    svgContent += `<polygon points="${dataPoints.join(' ')}" class="radar-chart-area" />`;
+
+    // 5. 데이터 포인트 점 그리기 및 마우스 오버용 툴팁
+    axes.forEach((axis, i) => {
+        const angle = (Math.PI * 2 / totalAxes) * i - Math.PI / 2;
+        const valPercent = Math.min(100, Math.max(0, axis.value)) / 100;
+        const x = cx + (r * valPercent) * Math.cos(angle);
+        const y = cy + (r * valPercent) * Math.sin(angle);
+        
+        svgContent += `
+            <circle cx="${x}" cy="${y}" r="4.5" class="radar-chart-point">
+                <title>${axis.name}: ${axis.value}점</title>
+            </circle>
+        `;
+    });
+
+    svgContent += `</svg>`;
+    container.innerHTML = svgContent;
+}
+
+function getFitGrade(score) {
+    if (score >= 85) return { grade: 'S', class: 'grade-s', color: '#10b981', emoji: '💎' };
+    if (score >= 70) return { grade: 'A', class: 'grade-a', color: '#3b82f6', emoji: '✨' };
+    if (score >= 55) return { grade: 'B', class: 'grade-b', color: '#06b6d4', emoji: '🟢' };
+    if (score >= 40) return { grade: 'C', class: 'grade-c', color: '#f59e0b', emoji: '🟡' };
+    return { grade: 'D', class: 'grade-d', color: '#ef4444', emoji: '🔴' };
+}
+
+function formatMoney(won) {
+    if (won <= 0) return '0 원';
+    if (won >= 100000000) {
+        const eok = Math.floor(won / 100000000);
+        const man = Math.round((won % 100000000) / 10000);
+        return man > 0 ? `${eok}억 ${man.toLocaleString()}만 원` : `${eok}억 원`;
+    }
+    const man = Math.round(won / 10000);
+    return `${man.toLocaleString()}만 원`;
+}
+
+function animateCounterFloat(elementOrId, target, duration = 800) {
+    const el = (typeof elementOrId === 'string') ? document.getElementById(elementOrId) : elementOrId;
+    if (!el) return;
+    const start = parseFloat(el.textContent) || 0;
+    const diff = target - start;
+    if (diff === 0) { el.textContent = target.toFixed(1) + '%'; return; }
+    const startTime = performance.now();
+    function step(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = start + diff * eased;
+        el.textContent = current.toFixed(1) + '%';
+        if (progress < 1) {
+            requestAnimationFrame(step);
+        } else {
+            el.classList.add('counter-done');
+        }
+    }
+    requestAnimationFrame(step);
+}
+
+function downloadProposalDraft() {
+    if (!_lastProposalOutline || _lastProposalOutline === '제안서 기획 정보 없음') {
+        showToast('다운로드할 제안서 초안이 없습니다.', 'error');
+        return;
+    }
+    
+    // 템플릿화된 완성형 제안 기획서 문서 구성
+    const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+    const content = `# [공식 제안서 기획 초안] R&D 및 용역 입찰 사업계획서
+
+## 1. 프로젝트 개요
+- **공고번호**: ${_lastProposalBidNo}
+- **사업명**: ${_lastProposalBidTitle}
+- **작성일자**: ${today}
+- **작성도구**: Bolt Nara AI Engine (Vite Core 1.1)
+
+---
+
+## 2. 제안 배경 및 필요성
+본 제안서는 조달청 나라장터 입찰공고번호 \`${_lastProposalBidNo}\` (\`${_lastProposalBidTitle}\`) 사업 수행을 위해 AI 기반의 시멘틱 RFP 적합도 진단과 핵심 요구사항을 바탕으로 작성되었습니다.
+수요기관의 과업 명세에 부합하는 정량/정성적 지표를 확보하고 사업 성공을 담보하기 위한 구체적인 방법론을 제시합니다.
+
+---
+
+## 3. AI 분석 기반 핵심 요구사항 요약
+${_lastProposalOutline}
+
+---
+
+## 4. R&D 수행 체계 및 기술적 추진 방안
+### 4.1. 과업 수행 프로세스
+- **과업 착수**: 요구사항 세부 정교화 및 핵심 성공인자(CSF) 도출
+- **분석/설계**: 대상 업무 도메인 특성 파악 및 아키텍처 수립
+- **구현 및 통합 테스트**: 단위 모듈별 정합성 검증 및 전체 통합 시스템 테스팅
+- **배포 및 안정화**: 단계별 실 운영 환경 마이그레이션 및 실시간 모니터링 체계 확립
+
+### 4.2. 주요 기술 스택 및 품질 표준
+- 본 과업수행을 위해 최신 아키텍처 규격을 준수하며, 웹 접근성(WA) 및 소프트웨어 웹 표준을 완벽히 이행합니다.
+- 데이터 유출 방지를 위한 보안 인증 정책을 수립하고 모니터링 도구를 탑재합니다.
+
+---
+
+## 5. 공동수급체(컨소시엄) 및 협업 구도 설계
+- **주관사 역할**: 전체 프로젝트 PM(프로젝트 관리), 아키텍처 설계, 최종 품질 책임
+- **참여사 역할**: 세부 과업별 모듈 개발, 단위 및 로컬 데이터 수집/이행, 테스트 지원
+- **분담 비율 시뮬레이션**: 가격 및 기술 점수 극대화를 위한 주관사 지분 60% 이상 권장
+
+---
+
+## 6. 품질 보증 및 리스크 대응 계획
+- **RFP 적격 과락 방지**: 기술 정성평가 통과 기준선 충족을 위해 실시간 품질 감리를 월 1회 수행합니다.
+- **예산 및 일정 초과 관리**: 주간 마일스톤 관리를 통해 임계 범위 이탈 시 백업 인력을 즉시 투입합니다.
+
+---
+
+## 7. 기대효과 및 사후 관리 방안
+- 과업 완료 후 12개월간 무상 유지보수 및 긴급 장애 대응 헬프데스크를 운영합니다.
+- 정기적인 운영 리포트 제공을 통해 시스템 고도화 가이드라인을 무상 지원합니다.
+`;
+
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `제안서초안_${_lastProposalBidNo}.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('제안서 초안 다운로드가 시작되었습니다.', 'success');
 }
 
 function getScoreClass(score) {
@@ -4347,8 +4659,25 @@ async function openStrategyModal(bidNo) {
         if (s.overall_recommendation) {
             proposalHtml += `<h4 style="color:var(--text-primary);margin-top:20px">🎯 종합 권고</h4>` + formatStrategyText(s.overall_recommendation);
         }
+
+        // 전역 상태에 제안서 초안 내용 및 공고 정보 바인딩 (파일 다운로드 연동용)
+        _lastProposalOutline = s.proposal_outline || '제안서 기획 정보 없음';
+        _lastProposalBidNo = bidNo;
+        _lastProposalBidTitle = s.bid_info?.title || result.bid_title || '제안서';
+
         const proposalEl = document.getElementById('stab-proposal-content');
         if (proposalEl) proposalEl.innerHTML = proposalHtml;
+
+        // 📊 방사형 차트 렌더링 호출 (점수 연동형 동적 시각화)
+        const scoreVal = parseInt(score) || 75;
+        const radarScores = {
+            tech: Math.min(100, scoreVal + 2),
+            budget: Math.min(100, Math.max(20, scoreVal - 8)),
+            perf: Math.min(100, scoreVal + 5),
+            risk: Math.min(100, Math.max(10, 110 - scoreVal)), 
+            collab: Math.min(100, Math.max(40, scoreVal - 3))
+        };
+        renderRadarChart('strategy-radar-chart', radarScores);
 
         // 관심공고에 분석 결과 자동 반영
         if (isFavorite(bidNo)) {
@@ -4446,11 +4775,18 @@ function switchStrategyTab(tabEl, contentId) {
         t.classList.remove('active');
         t.setAttribute('aria-selected', 'false');
     });
-    document.querySelectorAll('.strategy-panel').forEach(p => p.classList.remove('active'));
+    
+    // 패널의 active 클래스를 해제하여 페이드아웃 효과 연계
+    document.querySelectorAll('.strategy-panel').forEach(p => {
+        p.classList.remove('active');
+    });
+    
     tabEl.classList.add('active');
     tabEl.setAttribute('aria-selected', 'true');
     const content = document.getElementById(contentId);
-    if (content) content.classList.add('active');
+    if (content) {
+        content.classList.add('active');
+    }
 }
 
 function closeStrategyModal(event) {
@@ -6188,21 +6524,32 @@ async function loadRecurringForecast() {
         }
 
         listEl.innerHTML = forecast.map((f, i) => {
+            // 카테고리/내용에 따른 썸네일 이모지 매핑
+            let emoji = '🔮';
+            if (f.predicted_title.includes('소프트웨어') || f.predicted_title.includes('시스템') || f.predicted_title.includes('개발')) emoji = '💻';
+            else if (f.predicted_title.includes('유지관리') || f.predicted_title.includes('운영')) emoji = '🛠️';
+            else if (f.predicted_title.includes('컨설팅') || f.predicted_title.includes('기획') || f.predicted_title.includes('학술')) emoji = '🧠';
+            else if (f.predicted_title.includes('홍보') || f.predicted_title.includes('행사') || f.predicted_title.includes('디자인')) emoji = '📢';
+
             return `
-                <div class="forecast-card" style="padding:16px;background:var(--bg-card, rgba(255,255,255,0.02));border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden">
-                    <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:linear-gradient(to bottom, var(--accent-indigo, #6366f1), var(--success, #10b981))"></div>
-                    <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
-                        <span style="font-weight:700;font-size:0.85rem;color:var(--text);line-height:1.4">${escapeHTML(f.predicted_title)}</span>
-                        <span class="badge" style="font-size:0.7rem;background:rgba(16,185,129,0.1);color:var(--success);white-space:nowrap">${f.probability}% 신뢰도</span>
+                <div class="forecast-card" style="display:flex;flex-direction:column;gap:12px;position:relative;">
+                    <div style="display:flex;gap:12px;align-items:start;">
+                        <div class="card-thumbnail">${emoji}</div>
+                        <div style="flex:1;">
+                            <div style="display:flex;justify-content:space-between;align-items:start;gap:6px;margin-bottom:4px">
+                                <span style="font-weight:700;font-size:0.88rem;color:var(--text-primary);line-height:1.4">${escapeHTML(f.predicted_title)}</span>
+                            </div>
+                            <span class="badge" style="font-size:0.68rem;background:rgba(255,96,0,0.1);color:#ff6000;border:1px solid rgba(255,96,0,0.2)">${f.probability}% 신뢰도</span>
+                        </div>
                     </div>
-                    <div style="font-size:0.78rem;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;margin-top:4px">
-                        <div style="display:flex;justify-content:space-between"><span>🏢 발주기관:</span><span style="color:var(--text);font-weight:500">${escapeHTML(f.org_name)}</span></div>
-                        <div style="display:flex;justify-content:space-between"><span>💰 평균예산:</span><span style="color:var(--text);font-weight:500">${escapeHTML(f.budget_str)}</span></div>
-                        <div style="display:flex;justify-content:space-between"><span>📅 예상시기:</span><span style="color:var(--text);font-weight:600;color:var(--accent-indigo, #6366f1)">매년 ${f.expected_month}월경 (D-${f.days_left})</span></div>
+                    <div style="font-size:0.78rem;color:var(--text-muted);display:flex;flex-direction:column;gap:4px;background:var(--bg-hover);padding:10px;border-radius:8px;">
+                        <div style="display:flex;justify-content:space-between"><span>🏢 발주기관:</span><span style="color:var(--text-primary);font-weight:600">${escapeHTML(f.org_name)}</span></div>
+                        <div style="display:flex;justify-content:space-between"><span>💰 평균예산:</span><span style="color:var(--text-primary);font-weight:600">${escapeHTML(f.budget_str)}</span></div>
+                        <div style="display:flex;justify-content:space-between"><span>📅 예상시기:</span><span style="color:#ff6000;font-weight:700">매년 ${f.expected_month}월경 (D-${f.days_left})</span></div>
                     </div>
-                    <div style="border-top:1px dashed var(--border);padding-top:8px;margin-top:4px;display:flex;justify-content:space-between;align-items:center">
+                    <div style="border-top:1.5px dashed var(--border);padding-top:8px;display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
                         <span style="font-size:0.7rem;color:var(--text-muted)">수집빈도: 연간 반복 ${f.frequency}회 관측</span>
-                        <button class="btn btn-ghost btn-sm" style="font-size:0.7rem;padding:2px 8px" onclick="navigate('bids'); document.getElementById('ksp-search-input').value='${escapeHTML(f.original_title.substring(0,12))}'; dashboardKeywordSearch()">🔍 사전 검색</button>
+                        <button class="btn btn-ghost btn-sm" style="font-size:0.7rem;padding:2px 8px;border:1.2px solid #000;background:#fff;" onclick="navigate('bids'); document.getElementById('ksp-search-input').value='${escapeHTML(f.original_title.substring(0,12))}'; dashboardKeywordSearch()">🔍 사전 검색</button>
                     </div>
                 </div>`;
         }).join('');
@@ -6243,24 +6590,42 @@ async function loadCompetitorIntelligence() {
         const maxAward = Math.max(...stats.map(s => s.total_award_amount), 1);
 
         bodyEl.innerHTML = `
-            <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:14px">
                 ${stats.map((s, idx) => {
-                    const pct = Math.min(100, Math.max(8, (s.total_award_amount / maxAward) * 100));
                     const formattedAmt = s.total_award_amount >= 100000 
                         ? `${(s.total_award_amount / 100000).toFixed(1)}억 원` 
                         : `${(s.total_award_amount / 1000).toFixed(0)}천만 원`;
+                    
+                    // 미니 도넛 차트 그리기 (SVG)
+                    // 둘레 공식: 2 * PI * r = 2 * 3.1415 * 14 = 87.96
+                    const r = 14;
+                    const strokeCirc = 2 * Math.PI * r;
+                    // 예시로 10건을 최대치로 삼아 점유율 채우기 계산
+                    const ratio = Math.min(1.0, s.win_count / 10);
+                    const offset = strokeCirc * (1 - ratio);
+                    
                     return `
-                        <div style="display:flex;flex-direction:column;gap:4px">
-                            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.8rem">
-                                <span style="font-weight:700;color:var(--text)">
-                                    <span style="color:var(--accent-indigo, #6366f1);margin-right:6px">#${idx+1}</span> ${escapeHTML(s.winner_name)}
-                                </span>
-                                <span style="font-size:0.75rem;color:var(--text-muted)">
-                                    수주 <strong>${s.win_count}건</strong> (${formattedAmt}) | 평균 투찰률 <strong style="color:var(--accent-indigo, #6366f1)">${s.avg_bid_rate}%</strong>
-                                </span>
+                        <div class="competitor-card">
+                            <div class="donut-chart-container" title="수주 빈도 기여도">
+                                <svg width="36" height="36" viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="${r}" fill="none" stroke="var(--bg-light)" stroke-width="3"></circle>
+                                    <circle cx="18" cy="18" r="${r}" fill="none" stroke="#ff6000" stroke-width="4"
+                                            stroke-dasharray="${strokeCirc}" stroke-dashoffset="${offset}"
+                                            transform="rotate(-90 18 18)" stroke-linecap="round"></circle>
+                                </svg>
+                                <span style="position:absolute;font-size:0.7rem;font-weight:800;color:var(--text-primary);top:50%;left:50%;transform:translate(-50%, -50%)">${s.win_count}</span>
                             </div>
-                            <div style="width:100%;height:8px;background:var(--bg-input, rgba(255,255,255,0.05));border-radius:4px;overflow:hidden">
-                                <div style="width:${pct}%;height:100%;background:linear-gradient(to right, #3b82f6, #10b981);border-radius:4px"></div>
+                            <div style="flex:1;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                    <span style="font-weight:700;color:var(--text-primary);font-size:0.85rem">
+                                        <span style="color:#ff6000;margin-right:6px">#${idx+1}</span> ${escapeHTML(s.winner_name)}
+                                    </span>
+                                    <span style="font-size:0.72rem;color:var(--text-muted);font-weight:600">평균 <strong style="color:#ff6000">${s.avg_bid_rate}%</strong></span>
+                                </div>
+                                <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;color:var(--text-secondary);">
+                                    <span>누적액: <strong>${formattedAmt}</strong></span>
+                                    <span style="font-size:0.7rem;color:var(--text-muted)">낙찰 ${s.win_count}건</span>
+                                </div>
                             </div>
                         </div>`;
                 }).join('')}
@@ -6508,6 +6873,14 @@ function updateInteractiveBidSimulation() {
     totalScore = parseFloat(totalScore.toFixed(2));
 
     // 3. UI 바인딩
+    const bidPriceWon = Math.round(_simBidBudget * (rate / 100) * 10000);
+    const netProfitWon = Math.round(bidPriceWon * 0.2);
+
+    const bidPriceEl = document.getElementById('sim-bid-price');
+    const netProfitEl = document.getElementById('sim-net-profit');
+    if (bidPriceEl) bidPriceEl.textContent = formatMoney(bidPriceWon);
+    if (netProfitEl) netProfitEl.textContent = formatMoney(netProfitWon);
+
     const priceScoreEl = document.getElementById('sim-price-score');
     if (priceScoreEl) {
         priceScoreEl.textContent = `${priceScore.toFixed(1)} / ${maxPriceScore.toFixed(0)}`;
@@ -6516,6 +6889,33 @@ function updateInteractiveBidSimulation() {
     const totalScoreEl = document.getElementById('sim-total-score');
     if (totalScoreEl) {
         totalScoreEl.textContent = `${totalScore.toFixed(1)} 점`;
+    }
+
+    // 🌀 SVG 실시간 원형 게이지 차트 업데이트
+    const thresholdValEl = document.getElementById('sim-pass-threshold-val');
+    if (thresholdValEl) {
+        thresholdValEl.textContent = passThreshold.toFixed(1);
+    }
+
+    const gaugeCircle = document.getElementById('sim-gauge-circle');
+    const gaugePercent = document.getElementById('sim-gauge-percent');
+    if (gaugeCircle) {
+        const circumference = 125.6;
+        const scorePercent = Math.min(100, Math.max(0, totalScore)) / 100;
+        const offset = circumference * (1 - scorePercent);
+        gaugeCircle.style.strokeDashoffset = offset;
+        
+        // 점수대에 따라 게이지 색상 변경
+        if (totalScore >= passThreshold) {
+            gaugeCircle.style.stroke = '#10b981'; // green
+        } else if (totalScore >= passThreshold - 10) {
+            gaugeCircle.style.stroke = '#f59e0b'; // orange
+        } else {
+            gaugeCircle.style.stroke = '#ef4444'; // red
+        }
+    }
+    if (gaugePercent) {
+        gaugePercent.textContent = `${Math.round(totalScore)}%`;
     }
 
     const badgeEl = document.getElementById('sim-pass-badge');

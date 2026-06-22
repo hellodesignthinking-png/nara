@@ -151,79 +151,126 @@ async def update_relevance(request: RelevanceUpdateRequest):
 
 
 @router.put("/settings/api-keys", summary="API 키 업데이트")
-async def update_api_keys(request: dict = Body(...), admin: str = Depends(get_admin_user)):
+async def update_api_keys(
+    request: dict = Body(...),
+    current_user: dict = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
     """
-    API 키를 업데이트합니다. .env 파일과 settings.json에 동시 저장합니다.
-
-    지원 키:
-    - data_go_kr_api_key: 공공데이터포털 API 키
-    - naver_client_id: 네이버 Client ID
-    - naver_client_secret: 네이버 Client Secret
-    - openai_api_key: OpenAI API 키
+    API 키를 업데이트합니다.
+    어드민이고 시스템 전체 키를 수정하려는 경우 .env를 업데이트합니다.
+    그 외 일반 사용자 및 AI 키 설정 요청인 경우 사용자의 개인 AI 설정을 업데이트합니다.
     """
     try:
-        env_path = _Path(__file__).resolve().parent.parent.parent.parent / ".env"
-        env_map = {
-            "data_go_kr_api_key": "DATA_GO_KR_API_KEY",
-            "naver_client_id": "NAVER_CLIENT_ID",
-            "naver_client_secret": "NAVER_CLIENT_SECRET",
-            "openai_api_key": "OPENAI_API_KEY",
-            "gemini_api_key": "GEMINI_API_KEY",
-            "llm_engine": "LLM_ENGINE",
-            "youtube_api_key": "YOUTUBE_API_KEY",
-            "kakao_api_key": "KAKAO_API_KEY",
-            "google_analytics_id": "GOOGLE_ANALYTICS_ID",
+        is_admin = current_user.get("is_admin", False) or current_user.get("username") == "admin"
+        
+        # 시스템 전체 설정에 속하는 필드들
+        system_fields = {
+            "data_go_kr_api_key",
+            "naver_client_id",
+            "naver_client_secret",
+            "youtube_api_key",
+            "kakao_api_key",
+            "google_analytics_id"
         }
+        
+        # 요청에 시스템 필드가 하나라도 포함되어 있는지 검사
+        has_system_field = any(field in request for field in system_fields)
+        
+        if has_system_field:
+            if not is_admin:
+                raise HTTPException(status_code=403, detail="시스템 전체 API 키를 변경할 권한이 없습니다.")
+            
+            # 어드민용 시스템 .env 설정 갱신 로직 실행
+            env_path = _Path(__file__).resolve().parent.parent.parent.parent / ".env"
+            env_map = {
+                "data_go_kr_api_key": "DATA_GO_KR_API_KEY",
+                "naver_client_id": "NAVER_CLIENT_ID",
+                "naver_client_secret": "NAVER_CLIENT_SECRET",
+                "openai_api_key": "OPENAI_API_KEY",
+                "gemini_api_key": "GEMINI_API_KEY",
+                "llm_engine": "LLM_ENGINE",
+                "youtube_api_key": "YOUTUBE_API_KEY",
+                "kakao_api_key": "KAKAO_API_KEY",
+                "google_analytics_id": "GOOGLE_ANALYTICS_ID",
+            }
 
-        # .env 파일 읽기
-        env_lines = []
-        if env_path.exists():
-            env_lines = env_path.read_text(encoding="utf-8").splitlines()
+            env_lines = []
+            if env_path.exists():
+                env_lines = env_path.read_text(encoding="utf-8").splitlines()
 
-        updated_keys = []
-        for field, env_var in env_map.items():
-            value = request.get(field)
-            if value is None:
-                continue
-            value = value.strip()
+            updated_keys = []
+            for field, env_var in env_map.items():
+                value = request.get(field)
+                if value is None:
+                    continue
+                value = value.strip()
 
-            # .env 업데이트
-            found = False
-            for i, line in enumerate(env_lines):
-                if line.startswith(f"{env_var}=") or line.startswith(f"# {env_var}="):
-                    env_lines[i] = f"{env_var}={value}"
-                    found = True
-                    break
-            if not found:
-                env_lines.append(f"{env_var}={value}")
+                found = False
+                for i, line in enumerate(env_lines):
+                    if line.startswith(f"{env_var}=") or line.startswith(f"# {env_var}="):
+                        env_lines[i] = f"{env_var}={value}"
+                        found = True
+                        break
+                if not found:
+                    env_lines.append(f"{env_var}={value}")
 
-            # 환경변수도 즉시 반영
+                os.environ[env_var] = value
+                updated_keys.append(field)
 
-            os.environ[env_var] = value
-            updated_keys.append(field)
+            new_content = "\n".join(env_lines) + "\n"
+            temp_fd, temp_path = tempfile.mkstemp(dir=str(env_path.parent))
+            try:
+                with os.fdopen(temp_fd, 'w', encoding='utf-8') as tmp:
+                    tmp.write(new_content)
+                os.rename(temp_path, str(env_path))
+            except Exception:
+                os.unlink(temp_path)
+                raise
 
-        # .env 저장 (atomic write: tempfile + rename)
-        new_content = "\n".join(env_lines) + "\n"
-        temp_fd, temp_path = tempfile.mkstemp(dir=str(env_path.parent))
-        try:
-            with os.fdopen(temp_fd, 'w', encoding='utf-8') as tmp:
-                tmp.write(new_content)
-            os.rename(temp_path, str(env_path))
-        except Exception:
-            os.unlink(temp_path)
-            raise
+            try:
+                reload_config()
+            except Exception:
+                pass
 
-        # Config 캐시 무효화 — 다음 load_config() 호출 시 새로운 환경변수 반영
-        try:
-            reload_config()
-        except Exception:
-            pass
-
-        logger.info("API 키 업데이트: %s", updated_keys)
+            logger.info("시스템 API 키 업데이트(어드민): %s", updated_keys)
+            return {
+                "message": f"시스템 API 키가 업데이트되었습니다: {', '.join(updated_keys)}",
+                "updated": updated_keys,
+            }
+        
+        # 개인 AI 설정 갱신 로직 실행 (openai_api_key, gemini_api_key, llm_engine)
+        openai_key = request.get("openai_api_key")
+        gemini_key = request.get("gemini_api_key")
+        llm_engine = request.get("llm_engine")
+        
+        ai_settings = {}
+        if openai_key is not None:
+            ai_settings["openai_api_key"] = openai_key
+        if gemini_key is not None:
+            ai_settings["gemini_api_key"] = gemini_key
+        if llm_engine is not None:
+            ai_settings["llm_engine"] = llm_engine
+            
+        if not ai_settings:
+            raise HTTPException(status_code=400, detail="변경할 AI 키 또는 설정을 입력해주세요.")
+            
+        username = current_user.get("username")
+        # 기존 user_ai_settings를 가져와 덮어씌움
+        existing = db.get_user_ai_settings(username) or {}
+        for k, v in ai_settings.items():
+            existing[k] = v
+            
+        success = db.save_user_ai_settings(username, existing)
+        if not success:
+            raise HTTPException(status_code=500, detail="개인 AI 설정을 저장하지 못했습니다.")
+            
+        logger.info("개인 AI 설정 업데이트 [유저: %s]: %s", username, list(ai_settings.keys()))
         return {
-            "message": f"API 키가 업데이트되었습니다: {', '.join(updated_keys)}",
-            "updated": updated_keys,
+            "message": "개인 AI 설정이 성공적으로 저장되었습니다.",
+            "updated": list(ai_settings.keys())
         }
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -232,10 +279,15 @@ async def update_api_keys(request: dict = Body(...), admin: str = Depends(get_ad
 
 
 @router.get("/settings/api-keys", summary="API 키 상태 조회 (마스킹)")
-async def get_api_keys_masked():
-    """API 키 설정 여부와 마스킹된 값을 반환합니다."""
+async def get_api_keys_masked(
+    current_user: dict = Depends(get_current_user),
+    db: DatabaseManager = Depends(get_db)
+):
+    """API 키 설정 여부와 마스킹된 값을 반환합니다. 일반 사용자의 경우 본인의 개인 설정을 우선 노출합니다."""
     try:
         config = load_config()
+        username = current_user.get("username")
+        user_settings = db.get_user_ai_settings(username) or {}
 
         def mask(val):
             if not val:
@@ -243,6 +295,23 @@ async def get_api_keys_masked():
             if len(val) <= 8:
                 return "****"
             return val[:4] + "*" * (len(val) - 8) + val[-4:]
+
+        # 개인 설정값
+        user_openai = user_settings.get("openai_api_key")
+        user_gemini = user_settings.get("gemini_api_key")
+        user_llm = user_settings.get("llm_engine")
+
+        # 시스템 공용값
+        sys_openai = config.openai_api_key
+        sys_gemini = getattr(config, 'gemini_api_key', '')
+        sys_llm = getattr(config, 'llm_engine', 'openai')
+
+        # 1. OpenAI 결정
+        openai_key_val = user_openai if user_openai is not None else sys_openai
+        # 2. Gemini 결정
+        gemini_key_val = user_gemini if user_gemini is not None else sys_gemini
+        # 3. LLM 엔진 결정
+        llm_val = user_llm if user_llm is not None else sys_llm
 
         return {
             "data_go_kr_api_key": {
@@ -258,16 +327,19 @@ async def get_api_keys_masked():
                 "masked": mask(getattr(config, 'naver_client_secret', '')),
             },
             "openai_api_key": {
-                "set": bool(config.openai_api_key),
-                "masked": mask(config.openai_api_key),
+                "set": bool(openai_key_val),
+                "masked": mask(openai_key_val),
+                "is_personal": user_openai is not None,
             },
             "gemini_api_key": {
-                "set": bool(getattr(config, 'gemini_api_key', '')),
-                "masked": mask(getattr(config, 'gemini_api_key', '')),
+                "set": bool(gemini_key_val),
+                "masked": mask(gemini_key_val),
+                "is_personal": user_gemini is not None,
             },
             "llm_engine": {
                 "set": True,
-                "masked": getattr(config, 'llm_engine', 'openai'),
+                "masked": llm_val,
+                "is_personal": user_llm is not None,
             },
             "youtube_api_key": {
                 "set": bool(getattr(config, 'youtube_api_key', '')),

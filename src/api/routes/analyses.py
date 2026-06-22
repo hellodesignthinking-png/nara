@@ -132,17 +132,24 @@ async def run_full_analysis(
 
         # ── 4단계: AI 전략 보고서 생성 (참여 가능 공고만) ──
         logger.info("🤖 분석: 4단계 - AI 전략 보고서 (%d건)", len(participable))
-        user_settings = _load_settings()
-        llm_engine = user_settings.get('llm_engine', getattr(config, 'llm_engine', 'gemini'))
+        
+        # 개인 AI 설정 로드 및 우선 연동
+        user_openai_api_key = ai_settings.get("openai_api_key") if ai_settings else None
+        user_gemini_api_key = ai_settings.get("gemini_api_key") if ai_settings else None
+        user_llm_engine = ai_settings.get("llm_engine") if ai_settings else None
+        
+        llm_engine = user_llm_engine or getattr(config, 'llm_engine', 'gemini')
         if llm_engine == "gemini":
+            api_key = user_gemini_api_key or getattr(config, "gemini_api_key", "")
             llm_analyzer = LLMAnalyzer(
-                api_key=getattr(config, "gemini_api_key", ""),
+                api_key=api_key,
                 model=getattr(config, "gemini_model", "gemini-2.5-flash"),
                 engine="gemini",
             )
         else:
+            api_key = user_openai_api_key or getattr(config, "openai_api_key", "")
             llm_analyzer = LLMAnalyzer(
-                api_key=config.openai_api_key,
+                api_key=api_key,
                 model=config.openai_model,
                 engine="openai",
             )
@@ -672,17 +679,20 @@ async def analyze_strategy(
             logger.info("등록된 사업자 없음 — 범용 분석 모드로 실행")
 
         # OpenAI 키 없으면 외부 수집 스킵 (폴백 모드 즉시 응답)
-        # LLM 엔진 선택: settings.json 또는 .env의 LLM_ENGINE 사용
-        user_settings = _load_settings()
-        llm_engine = user_settings.get("llm_engine", getattr(config, "llm_engine", "gemini"))
+        # 개인 AI 설정 로드 및 우선 연동
+        user_openai_api_key = ai_settings.get("openai_api_key") if ai_settings else None
+        user_gemini_api_key = ai_settings.get("gemini_api_key") if ai_settings else None
+        user_llm_engine = ai_settings.get("llm_engine") if ai_settings else None
+
+        llm_engine = user_llm_engine or getattr(config, "llm_engine", "gemini")
 
         if llm_engine == "gemini":
-            has_llm = bool(getattr(config, "gemini_api_key", ""))
-            llm_api_key = getattr(config, "gemini_api_key", "")
+            llm_api_key = user_gemini_api_key or getattr(config, "gemini_api_key", "")
+            has_llm = bool(llm_api_key)
             llm_model = getattr(config, "gemini_model", "gemini-2.5-flash")
         else:
-            has_llm = bool(config.openai_api_key)
-            llm_api_key = config.openai_api_key or ""
+            llm_api_key = user_openai_api_key or getattr(config, "openai_api_key", "")
+            has_llm = bool(llm_api_key)
             llm_model = config.openai_model
 
         # ── 3단계: 과거 낙찰 정보 수집 (공공데이터포털 API) ──

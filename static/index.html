@@ -19,7 +19,7 @@
             <div class="logo">
                 <img src="/static/images/bolt-nara-logo.png" alt="볼트나라" class="logo-icon-img" style="width:38px;height:38px;border-radius:10px;object-fit:cover;">
                 <div class="logo-text">
-                    <span class="logo-title">BOLT</span>
+                    <span class="logo-title" style="display:flex;align-items:center;gap:6px;">BOLT <span class="careet-logo-pulse" title="실시간 AI 가동 중"></span></span>
                     <span class="logo-subtitle">NARA</span>
                 </div>
             </div>
@@ -139,14 +139,24 @@
             </div>
 
             <!-- 환영 헤더 + 빠른 액션 (Behance 프리미엄 스타일 리뉴얼) -->
-            <div class="dashboard-hero">
+            <div class="dashboard-hero careet-hero-bg">
                 <!-- 상단: 인사말 및 퀵 액션 버튼 -->
                 <div class="hero-main-row">
-                    <div class="hero-text">
+                    <div class="hero-text glass-card">
+                        <div class="hero-ai-badge">🤖 AI 입찰 솔루션 가동 중</div>
                         <h1 class="hero-title">안녕하세요 👋</h1>
                         <p class="hero-subtitle" id="dashboard-date">오늘의 현황을 확인하세요</p>
                         <div class="hero-guide-wrap">
-                            <p class="hero-guide" id="hero-guide">① 사업자 등록 → ② 공고 수집 → ③ AI 분석 → ④ 입찰 참여</p>
+                            <p class="hero-guide" id="hero-guide">① 회사 등록 🏢 &rarr; ② 키워드 설정 ⚙️ &rarr; ③ 공고 수집 📋 &rarr; ④ AI 적합도 분석 🎯</p>
+                        </div>
+                        
+                        <!-- AI 맞춤 키워드 태그 캡슐 칩스 -->
+                        <div style="margin-top:16px; display:flex; gap:6px; flex-wrap:wrap; align-items:center">
+                            <span style="font-size:0.7rem; color:var(--text-muted); font-weight:700">추천 키워드:</span>
+                            <span class="keyword-pill">클라우드</span>
+                            <span class="keyword-pill">스마트시티</span>
+                            <span class="keyword-pill">AI 솔루션</span>
+                            <span class="keyword-pill">보안관제</span>
                         </div>
                     </div>
                     <div class="hero-actions">
@@ -202,44 +212,79 @@
                 </div>
             </div>
 
-            <!-- 통계 카드 -->
+            <!-- 통계 카드 (지원매치 벤치마크 고도화) -->
             <div class="stats-grid" id="stats-grid">
-                <div class="stat-card stat-card-link" style="--delay: 0" onclick="navigate('businesses')">
-                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #6366f1, #8b5cf6)">🏢</div>
+                <div class="stat-card stat-card-link" style="--delay: 0" onclick="navigate('bids')">
+                    <div class="stat-card-header" style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:8px">
+                        <div class="stat-icon" style="--gradient: linear-gradient(135deg, #3b82f6, #1d4ed8)">📝</div>
+                        <span class="live-indicator"><span class="live-dot pulse-blue"></span>LIVE</span>
+                    </div>
                     <div class="stat-info">
-                        <span class="stat-value" id="stat-businesses">0</span>
-                        <span class="stat-label">등록 사업자</span>
-                        <span class="stat-change neutral">클릭하여 관리 →</span>
+                        <span class="stat-value" id="stat-bids">0</span>
+                        <span class="stat-label">실시간 수집 공고</span>
+                        <span class="stat-change" id="stat-bids-change">출처: 나라장터 등 10개 기관</span>
                     </div>
                 </div>
                 <div class="stat-card stat-card-link" style="--delay: 1" onclick="navigate('bids')">
-                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #06b6d4, #3b82f6)">📝</div>
+                    <div class="stat-card-header" style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:8px">
+                        <div class="stat-icon" style="--gradient: linear-gradient(135deg, #10b981, #047857)">🎯</div>
+                        <span class="live-indicator active"><span class="live-dot pulse-green"></span>ACTIVE</span>
+                    </div>
                     <div class="stat-info">
-                        <span class="stat-value" id="stat-bids">0</span>
-                        <span class="stat-label">수집 공고</span>
-                        <span class="stat-change neutral" id="stat-bids-change">클릭하여 확인 →</span>
+                        <span class="stat-value" id="stat-avg-score">0.0</span>
+                        <span class="stat-label">AI 매칭 평균 적합도</span>
+                        <span class="stat-change">실시간 매칭 정확도</span>
                     </div>
                 </div>
                 <div class="stat-card stat-card-link" style="--delay: 2" onclick="navigate('analysis')">
-                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #10b981, #34d399)">✅</div>
+                    <div class="stat-card-header" style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:8px">
+                        <div class="stat-icon" style="--gradient: linear-gradient(135deg, #6366f1, #4f46e5)">✅</div>
+                        <span class="live-indicator completed"><span class="live-dot pulse-indigo"></span>COMPLETED</span>
+                    </div>
                     <div class="stat-info">
                         <span class="stat-value" id="stat-analyses">0</span>
-                        <span class="stat-label">분석 완료</span>
-                        <span class="stat-change neutral" id="stat-analyses-change">클릭하여 확인 →</span>
+                        <span class="stat-label">분석 실행 완료</span>
+                        <span class="stat-change" id="stat-analyses-change">종합 분석 보고서</span>
                     </div>
                 </div>
                 <div class="stat-card stat-card-urgent stat-card-link" style="--delay: 3" onclick="navigate('bids'); setTimeout(()=>sortBids('bid_close_dt'), 500)">
-                    <div class="stat-icon" style="--gradient: linear-gradient(135deg, #ef4444, #f97316)">⏰</div>
+                    <div class="stat-card-header" style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-bottom:8px">
+                        <div class="stat-icon" style="--gradient: linear-gradient(135deg, #ef4444, #b91c1c)">⏰</div>
+                        <span class="live-indicator alert"><span class="live-dot pulse-red"></span>ALERT</span>
+                    </div>
                     <div class="stat-info">
                         <span class="stat-value" id="stat-urgent">0</span>
                         <span class="stat-label">마감 임박 (3일)</span>
-                        <span class="stat-change neutral" id="stat-news-change">클릭하여 확인 →</span>
+                        <span class="stat-change" id="stat-news-change">실시간 모니터링 중</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 🔔 실시간 공고 수집 타임라인 다이어그램 (추가 고도화) -->
+            <div class="timeline-panel" style="margin-top:20px; padding:20px; background:rgba(255,255,255,0.01); border-radius:16px; border:1px solid var(--border)">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
+                    <div>
+                        <h3 style="margin:0; font-size:1.05rem; display:flex; align-items:center; gap:8px; color:var(--text)">
+                            🔔 실시간 수집 공고 타임라인
+                        </h3>
+                        <span style="font-size:0.75rem; color:var(--text-muted)">최근 수집되어 동기화된 국가 공고의 발생 시간별 이력을 다이어그램으로 시각화합니다.</span>
+                    </div>
+                    <span class="badge badge-accent" id="timeline-sync-time" style="font-size:0.7rem; background:rgba(99, 102, 241, 0.12)">동기화 완료</span>
+                </div>
+                
+                <!-- 타임라인 연결 가이드선과 스크롤 박스 -->
+                <div class="timeline-scroll-wrap" style="max-height:260px; overflow-y:auto; padding-right:8px">
+                    <div id="live-collection-timeline" class="live-timeline-container">
+                        <!-- JS에서 동적 세로 다이어그램 노드가 주입됩니다 -->
+                        <div style="color:var(--text-muted); font-size:0.82rem; text-align:center; padding:30px 0">
+                            ⏳ 실시간 수집 이력을 분석하는 중입니다...
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- 🔮 글로벌 예측: 연간 반복 사업 발주 예측 브리핑 (Deltek GovWin 벤치마크) -->
-            <div class="recurring-forecast-panel" id="recurring-forecast-panel" style="margin-top:20px;padding:20px;background:linear-gradient(135deg, rgba(99,102,241,0.04) 0%, rgba(6,182,212,0.04) 100%);border-radius:16px;border:1px solid rgba(99,102,241,0.15)">
+            <div class="recurring-forecast-panel" id="recurring-forecast-panel" style="margin-top:20px;padding:20px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
                     <div>
                         <h3 style="margin:0;font-size:1.1rem;display:flex;align-items:center;gap:6px;color:var(--text)">
@@ -247,9 +292,9 @@
                         </h3>
                         <span style="font-size:0.75rem;color:var(--text-muted)">과거 수집 데이터를 AI 마이닝하여 30~90일 내 재발주될 가능성이 높은 예상 사업 목록을 선제 제안합니다.</span>
                     </div>
-                    <span class="badge badge-accent" style="font-size:0.7rem;background:rgba(99,102,241,0.2);color:var(--accent-indigo)">Deltek GovWin 스펙</span>
+                    <span class="badge" style="font-size:0.7rem;background:rgba(255,96,0,0.1);color:#ff6000;border:1px solid rgba(255,96,0,0.3)">Deltek GovWin 스펙</span>
                 </div>
-                <div id="recurring-forecast-list" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:12px;margin-top:12px">
+                <div id="recurring-forecast-list" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:14px;margin-top:12px">
                     <div style="color:var(--text-muted);font-size:0.85rem;grid-column:1/-1;text-align:center;padding:20px 0">
                         ⏳ 과거 낙찰 이력 마이닝 및 발주 일정을 분석하고 있습니다...
                     </div>
@@ -257,7 +302,7 @@
             </div>
 
             <!-- 📊 글로벌 벤치마크: 경쟁사 수주 타깃 모니터 (BidSync 벤치마크) -->
-            <div class="competitor-intelligence-panel" id="competitor-intelligence-panel" style="margin-top:20px;padding:20px;background:linear-gradient(135deg, rgba(16,185,129,0.03) 0%, rgba(59,130,246,0.03) 100%);border-radius:16px;border:1px solid rgba(16,185,129,0.15)">
+            <div class="competitor-intelligence-panel" id="competitor-intelligence-panel" style="margin-top:20px;padding:20px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
                     <div>
                         <h3 style="margin:0;font-size:1.1rem;display:flex;align-items:center;gap:6px;color:var(--text)">
@@ -265,7 +310,7 @@
                         </h3>
                         <span style="font-size:0.75rem;color:var(--text-muted)">최근 낙찰 통계를 기반으로 가장 많은 실적을 획득한 상위 경쟁사의 수주 점유율과 평균 투찰률을 실시간 집계합니다.</span>
                     </div>
-                    <span class="badge badge-success" style="font-size:0.7rem;background:rgba(16,185,129,0.2);color:var(--success)">BidSync 스펙</span>
+                    <span class="badge" style="font-size:0.7rem;background:rgba(255,96,0,0.1);color:#ff6000;border:1px solid rgba(255,96,0,0.3)">BidSync 스펙</span>
                 </div>
                 <div id="competitor-intelligence-body" style="margin-top:12px">
                     <div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:20px 0">
@@ -471,6 +516,10 @@
                     <label class="filter-toggle" style="display:flex;align-items:center;gap:4px;font-size:0.82rem;cursor:pointer;color:var(--text-muted)">
                         <input type="checkbox" id="bid-hide-expired" onchange="filterBids()" checked>
                         <span>마감 건 숨기기</span>
+                    </label>
+                    <label class="filter-toggle" style="display:flex;align-items:center;gap:4px;font-size:0.82rem;cursor:pointer;color:var(--text-muted)" title="추정가격 2천만원 이하 또는 수의계약 공고만 필터링합니다">
+                        <input type="checkbox" id="bid-only-private" onchange="filterBids()">
+                        <span>🪙 수의계약만 보기</span>
                     </label>
                     <select id="bid-filter-budget" class="fav-detail-input" style="width:auto;padding:4px 8px;font-size:0.78rem" onchange="filterBids()">
                         <option value="">💰 예산 전체</option>
@@ -779,52 +828,10 @@
 
             <!-- API 연결 설정 -->
             <div class="settings-section">
-                <h2>🔗 API 연결 설정</h2>
-                <p class="section-desc">각 API 키를 입력하고 저장하면 즉시 반영됩니다. 키는 서버의 .env 파일에 안전하게 저장됩니다.</p>
+                <h2>🔗 AI 분석 API 연결 설정</h2>
+                <p class="section-desc">본인의 OpenAI 및 Google Gemini API 키를 입력하고 저장하면 AI 전략 분석 및 제안서 초안 작성 시 본인의 키가 우선 사용됩니다.</p>
 
                 <div class="api-keys-grid">
-                    <!-- 공공데이터포털 -->
-                    <div class="api-key-card">
-                        <div class="api-key-header">
-                            <span class="status-dot" id="status-dot-data"></span>
-                            <div>
-                                <h4>📊 공공데이터포털</h4>
-                                <span class="api-key-desc">나라장터 입찰공고 수집</span>
-                            </div>
-                        </div>
-                        <div class="api-key-input-group">
-                            <input type="password" id="api-key-data-go-kr" class="api-key-input" placeholder="API 키 입력">
-                            <button class="btn-toggle-eye" onclick="toggleApiKeyVisibility('api-key-data-go-kr')" title="보기/숨기기">👁️</button>
-                        </div>
-                        <span class="api-key-masked" id="masked-data-go-kr"></span>
-                        <div class="api-key-test-wrap" style="margin-top:8px">
-                            <button type="button" class="btn btn-secondary btn-xs" onclick="testApiKey('data_go_kr')">🔌 연결 테스트</button>
-                            <span class="api-test-status" id="test-status-data_go_kr" style="margin-left:8px;font-size:0.75rem"></span>
-                        </div>
-                    </div>
-
-                    <!-- 네이버 검색 -->
-                    <div class="api-key-card">
-                        <div class="api-key-header">
-                            <span class="status-dot" id="status-dot-naver"></span>
-                            <div>
-                                <h4>🔍 네이버 검색</h4>
-                                <span class="api-key-desc">뉴스 기사 수집</span>
-                            </div>
-                        </div>
-                        <div class="api-key-input-group">
-                            <input type="password" id="api-key-naver-id" class="api-key-input" placeholder="Client ID">
-                        </div>
-                        <div class="api-key-input-group" style="margin-top:6px">
-                            <input type="password" id="api-key-naver-secret" class="api-key-input" placeholder="Client Secret">
-                            <button class="btn-toggle-eye" onclick="toggleApiKeyVisibility('api-key-naver-secret')" title="보기/숨기기">👁️</button>
-                        </div>
-                        <span class="api-key-masked" id="masked-naver"></span>
-                        <div class="api-key-test-wrap" style="margin-top:8px">
-                            <button type="button" class="btn btn-secondary btn-xs" onclick="testApiKey('naver')">🔌 연결 테스트</button>
-                            <span class="api-test-status" id="test-status-naver" style="margin-left:8px;font-size:0.75rem"></span>
-                        </div>
-                    </div>
 
                     <!-- OpenAI -->
                     <div class="api-key-card">
@@ -1995,7 +2002,20 @@
                 </div>
                 <!-- 탭 패널 -->
                 <div class="strategy-panel active" id="stab-summary">
-                    <div class="strategy-text" id="stab-summary-content">분석 중...</div>
+                    <!-- 📊 AI 역량 진단 방사형 레이더 차트 2단 구성 -->
+                    <div class="strategy-visual-layout" style="display:flex;gap:20px;margin-bottom:20px;flex-wrap:wrap">
+                        <div class="strategy-radar-wrap" style="flex:1;min-width:240px;background:rgba(255,255,255,0.01);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative">
+                            <div style="font-weight:700;font-size:0.85rem;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:6px">
+                                📊 AI 역량 적합도 5대 진단
+                            </div>
+                            <div id="strategy-radar-chart" style="width:220px;height:220px;display:flex;align-items:center;justify-content:center">
+                                <!-- 동적 SVG 방사형 차트가 렌더링되는 영역 -->
+                            </div>
+                        </div>
+                        <div class="strategy-summary-text-wrap" style="flex:2;min-width:300px;display:flex;flex-direction:column">
+                            <div class="strategy-text" id="stab-summary-content">분석 중...</div>
+                        </div>
+                    </div>
                 </div>
                 <div class="strategy-panel" id="stab-past">
                     <div class="strategy-text" id="stab-past-content">분석 중...</div>
@@ -2037,10 +2057,32 @@
                                 <div style="color:var(--text-muted)">투찰 가격 점수 (예상)</div>
                                 <div id="sim-price-score" style="font-size:1.1rem;font-weight:700;margin-top:4px;color:var(--accent-indigo, #6366f1)">0.0 / 40.0</div>
                             </div>
-                            <div style="grid-column: span 2;padding:12px;background:linear-gradient(to right, rgba(99,102,241,0.05), rgba(16,185,129,0.05));border-radius:8px;border:1px solid rgba(99,102,241,0.2);display:flex;justify-content:space-between;align-items:center">
-                                <div>
-                                    <div style="font-weight:700;font-size:0.85rem">최종 시뮬레이션 예상 점수</div>
-                                    <div style="font-size:0.68rem;color:var(--text-muted)">합격 통과 기준선: 95.0점 (협상 기준 85점)</div>
+                            
+                            <!-- 💰 수익 기대금액 시뮬레이터 위젯 추가 (지원매치 벤치마크) -->
+                            <div style="padding:10px;background:rgba(99,102,241,0.03);border-radius:8px;border:1px solid rgba(99,102,241,0.15)">
+                                <div style="color:var(--text-muted)">예상 투찰 제안가</div>
+                                <div id="sim-bid-price" style="font-size:1.05rem;font-weight:700;margin-top:4px;color:var(--text)">0 원</div>
+                            </div>
+                            <div style="padding:10px;background:rgba(16,185,129,0.03);border-radius:8px;border:1px solid rgba(16,185,129,0.15)">
+                                <div style="color:var(--text-muted)">예상 순수익 (원가 80% 차감)</div>
+                                <div id="sim-net-profit" style="font-size:1.05rem;font-weight:700;margin-top:4px;color:#10b981">0 원</div>
+                            </div>
+
+                            <div style="grid-column: span 2;padding:12px;background:linear-gradient(to right, rgba(99,102,241,0.05), rgba(16,185,129,0.05));border-radius:8px;border:1px solid rgba(99,102,241,0.2);display:flex;justify-content:space-between;align-items:center;gap:12px">
+                                <div style="display:flex;align-items:center;gap:12px;flex:1">
+                                    <!-- 🌀 SVG 실시간 원형 게이지 차트 (둘레 125.6) -->
+                                    <div class="sim-gauge-wrap" style="position:relative;width:48px;height:48px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                                        <svg width="48" height="48" viewBox="0 0 48 48" style="transform:rotate(-90deg)">
+                                            <circle cx="24" cy="24" r="20" stroke="rgba(255,255,255,0.05)" stroke-width="4" fill="transparent"/>
+                                            <circle id="sim-gauge-circle" cx="24" cy="24" r="20" stroke="var(--danger)" stroke-width="4" fill="transparent"
+                                                    stroke-dasharray="125.6" stroke-dashoffset="125.6" stroke-linecap="round" style="transition:stroke-dashoffset 0.35s ease, stroke 0.35s ease"/>
+                                        </svg>
+                                        <div id="sim-gauge-percent" style="position:absolute;font-size:0.68rem;font-weight:800;color:var(--text)">50%</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-weight:700;font-size:0.85rem">최종 시뮬레이션 예상 점수</div>
+                                        <div style="font-size:0.68rem;color:var(--text-muted)">합격 기준선: <span id="sim-pass-threshold-val" style="font-weight:700">95.0</span>점</div>
+                                    </div>
                                 </div>
                                 <div id="sim-total-score" style="font-size:1.4rem;font-weight:800;color:var(--danger)">50.0 점</div>
                             </div>
@@ -2053,6 +2095,11 @@
                     </div>
                 </div>
                 <div class="strategy-panel" id="stab-proposal">
+                    <div style="display:flex; justify-content:flex-end; margin-bottom:12px">
+                        <button class="btn btn-sm btn-outline" style="font-size:0.75rem; display:inline-flex; align-items:center; gap:4px; padding:6px 12px; border-radius:8px; cursor:pointer" onclick="downloadProposalDraft()">
+                            📥 AI 제안서 초안 다운로드 (.md)
+                        </button>
+                    </div>
                     <div class="strategy-text" id="stab-proposal-content">분석 중...</div>
                 </div>
                 <div class="strategy-panel" id="stab-diff">

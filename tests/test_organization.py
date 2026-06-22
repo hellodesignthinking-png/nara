@@ -58,9 +58,12 @@ def test_v4_migration_data_transfer(clean_db):
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # v3 schema 변경 사항 (users 테이블 추가 및 business_profiles에 username 추가)
+    # v3 schema 변경 사항 (users 테이블 추가 및 business_profiles에 username 추가, user_favorites/bid_announcements 추가)
+    conn.execute("CREATE TABLE IF NOT EXISTS bid_announcements (bid_ntce_no TEXT PRIMARY KEY, title TEXT NOT NULL, collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
     conn.execute("CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password_hash TEXT NOT NULL, email TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
     conn.execute("ALTER TABLE business_profiles ADD COLUMN username TEXT REFERENCES users(username) DEFAULT 'admin'")
+    conn.execute("CREATE TABLE IF NOT EXISTS user_favorites (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, bid_ntce_no TEXT NOT NULL, status TEXT DEFAULT 'reviewing', memo TEXT, partners TEXT, checklist TEXT, added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(username, bid_ntce_no), FOREIGN KEY (username) REFERENCES users(username), FOREIGN KEY (bid_ntce_no) REFERENCES bid_announcements(bid_ntce_no))")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_fav_username ON user_favorites(username)")
     
     # schema_version 기록을 3으로 설정
     conn.execute("INSERT OR REPLACE INTO schema_version (version, description) VALUES (3, 'v3 상태 수동 세팅')")

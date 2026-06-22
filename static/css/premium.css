@@ -7,19 +7,19 @@ body, button, input, select, textarea {
 
 /* Theme variables with Electric Neo-Futurism aesthetic */
 :root {
-    --neon-primary: #00f0ff;     /* Electric Cyan */
-    --neon-accent: #bc00dd;      /* Electric Purple/Magenta */
-    --neon-primary-rgb: 0, 240, 255;
-    --neon-accent-rgb: 188, 0, 221;
-    --transition-premium: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    --neon-primary: #ff6000;     /* Careet Signature Orange */
+    --neon-accent: #ff8033;      /* Peach Orange */
+    --neon-primary-rgb: 255, 96, 0;
+    --neon-accent-rgb: 255, 128, 51;
+    --transition-premium: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Light Theme overrides for harmonic color tone */
 html[data-theme="light"] {
-    --neon-primary: #0070f3;     /* Sharp Royal Blue */
-    --neon-accent: #7928ca;      /* Deep Violet */
-    --neon-primary-rgb: 0, 112, 243;
-    --neon-accent-rgb: 121, 40, 202;
+    --neon-primary: #ff6000;     
+    --neon-accent: #ffaa73;      
+    --neon-primary-rgb: 255, 96, 0;
+    --neon-accent-rgb: 255, 170, 115;
 }
 
 /* Base interactive elements micro-animations */

@@ -482,9 +482,17 @@ class DatabaseManager:
                 "ALTER TABLE business_profiles ADD COLUMN social_links TEXT;",
             ],
         ),
+        14: (
+            "user_ai_settings 테이블에 개별 사용자의 API 키(openai_api_key, gemini_api_key) 및 LLM 엔진 설정(llm_engine) 컬럼 추가",
+            [
+                "ALTER TABLE user_ai_settings ADD COLUMN openai_api_key TEXT;",
+                "ALTER TABLE user_ai_settings ADD COLUMN gemini_api_key TEXT;",
+                "ALTER TABLE user_ai_settings ADD COLUMN llm_engine TEXT DEFAULT 'gemini';",
+            ],
+        ),
     }
 
-    CURRENT_SCHEMA_VERSION: int = 13
+    CURRENT_SCHEMA_VERSION: int = 14
 
     def _get_schema_version(self, conn) -> int:
         """현재 DB의 스키마 버전을 조회합니다. 테이블이 없으면 0을 반환합니다."""
@@ -1261,6 +1269,7 @@ class DatabaseManager:
         min_budget: Optional[int] = None,
         max_budget: Optional[int] = None,
         limit: int = 100,
+        only_private: bool = False,
     ) -> list[BidAnnouncement]:
         """
         조건에 맞는 입찰공고를 검색합니다.
@@ -1271,6 +1280,7 @@ class DatabaseManager:
             min_budget: 최소 추정가격
             max_budget: 최대 추정가격
             limit: 최대 반환 건수
+            only_private: 수의계약 가능 용역만 필터링 여부
 
         Returns:
             BidAnnouncement 리스트
@@ -1291,6 +1301,13 @@ class DatabaseManager:
         if max_budget is not None:
             conditions.append("budget <= ?")
             params.append(max_budget)
+        if only_private:
+            # 수의계약 판정 기준: 
+            # 1) 계약방법(contract_method)에 '수의'가 포함되거나
+            # 2) 공고 제목(title)에 '소액수의' 또는 '수의계약'이 들어가거나
+            # 3) 예산(budget)이 2000만원 이하 (단, 0 초과)인 건
+            conditions.append("(contract_method LIKE ? OR title LIKE ? OR title LIKE ? OR (budget <= 20000000 AND budget > 0))")
+            params.extend(["%수의%", "%소액수의%", "%수의계약%"])
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
         params.append(limit)
@@ -2289,12 +2306,35 @@ class DatabaseManager:
         conn = self._ensure_connection()
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         try:
+            # 기존 설정값을 로드하여 없는 키값은 유지하도록 처리
+            cursor = conn.execute("SELECT openai_api_key, gemini_api_key, llm_engine FROM user_ai_settings WHERE username = ?", (username,))
+            row = cursor.fetchone()
+            existing_openai = row[0] if row else None
+            existing_gemini = row[1] if row else None
+            existing_llm = row[2] if row else 'gemini'
+
+            openai_key = settings.get("openai_api_key")
+            if openai_key is None:
+                openai_key = existing_openai
+            elif openai_key == "":
+                openai_key = None
+
+            gemini_key = settings.get("gemini_api_key")
+            if gemini_key is None:
+                gemini_key = existing_gemini
+            elif gemini_key == "":
+                gemini_key = None
+
+            engine = settings.get("llm_engine")
+            if engine is None:
+                engine = existing_llm
+
             conn.execute(
                 """
                 INSERT INTO user_ai_settings 
-                    (username, bid_target, relevance_weight, capacity_weight, credit_weight, ai_persona, custom_keywords, updated_at)
+                    (username, bid_target, relevance_weight, capacity_weight, credit_weight, ai_persona, custom_keywords, openai_api_key, gemini_api_key, llm_engine, updated_at)
                 VALUES 
-                    (?, ?, ?, ?, ?, ?, ?, ?)
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(username) DO UPDATE SET
                     bid_target = excluded.bid_target,
                     relevance_weight = excluded.relevance_weight,
@@ -2302,6 +2342,9 @@ class DatabaseManager:
                     credit_weight = excluded.credit_weight,
                     ai_persona = excluded.ai_persona,
                     custom_keywords = excluded.custom_keywords,
+                    openai_api_key = excluded.openai_api_key,
+                    gemini_api_key = excluded.gemini_api_key,
+                    llm_engine = excluded.llm_engine,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -2312,6 +2355,9 @@ class DatabaseManager:
                     settings.get("credit_weight", 0.30),
                     settings.get("ai_persona", "strategic"),
                     _dump_json_field(settings.get("custom_keywords", [])),
+                    openai_key,
+                    gemini_key,
+                    engine,
                     now
                 )
             )
